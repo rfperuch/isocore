@@ -1,0 +1,47 @@
+# cmake build directory
+build/
+
+# external projects
+external/*/
+
+# hidden files
+.*
+!.clang-format
+!.gitignore
+!.gitmodules
+
+# KDevelop projects
+*.kdev4
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
