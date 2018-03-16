@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern int naddrsize(int bitlen);
+extern int saddrfamily(const char *s);
+
 void makenaddr(netaddr_t *ip, const void *sin, int bitlen)
 {
     ip->bitlen = bitlen;
@@ -18,17 +21,15 @@ int stonaddr(netaddr_t *ip, const char *s)
 {
     char *last = strrchr(s, '/');
 
-    int af = AF_INET;
+    int af = saddrfamily(s);
+
     void *dst = &ip->sin;
     unsigned int maxbitlen = 32;
-    
-    for (int i = 0; i <= 4; i++) {
-        if (s[i] == ':') {
-            af = AF_INET6;
-            dst = &ip->sin6;
-            maxbitlen = 128;
-            break;
-        }
+
+    if (af == AF_INET6) {
+        dst = &ip->sin6;
+        dst = &ip->sin6;
+        maxbitlen = 128;
     }
 
     size_t n;
@@ -50,7 +51,7 @@ int stonaddr(netaddr_t *ip, const char *s)
         n =  strlen(s);
         bitlen = maxbitlen;
     }
-    
+
     char buf[n + 1];
     memcpy(buf, s, n);
     buf[n] = '\0';
