@@ -46,10 +46,6 @@
 #include <isolario/branch.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 enum {
     AF_BAD = -1  ///< Constant to signal a bad Unix address family.
 };
@@ -148,7 +144,4 @@ inline int saddrfamily(const char *s)
  */
 char *naddrtos(const netaddr_t *ip);
 
-#ifdef __cplusplus
-}
-#endif
 #endif

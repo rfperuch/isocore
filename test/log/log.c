@@ -48,7 +48,11 @@ void testlog(void)
     logopen("logtest_output.log", lmodenocon | lmodecol | lmodecreat | lmodestamp);
     logprintf(loginfo, "This is a normal info");
     logprintf(loginfo, VTGRN "This Info should not be green");
+    logprintf(loginfo, VTBLC "This Info should not be preceeded by a bottom left corner");
     logprintf(logwarn, "Warn");
     logclose();
     logprintf(logwarn, "Warn out of log");
+    
+    logopen(NULL, lmodecol);
+    logclose();
 }

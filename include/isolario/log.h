@@ -37,10 +37,6 @@
 #ifndef ISOLARIO_LOG_H_
 #define ISOLARIO_LOG_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /**
  * @defgroup Logging Isolario logging facility
  *
@@ -90,7 +86,4 @@ void logclose(void);
 
 /** @} */
 
-#ifdef __cplusplus
-}
-#endif
 #endif
