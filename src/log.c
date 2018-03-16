@@ -153,7 +153,7 @@ void logprintf(logsev_t sev, const char *fmt, ...)
     strcat(buf, prefix);
     strcat(buf, ": ");
     va_start(va, fmt);
-    vsnprintf(buf + strlen(buf), n, fmt, va);
+    vsprintf(buf + strlen(buf), fmt, va);
     va_end(va);
     if (err) {
         strcat(buf, " ");
