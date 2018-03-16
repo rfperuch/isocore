@@ -1,4 +1,6 @@
-#include <isolario/log.h>
+#include <isolario/netaddr.h>
+#include <stdlib.h>
+#include <string.h>
 
 void makenaddr(netaddr_t *ip, const void *sin, int bitlen)
 {
