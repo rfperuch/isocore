@@ -30,12 +30,25 @@
 
 #include <CUnit/CUnit.h>
 #include <isolario/log.h>
+#include <isolario/vt100.h>
 #include <stdlib.h>
 
 void testlog(void)
 {
     logopen(NULL, lmodecol | lmodestamp);
     loglevel(logdev);
-    logprintf(logdev, "Hello");
+    logprintf(logdev, "Debug");
+    logprintf(loginfo, "Info");
+    logprintf(loginfo, VTGRN VTBLD VTITL "Custom Info " VTHLN " one" VTVLN "two?");
+    logprintf(logwarn, "Warning");
+    logprintf(logerr, "Error");
+    logprintf(loginfo, "END OF FIRST");
     logclose();
+    
+    logopen("logtest_output.log", lmodenocon | lmodecol | lmodecreat | lmodestamp);
+    logprintf(loginfo, "This is a normal info");
+    logprintf(loginfo, VTGRN "This Info should not be green");
+    logprintf(logwarn, "Warn");
+    logclose();
+    logprintf(logwarn, "Warn out of log");
 }

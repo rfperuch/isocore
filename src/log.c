@@ -54,7 +54,8 @@ static void clearvtcodes(char *s)
         }
 
         char *dst = s++;
-        if (*s++ == '[') {
+        if (*s == '[' || *s == '(') {
+            s++;
             while ((c = *s++) != '\0') {
                 if (isalpha(c))
                     break;
