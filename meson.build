@@ -1,7 +1,7 @@
 project('isocore', 'c', version : '2.31',
-                    meson_version : '>=0.45.0',
-                    license : 'BSD3',
-                    default_options : [ 'c_std=c11' ])
+                        meson_version : '>=0.45.0',
+                        license : 'BSD3',
+                        default_options : [ 'c_std=c11' ])
 
 cc = meson.get_compiler('c')
 add_project_arguments(cc.get_supported_arguments([
@@ -9,21 +9,18 @@ add_project_arguments(cc.get_supported_arguments([
     '-pedantic',
     '-Wextra',
     '-Wno-missing-braces',
-    '-Wno-missing-field-initializers'
+    '-Wno-missing-field-initializers',
+    '-D_LARGEFILE_SOURCE',
+    '-D_LARGEFILE64_SOURCE',
+    '-D_FILE_OFFSET_BITS=64',
+    '-D_POSIX_C_SOURCE=200809L'
 ]), language : 'c')
 
 m_dep = cc.find_library('m', required : false)
 cunit_dep = dependency('cunit')
+# TODO cbench_dep = dependency('cbench' fallback : [ 'cbench', 'cbench_dep' ])
 
 incdir = include_directories('include')
-
-add_project_arguments(
-    '-D_LARGEFILE_SOURCE',
-    '-D_LARGEFILE64_SOURCE',
-    '-D_FILE_OFFSET_BITS=64',
-    '-D_POSIX_C_SOURCE=200809L',
-    language : 'c'
-)
 
 isocore = library('isocore',
     sources : [
@@ -37,6 +34,7 @@ isocore = library('isocore',
         'src/hexdump.c',
         'src/log.c',
         'src/parse.c',
+        'src/sockets.c',
         'src/strutil.c',
         'src/uint128_t.c'
     ],

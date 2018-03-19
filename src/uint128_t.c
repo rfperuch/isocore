@@ -74,9 +74,9 @@ uint128_t stou128(const char *s, char **eptr, int base)
     while ((dig = digval(*s)) >= 0 && dig < base) {
         uint128_t v = u128muladdu(u, base, dig);
         if (unlikely(u128cmp(u, v) > 0)) {
-            // overflow
+            // overflow (keep going to consume all digits in string)
             errno = ERANGE;
-            return UINT128_MAX;
+            v = UINT128_MAX;
         }
 
         u = v;
