@@ -33,6 +33,7 @@ isocore = library('isocore',
         'src/endian.c',
         'src/hexdump.c',
         'src/log.c',
+        'src/netaddr.c',
         'src/parse.c',
         'src/sockets.c',
         'src/strutil.c',
@@ -67,11 +68,13 @@ test('bgp', bgp_test)
 
 core_test = executable('core_test',
     sources : [
-        'test/core/hexdump.c',
         'test/core/main.c',
-        'test/core/uint128.c',
+        'test/core/hexdump.c',
         'test/core/log.c',
-        'test/core/strutil.c'
+        'test/core/netaddr.c',
+        'test/core/strutil.c',
+        'test/core/uint128.c'
+        
     ],
     dependencies : [
         isocore_dep,

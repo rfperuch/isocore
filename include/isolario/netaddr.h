@@ -63,6 +63,17 @@ enum {
     AFI_APPLETALK = 12
 };
 
+/** 
+ * 
+ * @brief netaddres printing modes
+ *
+ * @see naddrtos()
+ */
+enum {
+    NADDR_CIDR, ///< prints with /bitlen
+    NADDR_PLAIN, ///< prints without /bitlen
+};
+
 /**
  * @brief Subsequent Address Family Identifier values
  *
@@ -78,8 +89,8 @@ enum {
 };
 
 typedef struct {
-    signed char family;    ///< Unix address family: \a AF_BAD, \a AF_INET or \a AF_INET6.
-    unsigned char bitlen;  ///< Address length in bits.
+    short family;    ///< Unix address family: \a AF_BAD, \a AF_INET or \a AF_INET6.
+    short bitlen;  ///< Address length in bits.
     union {
         struct in_addr sin;
         struct in6_addr sin6;
@@ -142,6 +153,6 @@ inline int saddrfamily(const char *s)
  * @note The returned pointer refers to a possibly statically allocated
  *       zone managed by the library and must not be free()d.
  */
-char *naddrtos(const netaddr_t *ip);
+char *naddrtos(const netaddr_t *ip, int mode);
 
 #endif

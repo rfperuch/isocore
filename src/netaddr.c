@@ -1,6 +1,8 @@
 #include <isolario/netaddr.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 extern int naddrsize(int bitlen);
 extern int saddrfamily(const char *s);
@@ -8,12 +10,14 @@ extern int saddrfamily(const char *s);
 void makenaddr(netaddr_t *ip, const void *sin, int bitlen)
 {
     ip->bitlen = bitlen;
+    ip->family = AF_INET;
     memcpy(&ip->sin, sin, sizeof(struct in_addr));
 }
 
 void makenaddr6(netaddr_t *ip, const void *sin6, int bitlen)
 {
     ip->bitlen = bitlen;
+    ip->family = AF_INET6;
     memcpy(&ip->sin6, sin6, sizeof(struct in6_addr));
 }
 
@@ -25,7 +29,7 @@ int stonaddr(netaddr_t *ip, const char *s)
 
     void *dst = &ip->sin;
     unsigned int maxbitlen = 32;
-
+    
     if (af == AF_INET6) {
         dst = &ip->sin6;
         dst = &ip->sin6;
@@ -60,7 +64,21 @@ int stonaddr(netaddr_t *ip, const char *s)
         return -1;
 
     ip->bitlen = bitlen;
+    ip->family = af;
 
     return 0;
+}
+
+char* naddrtos(const netaddr_t* ip, int mode)
+{
+    static _Thread_local char buf[INET6_ADDRSTRLEN + 5];
+    
+    if (inet_ntop(ip->family, &ip->sin, buf, sizeof(buf)) == NULL)
+        return "invalid";
+    
+    if (mode == NADDR_CIDR)
+        sprintf(buf + strlen(buf), "/%d", ip->bitlen);
+    
+    return buf;
 }
 

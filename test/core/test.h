@@ -45,4 +45,6 @@ void testsplitjoinstr(void);
 
 void testtrimwhites(void);
 
+void testnetaddr(void);
+
 #endif

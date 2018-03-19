@@ -61,6 +61,9 @@ int main(void)
 
     if (!CU_add_test(suite, "test for trimwhites()", testtrimwhites))
         goto error;
+    
+    if (!CU_add_test(suite, "test netaddr", testnetaddr))
+        goto error;
 
     CU_basic_set_mode(CU_BRM_VERBOSE);
     CU_basic_run_tests();
