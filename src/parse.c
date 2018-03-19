@@ -92,8 +92,7 @@ void skiptonextline(FILE *f)
     int c;
     do c = fgetc(f); while (c != '\n' && c != EOF);
 
-    if (c == '\n')
-        parser.lineno++;
+    parser.lineno++;
 }
 
 char *parse(FILE *f)
@@ -111,7 +110,7 @@ char *parse(FILE *f)
         // skip to newline in case of comment
         if (c == '#')
             skiptonextline(f);
-        if (c == '\n')
+        if (c == '\n' || c == EOF)
             parser.lineno++;
 
     } while (isspace(c) || c == '\0');
