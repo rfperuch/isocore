@@ -167,7 +167,8 @@ char *joinstrvl(const char *delim, va_list va)
     }
     va_end(vc);
 
-    bufsiz += dlen * (n - 1);
+    if (likely(n > 0))
+        bufsiz += dlen * (n - 1);
 
     char *buf = malloc(bufsiz + 1);
     if (unlikely(!buf))

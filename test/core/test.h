@@ -37,4 +37,12 @@ void testu128conv(void);
 
 void testhexdump(void);
 
+void testlog(void);
+
+void testjoinstrv(void);
+
+void testsplitjoinstr(void);
+
+void testtrimwhites(void);
+
 #endif

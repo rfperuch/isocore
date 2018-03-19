@@ -71,7 +71,9 @@ core_test = executable('core_test',
     sources : [
         'test/core/hexdump.c',
         'test/core/main.c',
-        'test/core/uint128.c'
+        'test/core/uint128.c',
+        'test/core/log.c',
+        'test/core/strutil.c'
     ],
     dependencies : [
         isocore_dep,
@@ -80,31 +82,4 @@ core_test = executable('core_test',
     include_directories : testincdir
 )
 test('core', core_test)
-
-strutil_test = executable('strutil_test',
-    sources : [
-        'test/strutil/main.c',
-        'test/strutil/splitjoin.c',
-        'test/strutil/trim.c'
-    ],
-    dependencies : [
-        isocore_dep,
-        cunit_dep
-    ],
-    include_directories : testincdir
-)
-test('strutil', strutil_test)
-
-log_test = executable('log_test',
-    sources : [
-        'test/log/main.c',
-        'test/log/log.c',
-    ],
-    dependencies : [
-        isocore_dep,
-        cunit_dep
-    ],
-    include_directories : testincdir
-)
-test('log', log_test)
 

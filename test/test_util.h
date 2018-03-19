@@ -37,9 +37,9 @@
 
 #define CU_ASSERT_VERBOSE(cond, line, file, func, fatal, fmt, ...) \
     do { \
-        char buf__[snprintf(NULL, 0, fmt, __VA_ARGS__) + strlen(#cond) + 3]; \
-        int off__ = sprintf(buf__, "%s: ", #cond); \
-        sprintf(buf__ + off__, fmt, __VA_ARGS__); \
+        char buf__[4096]; \
+        int off__ = snprintf(buf__, sizeof(buf__), "%s: ", #cond); \
+        snprintf(buf__ + off__, sizeof(buf__) - off__, fmt, __VA_ARGS__); \
         CU_assertImplementation((cond), line, buf__, file, func, fatal); \
     } while (0)
 
