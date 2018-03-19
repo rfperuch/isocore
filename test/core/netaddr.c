@@ -7,28 +7,38 @@
 
 void testnetaddr(void)
 {
+    struct {
+        const char* ip;
+        const char* cidr;
+        short bitlen;
+        short family;
+    } table[] = {
+        {"127.0.0.1", "127.0.0.1/32", 32, AF_INET},
+        {"8.2.0.0", "8.2.0.0/16", 16, AF_INET},
+        {"2a00:1450:4002:800::2002", "2a00:1450:4002:800::2002/127", 127, AF_INET6},
+        {"2a00:1450:4002:800::2003", "2a00:1450:4002:800::2003/128", 128, AF_INET6},
+    };
+    
     netaddr_t prefix;
-    int res = stonaddr(&prefix, "127.0.0.1/32");
-    CU_ASSERT_EQUAL(res, 0);
-    CU_ASSERT_EQUAL(prefix.family, AF_INET);
-    CU_ASSERT_EQUAL(prefix.bitlen, 32);
-    CU_ASSERT_STRING_EQUAL(naddrtos(&prefix, NADDR_CIDR), "127.0.0.1/32");
+    int res;
     
-    netaddr_t cloned;
-    makenaddr(&cloned, &prefix.sin, prefix.bitlen);
-    CU_ASSERT_EQUAL(cloned.family, AF_INET);
-    CU_ASSERT_EQUAL(cloned.bitlen, 32);
-    CU_ASSERT_STRING_EQUAL(naddrtos(&cloned, NADDR_CIDR), "127.0.0.1/32");
-    
-    res = stonaddr(&prefix, "2a00:1450:4002:800::2003/128");
-    CU_ASSERT_EQUAL(res, 0);
-    CU_ASSERT_EQUAL(prefix.bitlen, 128);
-    CU_ASSERT_STRING_EQUAL(naddrtos(&prefix, NADDR_CIDR), "2a00:1450:4002:800::2003/128");
-    CU_ASSERT_STRING_EQUAL(naddrtos(&prefix, NADDR_PLAIN), "2a00:1450:4002:800::2003");
-    
-    makenaddr6(&cloned, &prefix.sin6, prefix.bitlen);
-    CU_ASSERT_EQUAL(cloned.family, AF_INET6);
-    CU_ASSERT_EQUAL(cloned.bitlen, 128);
-    CU_ASSERT_STRING_EQUAL(naddrtos(&cloned, NADDR_CIDR), "2a00:1450:4002:800::2003/128");
-    
+    for (size_t i = 0; i < nelems(table); i++) {
+        res = stonaddr(&prefix, table[i].cidr);
+        CU_ASSERT_EQUAL(res, 0);
+        CU_ASSERT_EQUAL(prefix.family, table[i].family);
+        CU_ASSERT_EQUAL(prefix.bitlen, table[i].bitlen);
+        CU_ASSERT_STRING_EQUAL(naddrtos(&prefix, NADDR_CIDR), table[i].cidr);
+        CU_ASSERT_STRING_EQUAL(naddrtos(&prefix, NADDR_PLAIN), table[i].ip);
+        
+        netaddr_t cloned;
+        if (table[i].family == AF_INET)
+            makenaddr(&cloned, &prefix.sin, prefix.bitlen);
+        else
+            makenaddr6(&cloned, &prefix.sin, prefix.bitlen);
+        
+        CU_ASSERT_EQUAL(cloned.family, table[i].family);
+        CU_ASSERT_EQUAL(cloned.bitlen, table[i].bitlen);
+        CU_ASSERT_STRING_EQUAL(naddrtos(&cloned, NADDR_CIDR), table[i].cidr);
+        CU_ASSERT_STRING_EQUAL(naddrtos(&cloned, NADDR_PLAIN), table[i].ip);
+    }
 }
