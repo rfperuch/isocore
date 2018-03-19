@@ -36,6 +36,15 @@ void testnetaddr(void)
         else
             makenaddr6(&cloned, &prefix.sin, prefix.bitlen);
         
+        if ((table[i].bitlen == 32 && table[i].family == AF_INET) || (table[i].bitlen == 128 && table[i].family == AF_INET6)) {
+            res = stonaddr(&prefix, table[i].ip); // NB
+            CU_ASSERT_EQUAL(res, 0);
+            CU_ASSERT_EQUAL(prefix.family, table[i].family);
+            CU_ASSERT_EQUAL(prefix.bitlen, table[i].bitlen);
+            CU_ASSERT_STRING_EQUAL(naddrtos(&prefix, NADDR_CIDR), table[i].cidr);
+            CU_ASSERT_STRING_EQUAL(naddrtos(&prefix, NADDR_PLAIN), table[i].ip);
+        }
+        
         CU_ASSERT_EQUAL(cloned.family, table[i].family);
         CU_ASSERT_EQUAL(cloned.bitlen, table[i].bitlen);
         CU_ASSERT_STRING_EQUAL(naddrtos(&cloned, NADDR_CIDR), table[i].cidr);
