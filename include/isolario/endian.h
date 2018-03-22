@@ -33,10 +33,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 enum {
 #ifdef _WIN32
     ENDIAN_BIG = 0,
@@ -171,7 +167,4 @@ inline uint64_t tobig64(uint64_t ll)
     return ll;
 }
 
-#ifdef __cplusplus
-}
-#endif
 #endif
