@@ -33,7 +33,6 @@
 #include <isolario/branch.h>
 #include <isolario/log.h>
 #include <isolario/vt100.h>
-#include <stdarg.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <string.h>
@@ -109,17 +108,20 @@ int logopen(const char *logfile, int mode)
     return 0;
 }
 
-void logprintf(logsev_t sev, const char *fmt, ...)
+void logvprintf(logsev_t sev, const char *fmt, va_list va)
 {
+    if (sev < logdev || sev > logerr)
+        return;  // ignore special values
     if (sev < loglevel(logquery))
-        return;
+        return;  // not logging on this severity
     if (!log_output && (log_mode & lmodenocon))
-        return;
+        return;  // no log output
 
-    va_list va;
-    va_start(va, fmt);
-    int n = vsnprintf(NULL, 0, fmt, va);
-    va_end(va);
+    va_list cpy;
+    va_copy(cpy, va);
+    int n = vsnprintf(NULL, 0, fmt, cpy);
+    va_end(cpy);
+
     if (n < 1)
         return;
 
@@ -153,9 +155,7 @@ void logprintf(logsev_t sev, const char *fmt, ...)
     strcat(buf, stamp);
     strcat(buf, prefix);
     strcat(buf, ": ");
-    va_start(va, fmt);
     vsprintf(buf + strlen(buf), fmt, va);
-    va_end(va);
     if (err) {
         strcat(buf, " ");
         strcat(buf, err);
@@ -177,6 +177,15 @@ void logprintf(logsev_t sev, const char *fmt, ...)
 
         fprintf(log_output, "%s", buf);
     }
+}
+
+void logprintf(logsev_t sev, const char *fmt, ...)
+{
+    va_list va;
+
+    va_start(va, fmt);
+    logvprintf(sev, fmt, va);
+    va_end(va);
 }
 
 void logclose(void)

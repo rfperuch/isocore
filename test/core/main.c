@@ -49,10 +49,10 @@ int main(void)
 
     if (!CU_add_test(suite, "simple hexdump", testhexdump))
         goto error;
-        
+
     if (!CU_add_test(suite, "test log", testlog))
         goto error;
-    
+
     if (!CU_add_test(suite, "test for splitstr() and joinstr()", testsplitjoinstr))
         goto error;
 

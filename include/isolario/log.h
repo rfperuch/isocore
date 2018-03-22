@@ -32,10 +32,15 @@
  * @file isolario/log.h
  *
  * @brief Logging facility functions.
+ *
+ * @note This header is guaranteed to include standard \a stdarg.h,
+ *       no other assumption should be made upon this header's inclusions.
  */
 
 #ifndef ISOLARIO_LOG_H_
 #define ISOLARIO_LOG_H_
+
+#include <stdarg.h>
 
 /**
  * @defgroup Logging Isolario logging facility
@@ -81,6 +86,8 @@ logsev_t loglevel(logsev_t sev);
 int logopen(const char *logfile, int mode);
 /** @brief Log a message. */
 void logprintf(logsev_t sev, const char *fmt, ...);
+/** @brief Log a message, \a va_list variant. */
+void logvprintf(logsev_t sev, const char *fmt, va_list va);
 /** @brief Close logging system resources. */
 void logclose(void);
 
