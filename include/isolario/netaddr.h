@@ -94,6 +94,7 @@ typedef struct {
     union {
         struct in_addr sin;
         struct in6_addr sin6;
+        unsigned char bytes[sizeof(struct in6_addr)];
     };
 } netaddr_t;
 

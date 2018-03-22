@@ -47,4 +47,6 @@ void testtrimwhites(void);
 
 void testnetaddr(void);
 
+void testpatbase(void);
+
 #endif

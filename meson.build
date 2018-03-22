@@ -35,6 +35,7 @@ isocore = library('isocore',
         'src/log.c',
         'src/netaddr.c',
         'src/parse.c',
+        'src/patriciatrie.c',
         'src/sockets.c',
         'src/strutil.c',
         'src/uint128_t.c'
@@ -72,6 +73,7 @@ core_test = executable('core_test',
         'test/core/hexdump.c',
         'test/core/log.c',
         'test/core/netaddr.c',
+        'test/core/patriciatrie.c',
         'test/core/strutil.c',
         'test/core/uint128.c'
         
