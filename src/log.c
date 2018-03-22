@@ -87,6 +87,8 @@ logsev_t loglevel(logsev_t sev)
 
 int logopen(const char *logfile, int mode)
 {
+    logclose();
+
     log_mode = mode;
     if (logfile) {
         const char *modes = "a";
