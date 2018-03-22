@@ -38,7 +38,8 @@ isocore = library('isocore',
         'src/patriciatrie.c',
         'src/sockets.c',
         'src/strutil.c',
-        'src/uint128_t.c'
+        'src/uint128_t.c',
+        'src/vt100.c'
     ],
     include_directories : incdir,
     dependencies : [ m_dep, cunit_dep ],
@@ -76,7 +77,6 @@ core_test = executable('core_test',
         'test/core/patriciatrie.c',
         'test/core/strutil.c',
         'test/core/uint128.c'
-        
     ],
     dependencies : [
         isocore_dep,

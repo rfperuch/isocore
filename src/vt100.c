@@ -28,53 +28,33 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#include <CUnit/Basic.h>
+#include <isolario/branch.h>
+#include <isolario/util.h>
+#include <isolario/vt100.h>
+#include <stdbool.h>
 #include <stdlib.h>
-#include "test.h"
+#include <string.h>
+#include <unistd.h>
 
-int main(void)
+int isvt100tty(int fd)
 {
-    if (CU_initialize_registry() != CUE_SUCCESS)
-        return CU_get_error();
+    static const char *const known_terms[] = {
+      "xterm",         "xterm-color",     "xterm-256color",
+      "screen",        "screen-256color", "tmux",
+      "tmux-256color", "rxvt-unicode",    "rxvt-unicode-256color",
+      "linux",         "cygwin"
+    };
 
-    CU_pSuite suite = CU_add_suite("core", NULL, NULL);
-    if (!suite)
-        goto error;
+    const char *term = getenv("TERM");
+    if (unlikely(!term))
+        return false;
 
-    if (!CU_add_test(suite, "simple uint128_t iteration", testu128iter))
-        goto error;
+    size_t i;
+    for (i = 0; i < nelems(known_terms); i++) {
+        if (strcmp(term, known_terms[i]) == 0)
+            break;
+    }
 
-    if (!CU_add_test(suite, "uint128_t to string and string to uint128_t conversion", testu128conv))
-        goto error;
-
-    if (!CU_add_test(suite, "simple hexdump", testhexdump))
-        goto error;
-
-    if (!CU_add_test(suite, "test log", testlog))
-        goto error;
-
-    if (!CU_add_test(suite, "test for splitstr() and joinstr()", testsplitjoinstr))
-        goto error;
-
-    if (!CU_add_test(suite, "test for joinstrv()", testjoinstrv))
-        goto error;
-
-    if (!CU_add_test(suite, "test for trimwhites()", testtrimwhites))
-        goto error;
-    
-    if (!CU_add_test(suite, "test netaddr", testnetaddr))
-        goto error;
-    
-    if (!CU_add_test(suite, "test patricia base", testpatbase))
-        goto error;
-
-    CU_basic_set_mode(CU_BRM_VERBOSE);
-    CU_basic_run_tests();
-    unsigned int num_failures = CU_get_number_of_failures();
-    CU_cleanup_registry();
-    return (num_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
-
-error:
-    CU_cleanup_registry();
-    return CU_get_error();
+    return i != nelems(known_terms) && isatty(fd);
 }
+
