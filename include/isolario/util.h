@@ -118,8 +118,8 @@
  * @param [in] b Range maximum value, inclusive.
  *
  * @return Clamped value \a y, such that:
- *         * y = a iff. x < a
- *         * y = b iff. x > b
+ *         * y = a iff. x <= a
+ *         * y = b iff. x >= b
  *         * y = x otherwise
  *
  * @warning This macro is unsafe and may evaluate its arguments more than once.
