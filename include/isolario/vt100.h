@@ -74,6 +74,9 @@
 #define VTCYNB "\x1b[46m"          ///< ANSI VT100 background to cyan
 #define VTWHTB "\x1b[47m"          ///< ANSI VT100 background to white
 
+/// @brief Check whether a Unix file descriptor belongs to a VT100 enabled TTY.
+int isvt100tty(int fd);
+
 /** @} */
 
 #endif
