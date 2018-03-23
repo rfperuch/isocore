@@ -5,7 +5,7 @@
 
 #include "test.h"
 
-void testpatbase_v4(void)
+void testpatbase(void)
 {
     patricia_trie_t pt;
     patinit(&pt, AFI_IPV4);
