@@ -87,6 +87,7 @@ enum {
 
 enum {
     BGP_ENOERR = 0,    ///< No error (success) guaranteed to be zero.
+    BGP_ERRNO,         ///< System error (see errno).
     BGP_EINVOP,        ///< Invalid operation (e.g. write while reading packet).
     BGP_ENOMEM,        ///< Out of memory.
     BGP_EBADHDR,       ///< Bad BGP packet header.
@@ -102,6 +103,8 @@ inline const char *bgpstrerror(int err)
     switch (err) {
     case BGP_ENOERR:
         return "Success";
+    case BGP_ERRNO:
+        return "System error";
     case BGP_EINVOP:
         return "Invalid operation";
     case BGP_ENOMEM:
@@ -122,6 +125,11 @@ inline const char *bgpstrerror(int err)
         return "Unknown error";
     }
 }
+
+/**
+ * @brief Read BGP from Unix file descriptor.
+ */
+int setbgpreadfd(int fd);
 
 /**
  * @brief Initialize a BGP packet for read from pre-existing data.
