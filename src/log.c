@@ -41,7 +41,7 @@
 
 static FILE *log_output = NULL;
 static int log_mode = 0;
-static atomic_int minlevel = loginfo;
+static atomic_int minlevel = loginfo;  // NOTE: avoid ATOMIC_VAR_INIT, deprecated in C17
 
 static void clearvtcodes(char *s)
 {
@@ -66,15 +66,13 @@ static void clearvtcodes(char *s)
 
 static const char *sev2str(logsev_t sev)
 {
+    // NOTE: sev is checkend on logvprintf() and can't be out of range
     static const char *const strtab[] = {
         [logdev]  = "[DEBUG]  ",
         [loginfo] = "[" VTGRN "INFO" VTRST "]   ",
         [logwarn] = "[" VTYLW "WARNING" VTRST "]",
         [logerr]  = "[" VTRED "ERROR" VTRST "]  "
     };
-
-    if (sev <= logall || sev >= lognone)
-        sev = loginfo;
 
     return strtab[sev];
 }
@@ -89,6 +87,8 @@ logsev_t loglevel(logsev_t sev)
 
 int logopen(const char *logfile, int mode)
 {
+    logclose();
+
     log_mode = mode;
     if (logfile) {
         const char *modes = "a";
@@ -169,13 +169,13 @@ void logvprintf(logsev_t sev, const char *fmt, va_list va)
     }
 
     if ((log_mode & lmodenocon) == 0)
-        fprintf(stderr, "%s", buf);
+        fputs(buf, stderr);
 
     if (log_output) {
         if (!cleared)
             clearvtcodes(buf);
 
-        fprintf(log_output, "%s", buf);
+        fputs(buf, log_output);
     }
 }
 

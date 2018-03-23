@@ -501,7 +501,7 @@ char *communitytos(community_t c)
             return (char *) str2wellknown[i].str;
     }
 
-    sprintf(buf, "%lu", (unsigned long) c);
+    sprintf(buf, "%" PRIu32, (uint32_t) c);
     return buf;
 }
 
