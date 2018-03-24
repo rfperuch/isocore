@@ -44,11 +44,11 @@
 #else
 
 #ifndef likely
-#define likely(guard)
+#define likely(guard) (guard)
 #endif
 
 #ifndef unlikely
-#define unlikely(guard)
+#define unlikely(guard) (guard)
 #endif
 
 #endif
