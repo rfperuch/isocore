@@ -8,10 +8,16 @@
 #define ISOLARIO_PATRICIA_TRIE_H_
 
 #include <isolario/netaddr.h>
+#include <stdbool.h>
 
 enum {
     PREFIX_INSERTED,
     PREFIX_ALREADY_PRESENT,
+};
+
+enum {
+    SUPERNET_ITERATOR,
+    SUBNET_ITERATOR,
 };
 
 typedef struct {
@@ -49,6 +55,27 @@ trienode_t* patsearchbestc(const patricia_trie_t *pt, const char *cprefix);
 void* patremoven(patricia_trie_t *pt, const netaddr_t *prefix);
 
 void* patremovec(patricia_trie_t *pt, const char *prefix);
+
+void patiteratorinit(patricia_trie_t *pt);
+
+trienode_t* patiteratorget();
+
+void patiteratornext();
+
+bool patiteratorend();
+
+/**
+ * @brief Supernets of a prefix
+ *
+ * @return The supernets of the provided prefix
+ *
+ * @note If present, the provided prefix is returned into the result.
+ * If not NULL, the returned value must bee free'd by the caller
+ *
+ */
+trienode_t** patgetsupernetsofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+
+trienode_t** patgetsupernetsofc(const patricia_trie_t *pt, const char *cprefix);
 
 #endif
 

@@ -49,4 +49,8 @@ void testnetaddr(void);
 
 void testpatbase(void);
 
+void testpatgetfuncs(void);
+
+void testpatiterator(void);
+
 #endif
