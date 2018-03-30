@@ -28,29 +28,56 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_BRANCH_H_
-#define ISOLARIO_BRANCH_H_
+#include <isolario/io.h>
+#include <unistd.h>
 
-#ifdef __GNUC__
+size_t io_fread(io_handler_t *handler, void *dst, size_t n)
+{
+    return fread(dst, 1, n, handler->file);
+}
 
-#ifndef likely
-#define likely(guard) __builtin_expect(!!(guard), 1)
-#endif
+size_t io_fwrite(io_handler_t *handler, const void *src, size_t n)
+{
+    return fwrite(src, 1, n, handler->file);
+}
 
-#ifndef unlikely
-#define unlikely(guard) __builtin_expect(!!(guard), 0)
-#endif
+int io_ferror(io_handler_t *handler)
+{
+    return ferror(handler->file);
+}
 
-#else
+int io_fclose(io_handler_t *handler)
+{
+    return fclose(handler->file);
+}
 
-#ifndef likely
-#define likely(guard) (guard)
-#endif
+size_t io_fdread(io_handler_t *handler, void *dst, size_t n)
+{
+    ssize_t nr = read(handler->un.fd, dst, n);
+    if (nr < 0) {
+        handler->un.err = 1;
+        nr = 0;
+    }
+    return nr;
+}
 
-#ifndef unlikely
-#define unlikely(guard) (guard)
-#endif
+size_t io_fdwrite(io_handler_t *handler, const void *src, size_t n)
+{
+    ssize_t nw = write(handler->un.fd, src, n);
+    if (nw < 0) {
+        handler->un.err = 1;
+        nw = 0;
+    }
+    return nw;
+}
 
-#endif
+int io_fderror(io_handler_t *handler)
+{
+    return handler->un.err;
+}
 
-#endif
+int io_fdclose(io_handler_t *handler)
+{
+    return close(handler->un.fd);
+}
+

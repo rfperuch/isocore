@@ -1,0 +1,36 @@
+PROJECT_NAME           = "Isolario Core Library"
+PROJECT_BRIEF          = "General utility functions and types for the Isolario Project"
+PROJECT_LOGO           =
+OUTPUT_DIRECTORY       = docs
+ABBREVIATE_BRIEF       = "The $name widget" \
+                         "The $name file" \
+                         is \
+                         provides \
+                         specifies \
+                         contains \
+                         represents \
+                         a \
+                         an \
+                         the
+INHERIT_DOCS           = NO
+OPTIMIZE_OUTPUT_FOR_C  = YES
+EXTENSION_MAPPING      = h=C c=C
+IDL_PROPERTY_SUPPORT   = NO
+EXTRACT_LOCAL_CLASSES  = NO
+CASE_SENSE_NAMES       = YES
+INPUT                  = src include
+INPUT_ENCODING         = UTF-8
+FILE_PATTERNS          = *.c *.h
+RECURSIVE              = YES
+USE_MDFILE_AS_MAINPAGE = README.md
+GENERATE_HTML          = YES
+HTML_HEADER            =
+HTML_FOOTER            =
+GENERATE_LATEX         = YES
+GENERATE_MAN           = YES
+MAN_LINKS              = YES
+CLASS_DIAGRAMS         = NO
+
+DOT_FONTNAME           = Helvetica
+DOT_FONTSIZE           = 11
+

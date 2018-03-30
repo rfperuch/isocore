@@ -90,7 +90,7 @@ void skiptonextline(FILE *f)
     parser.unget[0] = '\0';  // forget any unget token
 
     int c;
-    do c = fgetc(f); while (c != '\n' && c != EOF);
+    do c = getc_unlocked(f); while (c != '\n' && c != EOF);
 
     parser.lineno++;
 }
@@ -105,7 +105,7 @@ char *parse(FILE *f)
 
     int c;
     do {
-        c = fgetc(f);
+        c = getc_unlocked(f);
 
         // skip to newline in case of comment
         if (c == '#')
@@ -118,7 +118,7 @@ char *parse(FILE *f)
     int i = 0;
     ungetc(c, f);
     while (true) {
-        c = fgetc(f);
+        c = getc_unlocked(f);
         if (isspace(c) || c == EOF || c == '\0' || c == '#') {
             ungetc(c, f);
             break;

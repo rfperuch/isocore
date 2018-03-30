@@ -28,29 +28,37 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_BRANCH_H_
-#define ISOLARIO_BRANCH_H_
+#ifndef ISOLARIO_IO_H_
+#define ISOLARIO_IO_H_
 
-#ifdef __GNUC__
+#include <stdio.h>
 
-#ifndef likely
-#define likely(guard) __builtin_expect(!!(guard), 1)
-#endif
+typedef struct io_handler_s io_handler_t;
 
-#ifndef unlikely
-#define unlikely(guard) __builtin_expect(!!(guard), 0)
-#endif
+struct io_handler_s {
+    union {
+        struct {
+            int fd;
+            int err;
+        } un;
+        void *ptr;
+        FILE *file;
+    };
 
-#else
+    size_t (*read)(io_handler_t *handler, void *dst, size_t n);
+    size_t (*write)(io_handler_t *handler, const void *buf, size_t n);
+    int    (*error)(io_handler_t *handler);
+    int    (*close)(io_handler_t *handler);
+};
 
-#ifndef likely
-#define likely(guard) (guard)
-#endif
+size_t io_fread(io_handler_t *handler, void *dst, size_t n);
+size_t io_fwrite(io_handler_t *handler, const void *src, size_t n);
+int    io_ferror(io_handler_t *handler);
+int    io_fclose(io_handler_t *handler);
 
-#ifndef unlikely
-#define unlikely(guard) (guard)
-#endif
-
-#endif
+size_t io_fdread(io_handler_t *handler, void *dst, size_t n);
+size_t io_fdwrite(io_handler_t *handler, const void *src, size_t n);
+int    io_fderror(io_handler_t *handler);
+int    io_fdclose(io_handler_t *handler);
 
 #endif

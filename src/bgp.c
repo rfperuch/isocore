@@ -297,7 +297,7 @@ bgp_open_t *getbgpopen(void)
     op->hold_time = frombig16(op->hold_time);
     memcpy(&op->my_as, &curpkt.buf[MY_AS_OFFSET], sizeof(op->my_as));
     op->my_as = frombig16(op->my_as);
-    memcpy(&op->iden, &curpkt.buf[IDEN_OFFSET], sizeof(op->iden));
+    memcpy(&op->iden.s_addr, &curpkt.buf[IDEN_OFFSET], sizeof(op->iden.s_addr));
 
     return op;
 }
@@ -314,7 +314,7 @@ int setbgpopen(const bgp_open_t *op)
 
     uint16_t my_as = tobig16(op->my_as);
     memcpy(&curpkt.buf[MY_AS_OFFSET], &my_as, sizeof(my_as));
-    memcpy(&curpkt.buf[IDEN_OFFSET], &op->iden, sizeof(op->iden));
+    memcpy(&curpkt.buf[IDEN_OFFSET], &op->iden.s_addr, sizeof(op->iden.s_addr));
     return BGP_ENOERR;
 }
 
