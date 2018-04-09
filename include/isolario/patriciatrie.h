@@ -8,6 +8,7 @@
 #define ISOLARIO_PATRICIA_TRIE_H_
 
 #include <isolario/netaddr.h>
+#include <isolario/uint128_t.h>
 #include <stdbool.h>
 
 enum {
@@ -76,6 +77,52 @@ bool patiteratorend();
 trienode_t** patgetsupernetsofn(const patricia_trie_t *pt, const netaddr_t *prefix);
 
 trienode_t** patgetsupernetsofc(const patricia_trie_t *pt, const char *cprefix);
+
+/**
+ * @brief Subnets of a prefix
+ *
+ * @return The subnets of the provided prefix
+ *
+ * @note If present, the provided prefix is returned into the result.
+ * If not NULL, the returned value must bee free'd by the caller
+ *
+ */
+trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+
+trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix);
+
+/**
+ * @brief Related of a prefix
+ *
+ * @return The related prefixes of the provided prefix
+ *
+ * @note If present, the provided prefix is returned into the result. FIXME?
+ * If not NULL, the returned value must bee free'd by the caller
+ *
+ */
+trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+
+trienode_t** patgetrelatedofc(const patricia_trie_t *pt, const char *cprefix);
+
+/**
+ * @brief Coverage of prefixes
+ *
+ * @return The amount of address space covered by the prefixes insrted into the patricia
+ *
+ * @note the default route is ignored
+ *
+ */
+uint128_t patcoverage(const patricia_trie_t *pt);
+
+/**
+ * @brief Get the first subnets of a given prefix
+ *
+ * @return the subnets of first-level of a given prefix
+ *
+ */
+trienode_t** patgetfirstsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+
+trienode_t** patgetfirstsubnetsofc(const patricia_trie_t *pt, const char *cprefix);
 
 #endif
 

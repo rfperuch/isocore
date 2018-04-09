@@ -73,7 +73,13 @@ int main(void)
     
     if (!CU_add_test(suite, "test patricia iterator", testpatiterator))
         goto error;
+    
+    if (!CU_add_test(suite, "test patricia coverage", testpatcoverage))
+        goto error;
 
+    if (!CU_add_test(suite, "test patricia get first subnets", testpatgetfirstsubnets))
+        goto error;
+        
     CU_basic_set_mode(CU_BRM_VERBOSE);
     CU_basic_run_tests();
     unsigned int num_failures = CU_get_number_of_failures();

@@ -53,4 +53,8 @@ void testpatgetfuncs(void);
 
 void testpatiterator(void);
 
+void testpatcoverage(void);
+
+void testpatgetfirstsubnets(void);
+
 #endif
