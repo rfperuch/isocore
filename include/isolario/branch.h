@@ -28,8 +28,8 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_COMPILER_H_
-#define ISOLARIO_COMPILER_H_
+#ifndef ISOLARIO_BRANCH_H_
+#define ISOLARIO_BRANCH_H_
 
 #ifdef __GNUC__
 
@@ -44,11 +44,11 @@
 #else
 
 #ifndef likely
-#define likely(guard)
+#define likely(guard) (guard)
 #endif
 
 #ifndef unlikely
-#define unlikely(guard)
+#define unlikely(guard) (guard)
 #endif
 
 #endif

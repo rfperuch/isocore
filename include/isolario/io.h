@@ -28,29 +28,37 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_CORE_TEST_H_
-#define ISOLARIO_CORE_TEST_H_
+#ifndef ISOLARIO_IO_H_
+#define ISOLARIO_IO_H_
 
-void testu128iter(void);
+#include <stdio.h>
 
-void testu128conv(void);
+typedef struct io_handler_s io_handler_t;
 
-void testhexdump(void);
+struct io_handler_s {
+    union {
+        struct {
+            int fd;
+            int err;
+        } un;
+        void *ptr;
+        FILE *file;
+    };
 
-void testlog(void);
+    size_t (*read)(io_handler_t *handler, void *dst, size_t n);
+    size_t (*write)(io_handler_t *handler, const void *buf, size_t n);
+    int    (*error)(io_handler_t *handler);
+    int    (*close)(io_handler_t *handler);
+};
 
-void testjoinstrv(void);
+size_t io_fread(io_handler_t *handler, void *dst, size_t n);
+size_t io_fwrite(io_handler_t *handler, const void *src, size_t n);
+int    io_ferror(io_handler_t *handler);
+int    io_fclose(io_handler_t *handler);
 
-void testsplitjoinstr(void);
-
-void testtrimwhites(void);
-
-void testnetaddr(void);
-
-void testpatbase(void);
-
-void testpatgetfuncs(void);
-
-void testpatiterator(void);
+size_t io_fdread(io_handler_t *handler, void *dst, size_t n);
+size_t io_fdwrite(io_handler_t *handler, const void *src, size_t n);
+int    io_fderror(io_handler_t *handler);
+int    io_fdclose(io_handler_t *handler);
 
 #endif

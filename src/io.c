@@ -28,29 +28,56 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_CORE_TEST_H_
-#define ISOLARIO_CORE_TEST_H_
+#include <isolario/io.h>
+#include <unistd.h>
 
-void testu128iter(void);
+size_t io_fread(io_handler_t *handler, void *dst, size_t n)
+{
+    return fread(dst, 1, n, handler->file);
+}
 
-void testu128conv(void);
+size_t io_fwrite(io_handler_t *handler, const void *src, size_t n)
+{
+    return fwrite(src, 1, n, handler->file);
+}
 
-void testhexdump(void);
+int io_ferror(io_handler_t *handler)
+{
+    return ferror(handler->file);
+}
 
-void testlog(void);
+int io_fclose(io_handler_t *handler)
+{
+    return fclose(handler->file);
+}
 
-void testjoinstrv(void);
+size_t io_fdread(io_handler_t *handler, void *dst, size_t n)
+{
+    ssize_t nr = read(handler->un.fd, dst, n);
+    if (nr < 0) {
+        handler->un.err = 1;
+        nr = 0;
+    }
+    return nr;
+}
 
-void testsplitjoinstr(void);
+size_t io_fdwrite(io_handler_t *handler, const void *src, size_t n)
+{
+    ssize_t nw = write(handler->un.fd, src, n);
+    if (nw < 0) {
+        handler->un.err = 1;
+        nw = 0;
+    }
+    return nw;
+}
 
-void testtrimwhites(void);
+int io_fderror(io_handler_t *handler)
+{
+    return handler->un.err;
+}
 
-void testnetaddr(void);
+int io_fdclose(io_handler_t *handler)
+{
+    return close(handler->un.fd);
+}
 
-void testpatbase(void);
-
-void testpatgetfuncs(void);
-
-void testpatiterator(void);
-
-#endif

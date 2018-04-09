@@ -67,6 +67,12 @@ int main(void)
     
     if (!CU_add_test(suite, "test patricia base", testpatbase))
         goto error;
+    
+    if (!CU_add_test(suite, "test patricia get functions", testpatgetfuncs))
+        goto error;
+    
+    if (!CU_add_test(suite, "test patricia iterator", testpatiterator))
+        goto error;
 
     CU_basic_set_mode(CU_BRM_VERBOSE);
     CU_basic_run_tests();
