@@ -36,7 +36,7 @@ static void pnodeinit(pnode_t *n, const netaddr_t *prefix)
     if (prefix)
         n->prefix = *prefix;
     else
-        n->prefix.family = AF_BAD;
+        n->prefix.family = AF_UNSPEC;
 }
 
 static pnode_t *getpnodeparent(pnode_t *n)
