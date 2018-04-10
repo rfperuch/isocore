@@ -52,7 +52,9 @@ typedef struct worker_s {
 typedef struct job_s {
     struct job_s *next;
     struct job_s *prev;
-    max_align_t payload[];  // actual job data, as passed to pool_dispatch()
+    max_align_t payload[1];  // actual job data, as passed to pool_dispatch(),
+                             // dynamically sized (can't use flexible arrays,
+                             // due to this struct being embedded into pool_s)
 } job_t;
 
 struct pool_s {
