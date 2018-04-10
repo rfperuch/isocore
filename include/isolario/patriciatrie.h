@@ -9,7 +9,6 @@
 
 #include <isolario/netaddr.h>
 #include <isolario/uint128_t.h>
-#include <stdbool.h>
 
 enum {
     PREFIX_INSERTED,
@@ -63,14 +62,6 @@ trienode_t* patsearchbestc(const patricia_trie_t *pt, const char *cprefix);
 void* patremoven(patricia_trie_t *pt, const netaddr_t *prefix);
 
 void* patremovec(patricia_trie_t *pt, const char *prefix);
-
-void patiteratorinit(patricia_trie_t *pt);
-
-trienode_t* patiteratorget();
-
-void patiteratornext();
-
-bool patiteratorend();
 
 /**
  * @brief Supernets of a prefix
@@ -130,6 +121,22 @@ uint128_t patcoverage(const patricia_trie_t *pt);
 trienode_t** patgetfirstsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix);
 
 trienode_t** patgetfirstsubnetsofc(const patricia_trie_t *pt, const char *cprefix);
+
+/* Iterator */
+
+typedef struct {
+    pnode_t *stack[129];
+    pnode_t **sp;
+    pnode_t *curr;
+} patiterator_t;
+
+void patiteratorinit(patiterator_t *state, const patricia_trie_t *pt);
+
+trienode_t* patiteratorget(patiterator_t *state);
+
+void patiteratornext(patiterator_t *state);
+
+int patiteratorend(const patiterator_t *state);
 
 #endif
 

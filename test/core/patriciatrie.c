@@ -169,11 +169,13 @@ void testpatiterator(void)
     
     printf("\n");
     
-    patiteratorinit(&pt);
-    while (!patiteratorend()) {
-        trienode_t *node = patiteratorget();
+    patiterator_t it;
+    
+    patiteratorinit(&it, &pt);
+    while (!patiteratorend(&it)) {
+        trienode_t *node = patiteratorget(&it);
         printf("%s\n", naddrtos(&node->prefix, NADDR_CIDR));
-        patiteratornext();
+        patiteratornext(&it);
     }
     
     patdestroy(&pt);

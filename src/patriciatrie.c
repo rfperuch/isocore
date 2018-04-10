@@ -2,7 +2,6 @@
 #include <isolario/util.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 enum {
     PATRICIA_GLUE_NODE = 1,
@@ -51,7 +50,7 @@ static void setpnodeparent(pnode_t *n, pnode_t *parent)
     n->parent = (pnode_t *) ((uintptr_t) n->parent | (uintptr_t) parent);
 }
 
-static bool ispnodeglue(pnode_t *n)
+static int ispnodeglue(pnode_t *n)
 {
     return ((uintptr_t)n->parent) & PATRICIA_GLUE_NODE;
 }
@@ -727,59 +726,52 @@ trienode_t** patgetfirstsubnetsofc(const patricia_trie_t *pt, const char *cprefi
 
 /* Iterator */
 
-static _Thread_local struct {
-    pnode_t *stack[129];
-    pnode_t **sp;
-    pnode_t *curr;
-} patiteratorstate;
-
-void patiteratormovenext()
+void patiteratormovenext(patiterator_t *state)
 {
-    pnode_t *l = patiteratorstate.curr->children[0];
-    pnode_t *r = patiteratorstate.curr->children[1];
+    pnode_t *l = state->curr->children[0];
+    pnode_t *r = state->curr->children[1];
     
     if (l) {
         if (r) {
-            *patiteratorstate.sp++ = r;
+            *state->sp++ = r;
         }
-        patiteratorstate.curr = l;
+        state->curr = l;
     } else if (r) {
-        patiteratorstate.curr = r;
-    } else if (patiteratorstate.sp != patiteratorstate.stack) {
-        patiteratorstate.curr = *(--patiteratorstate.sp);
+        state->curr = r;
+    } else if (state->sp != state->stack) {
+        state->curr = *(--state->sp);
     } else {
-        patiteratorstate.curr = NULL;
+        state->curr = NULL;
     }
 }
 
-void patiteratorskipglue()
+void patiteratorskipglue(patiterator_t *state)
 {
-    while (patiteratorstate.curr && ispnodeglue(patiteratorstate.curr))
-        patiteratormovenext();
+    while (state->curr && ispnodeglue(state->curr))
+        patiteratormovenext(state);
 }
 
-
-void patiteratorinit(patricia_trie_t *pt)
+void patiteratorinit(patiterator_t *state, const patricia_trie_t *pt)
 {
-    patiteratorstate.sp = patiteratorstate.stack;
-    patiteratorstate.curr = pt->head;
-    patiteratorskipglue();
+    state->sp = state->stack;
+    state->curr = pt->head;
+    patiteratorskipglue(state);
 }
 
-trienode_t* patiteratorget()
+trienode_t* patiteratorget(patiterator_t *state)
 {
-    return &patiteratorstate.curr->pub;
+    return &state->curr->pub;
 }
 
-void patiteratornext()
+void patiteratornext(patiterator_t *state)
 {
-    patiteratormovenext();
-    patiteratorskipglue();
+    patiteratormovenext(state);
+    patiteratorskipglue(state);
 }
 
-bool patiteratorend()
+int patiteratorend(const patiterator_t *state)
 {
-    return (patiteratorstate.curr == NULL);
+    return (state->curr == NULL);
 }
 
 /*void patblah(trie_node_t *n)
