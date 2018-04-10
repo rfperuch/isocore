@@ -40,15 +40,18 @@
 #include <sys/syscall.h>
 
 extern long syscall(long number, ...);
+
+#define USE_GETTID
 #endif
 
 unsigned long long getthreaddescr(void)
 {
 #if defined(USE_THREADID)
     return pthread_threadid_np();
-#elif defined(__linux__)
+#elif defined(USE_GETTID)
     return syscall(SYS_gettid);
 #else
+    // disgusting, but kind of works
     union {
         pthread_t handle;
         unsigned long ul;
