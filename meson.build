@@ -17,6 +17,7 @@ add_project_arguments(cc.get_supported_arguments([
 ]), language : 'c')
 
 m_dep = cc.find_library('m', required : false)
+threads_dep = dependency('threads')
 cunit_dep = dependency('cunit')
 # TODO cbench_dep = dependency('cbench' fallback : [ 'cbench', 'cbench_dep' ])
 
@@ -37,13 +38,15 @@ isocore = library('isocore',
         'src/netaddr.c',
         'src/parse.c',
         'src/patriciatrie.c',
+        'src/pool.c',
         'src/sockets.c',
+        'src/threading.c',
         'src/strutil.c',
         'src/uint128_t.c',
         'src/vt100.c'
     ],
     include_directories : incdir,
-    dependencies : [ m_dep, cunit_dep ],
+    dependencies : [ m_dep, threads_dep ],
     install : true
 )
 install_subdir('include', install_dir : 'include')
