@@ -29,15 +29,22 @@ typedef struct {
 typedef union pnode_s pnode_t;
 typedef struct nodepage_s nodepage_t;
 
+/**
+ * The patricia memory is allocated in pages.
+ * A list of pages is maintained.
+ * Each page is a block of 256 nodes.
+ * Each node can be free or not. Each node has the possibility to be in a list
+ * of free nodes. When no more free nodes are available, a new page is allocated.
+*/
 typedef struct {
     pnode_t* head;
-    afi_t type;
+    afi_t family;
     unsigned int nprefs;
     nodepage_t* pages;
     pnode_t* freenodes;
 } patricia_trie_t;
 
-void patinit(patricia_trie_t* pt, afi_t type);
+void patinit(patricia_trie_t* pt, afi_t family);
 
 void patdestroy(patricia_trie_t* pt);
 

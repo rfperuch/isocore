@@ -8,11 +8,11 @@ enum {
     PATRICIA_GLUE_NODE = 1,
 };
 
-/*
-    the "public" node is trienode_t. (see patriciatrie.h).
-    It contains a prefix and a payload.
-    
-    the actual node is a pnode_s.
+/**
+ * the "public" node is trienode_t. (see patriciatrie.h).
+ * It contains a prefix and a payload.
+ * 
+ * the actual node is a pnode_s.
 */
 union pnode_s {
     trienode_t pub;  // keep underlying structure in sync!
@@ -25,14 +25,6 @@ union pnode_s {
     union pnode_s *next; ///< used when the node is a free node (to create a linked list of free nodes)
 };
 
-/*
-    The patricia memory is allocated in pages.
-    A list of pages is maintained.
-    Each page is a block of 256 nodes.
-    Each node can be free or not. Each node has the possibility to be in a list
-    of free nodes. When no more free nodes are available, a new page is allocated.
-
-*/
 struct nodepage_s {
     struct nodepage_s *next;
     pnode_t block[256];
@@ -112,10 +104,10 @@ static void putfreenode(patricia_trie_t *pt, pnode_t *n)
     n->next = save;
 }
 
-void patinit(patricia_trie_t *pt, afi_t type)
+void patinit(patricia_trie_t *pt, afi_t family)
 {
     pt->head = NULL;
-    pt->type = type;
+    pt->family = family;
     pt->nprefs = 0;
     pt->pages = NULL;
     pt->freenodes = NULL;
@@ -134,7 +126,7 @@ void patdestroy(patricia_trie_t *pt)
 
 static int patmaxbits(const patricia_trie_t *pt)
 {
-    return (pt->type == AFI_IPV4) ? 32 : 128;
+    return (pt->family == AFI_IPV4) ? 32 : 128;
 }
 
 static int patcompwithmask(const netaddr_t *addr, const netaddr_t *dest, int mask)
