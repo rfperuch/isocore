@@ -30,13 +30,12 @@
 
 #include <errno.h>
 #include <isolario/branch.h>
+#include <isolario/threading.h>
 #include <pthread.h>
 #include <stdalign.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "pool.h"
 
 enum {
     POOL_TRANSIENT_SECS = 2
