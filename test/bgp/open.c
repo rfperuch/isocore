@@ -236,16 +236,13 @@ void testopenread(void)
     void *cap;
     size_t n;
     while ((cap = nextbgpcap(&n)) != NULL) {
+        CU_ASSERT_EQUAL_FATAL(n, bgpcaplen(cap) + CAPABILITY_HEADER_SIZE);
         switch (bgpcapcode(cap)) {
-            CU_ASSERT_EQUAL_FATAL(n, bgpcaplen(cap) + CAPABILITY_HEADER_SIZE);
-            
-            case MULTIPROTOCOL_CODE:
-            {
-                CU_ASSERT_EQUAL(bgpcaplen(cap), MULTIPROTOCOL_LENGTH);
-                CU_ASSERT_EQUAL(getmultiprotocol(cap).afi, AFI_IPV4);
-                CU_ASSERT_EQUAL(getmultiprotocol(cap).safi, SAFI_UNICAST);
-                break;
-            }
+        case MULTIPROTOCOL_CODE:
+            CU_ASSERT_EQUAL(bgpcaplen(cap), MULTIPROTOCOL_LENGTH);
+            CU_ASSERT_EQUAL(getmultiprotocol(cap).afi, AFI_IPV4);
+            CU_ASSERT_EQUAL(getmultiprotocol(cap).safi, SAFI_UNICAST);
+            break;
         }
     }
     endbgpcaps();
