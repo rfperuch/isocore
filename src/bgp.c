@@ -40,12 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/// @brief General constants for the BGP packet reader/writer
-enum {
-    BGPBUFSIZ    = 4096,  ///< Working buffer for packet writing, should be large
-    BGPGROWSTEP  = 256,
-    BGPTMPBUFSIZ = 128    ///< Small additional buffer to use for out-of-order fields
-};
+enum { BGPGROWSTEP  = 256 };
 
 /// @brief BGP packet marker, prepended to any packet
 static const unsigned char bgp_marker[] = {
@@ -100,41 +95,8 @@ enum {
     ROUTE_REFRESH_LENGTH = BASE_PACKET_LENGTH + sizeof(afi_safi_t)
 };
 
-/// @brief Packet reader/writer global status structure.
-typedef struct {
-    uint16_t flags;      ///< General status flags.
-    uint16_t pktlen;     ///< Actual packet length.
-    uint16_t bufsiz;     ///< Packet buffer capacity
-    int16_t err;         ///< Last error code.
-    unsigned char *buf;  ///< Packet buffer base.
-    union {              ///< Relevant status for each BGP packet.
-        struct {
-            // BGP open specific fields
-
-            unsigned char *pptr;   ///< Current parameter pointer
-            unsigned char *params; ///< Pointer to parameters base
-
-            bgp_open_t opbuf;      ///< Convenience field for reading
-        };
-        struct {
-            // BGP update specific fields
-
-            unsigned char *presbuf;  ///< Preserved fields buffer, for out of order field writing.
-            unsigned char *uptr;     ///< Current update message field pointer.
-
-            // following fields are mutually exclusive, so reuse storage
-            union {
-                bgpprefix_t pfxbuf;                      ///< Convenience field for reading.
-                unsigned char fastpresbuf[BGPTMPBUFSIZ]; ///< Fast preserved buffer, to avoid malloc()s.
-            };
-        };
-    };
-
-    unsigned char fastbuf[BGPBUFSIZ];  ///< Fast buffer to avoid malloc()s.
-} packet_state_t;
-
-/// @brief Packet reader/writer instance
-static _Thread_local packet_state_t curpkt;
+/// @brief Global thread BGP message instance.
+static _Thread_local bgp_msg_t curmsg;
 
 // Minimum packet size table (see setbgpwrite()) ===============================
 
@@ -148,21 +110,25 @@ static const uint8_t bgp_minlengths[] = {
 };
 
 /// @brief Close any pending field from packet.
-static int endpending(void)
+static int endpending(bgp_msg_t *msg)
 {
     // small optimization for common case
-    if (likely((curpkt.flags & (F_PM | F_WITHDRN | F_PATTR | F_NLRI)) == 0))
-        return curpkt.err;
+    if (likely((msg->flags & (F_PM | F_WITHDRN | F_PATTR | F_NLRI)) == 0))
+        return msg->err;
 
     // only one flag can be set
-    if (curpkt.flags & F_PM)
-        return endbgpcaps();
-    if (curpkt.flags & F_WITHDRN)
-        return endwithdrawn();
-    if (curpkt.flags & F_PATTR)
-        return endbgpattribs();
-    if (curpkt.flags & F_NLRI)
-        return endnlri();
+    if (msg->flags & F_PM)
+        return endbgpcaps_r(msg);
+    if (msg->flags & F_WITHDRN)
+        return endwithdrawn_r(msg);
+    if (msg->flags & F_PATTR)
+        return endbgpattribs_r(msg);
+    if (msg->flags & F_NLRI)
+        return endnlri_r(msg);
+
+    // should never reach here
+    assert(false);
+    return msg->err;
 }
 
 // General functions ===========================================================
@@ -171,114 +137,144 @@ static int endpending(void)
 extern const char *bgpstrerror(int err);
 
 /// @brief Check for a \a flags operation on a BGP packet of type \a type.
-static int checktype(int type, int flags)
+static int checktype(bgp_msg_t *msg, int type, int flags)
 {
-    if (unlikely(getbgptype() != type))
-        curpkt.err = BGP_EINVOP;
-    if (unlikely((curpkt.flags & flags) != flags))
-        curpkt.err = BGP_EINVOP;
+    if (unlikely(getbgptype_r(msg) != type))
+        msg->err = BGP_EINVOP;
+    if (unlikely((msg->flags & flags) != flags))
+        msg->err = BGP_EINVOP;
 
-    return curpkt.err;
+    return msg->err;
 }
 
 /// @brief Check for any \a flags operation on a BGP packet of type \a type.
-static int checkanytype(int type, int flags)
+static int checkanytype(bgp_msg_t *msg, int type, int flags)
 {
-    if (unlikely(getbgptype() != type))
-        curpkt.err = BGP_EINVOP;
-    if (unlikely((curpkt.flags & flags) == 0))
-        curpkt.err = BGP_EINVOP;
+    if (unlikely(getbgptype_r(msg) != type))
+        msg->err = BGP_EINVOP;
+    if (unlikely((msg->flags & flags) == 0))
+        msg->err = BGP_EINVOP;
 
-    return curpkt.err;
+    return msg->err;
 }
 
 int setbgpread(const void *data, size_t n)
 {
+    return setbgpread_r(&curmsg, data, n);
+}
+
+int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n)
+{
     assert(n <= UINT16_MAX);
-    if (curpkt.flags & F_RDWR)
+    if (msg->flags & F_RDWR)
         bgpclose();
 
-    curpkt.buf = curpkt.fastbuf;
-    if (unlikely(n > sizeof(curpkt.fastbuf)))
-        curpkt.buf = malloc(n);
+    msg->buf = msg->fastbuf;
+    if (unlikely(n > sizeof(msg->fastbuf)))
+        msg->buf = malloc(n);
 
-    if (unlikely(!curpkt.buf))
+    if (unlikely(!msg->buf))
         return BGP_ENOMEM;
 
-    curpkt.flags = F_RD;
-    curpkt.err = BGP_ENOERR;
-    curpkt.pktlen = n;
-    curpkt.bufsiz = n;
+    msg->flags = F_RD;
+    msg->err = BGP_ENOERR;
+    msg->pktlen = n;
+    msg->bufsiz = n;
 
-    memcpy(curpkt.buf, data, n);
+    memcpy(msg->buf, data, n);
     return BGP_ENOERR;
 }
 
 int setbgpwrite(int type)
 {
-    if (curpkt.flags & F_RDWR)
+    return setbgpwrite_r(&curmsg, type);
+}
+
+int setbgpwrite_r(bgp_msg_t *msg, int type)
+{
+    if (msg->flags & F_RDWR)
         bgpclose();
 
-    if (unlikely(type < 0 || (unsigned) type >= nelems(bgp_minlengths)))
+    if (unlikely(type < 0 || (unsigned int) type >= nelems(bgp_minlengths)))
         return BGP_EBADTYPE;
 
     size_t min_len = bgp_minlengths[type];
     if (unlikely(min_len == 0))
         return BGP_EBADTYPE;
 
-    curpkt.flags = F_WR;
-    curpkt.pktlen = min_len;
-    curpkt.bufsiz = sizeof(curpkt.fastbuf);
-    curpkt.err = BGP_ENOERR;
-    curpkt.buf = curpkt.fastbuf;
+    msg->flags = F_WR;
+    msg->pktlen = min_len;
+    msg->bufsiz = sizeof(msg->fastbuf);
+    msg->err = BGP_ENOERR;
+    msg->buf = msg->fastbuf;
 
-    memset(curpkt.buf, 0, min_len);
-    memcpy(curpkt.buf, bgp_marker, sizeof(bgp_marker));
-    curpkt.buf[TYPE_OFFSET] = type;
+    memset(msg->buf, 0, min_len);
+    memcpy(msg->buf, bgp_marker, sizeof(bgp_marker));
+    msg->buf[TYPE_OFFSET] = type;
     return BGP_ENOERR;
 }
 
 int getbgptype(void)
 {
-    if (unlikely((curpkt.flags & F_RDWR) == 0))
+    return getbgptype_r(&curmsg);
+}
+
+int getbgptype_r(bgp_msg_t *msg)
+{
+    if (unlikely((msg->flags & F_RDWR) == 0))
         return BGP_BADTYPE;
 
-    return curpkt.buf[TYPE_OFFSET];
+    return msg->buf[TYPE_OFFSET];
 }
 
 int bgperror(void)
 {
-    return curpkt.err;
+    return bgperror_r(&curmsg);
+}
+
+int bgperror_r(bgp_msg_t *msg)
+{
+    return msg->err;
 }
 
 void *bgpfinish(size_t *pn)
 {
-    if ((curpkt.flags & F_WR) == 0)  // XXX: make it a function
-        curpkt.err = BGP_EINVOP;
-    if (unlikely(curpkt.err))
+    return bgpfinish_r(&curmsg, pn);
+}
+
+void *bgpfinish_r(bgp_msg_t *msg, size_t *pn)
+{
+    if ((msg->flags & F_WR) == 0)  // XXX: make it a function
+        msg->err = BGP_EINVOP;
+    if (unlikely(msg->err))
         return NULL;
 
-    endpending();
+    endpending(msg);
 
-    size_t n = curpkt.pktlen;
+    size_t n = msg->pktlen;
 
     uint16_t len = tobig16(n);
-    memcpy(&curpkt.buf[LENGTH_OFFSET], &len, sizeof(len));
+    memcpy(&msg->buf[LENGTH_OFFSET], &len, sizeof(len));
     if (likely(pn))
         *pn = n;
 
-    return curpkt.buf;
+    return msg->buf;
 }
 
 int bgpclose(void)
 {
-    int err = BGP_ENOERR;
-    if (curpkt.flags & F_RDWR) {
-        err = bgperror();
-        if (unlikely(curpkt.buf != curpkt.fastbuf))
-            free(curpkt.buf);
+    return bgpclose_r(&curmsg);
+}
 
-        memset(&curpkt, 0, sizeof(curpkt));  // XXX: optimize
+int bgpclose_r(bgp_msg_t *msg)
+{
+    int err = BGP_ENOERR;
+    if (msg->flags & F_RDWR) {
+        err = bgperror_r(msg);
+        if (unlikely(msg->buf != msg->fastbuf))
+            free(msg->buf);
+
+        memset(msg, 0, sizeof(*msg));  // XXX: optimize
     }
     return err;
 }
@@ -287,95 +283,125 @@ int bgpclose(void)
 
 bgp_open_t *getbgpopen(void)
 {
-    if (checktype(BGP_OPEN, F_RD))
+    return getbgpopen_r(&curmsg);
+}
+
+bgp_open_t *getbgpopen_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_OPEN, F_RD))
         return NULL;
 
-    bgp_open_t *op = &curpkt.opbuf;
+    bgp_open_t *op = &msg->opbuf;
 
-    op->version = curpkt.buf[VERSION_OFFSET];
-    memcpy(&op->hold_time, &curpkt.buf[HOLD_TIME_OFFSET], sizeof(op->hold_time));
+    op->version = msg->buf[VERSION_OFFSET];
+    memcpy(&op->hold_time, &msg->buf[HOLD_TIME_OFFSET], sizeof(op->hold_time));
     op->hold_time = frombig16(op->hold_time);
-    memcpy(&op->my_as, &curpkt.buf[MY_AS_OFFSET], sizeof(op->my_as));
+    memcpy(&op->my_as, &msg->buf[MY_AS_OFFSET], sizeof(op->my_as));
     op->my_as = frombig16(op->my_as);
-    memcpy(&op->iden.s_addr, &curpkt.buf[IDEN_OFFSET], sizeof(op->iden.s_addr));
+    memcpy(&op->iden.s_addr, &msg->buf[IDEN_OFFSET], sizeof(op->iden.s_addr));
 
     return op;
 }
 
 int setbgpopen(const bgp_open_t *op)
 {
-    if (checktype(BGP_OPEN, F_WR))
-        return curpkt.err;
+    return setbgpopen_r(&curmsg, op);
+}
 
-    curpkt.buf[VERSION_OFFSET]   = op->version;
+int setbgpopen_r(bgp_msg_t *msg, const bgp_open_t *op)
+{
+    if (checktype(msg, BGP_OPEN, F_WR))
+        return msg->err;
+
+    msg->buf[VERSION_OFFSET]   = op->version;
     
     uint16_t hold_time = tobig16(op->hold_time);
-    memcpy(&curpkt.buf[HOLD_TIME_OFFSET], &hold_time, sizeof(hold_time));
+    memcpy(&msg->buf[HOLD_TIME_OFFSET], &hold_time, sizeof(hold_time));
 
     uint16_t my_as = tobig16(op->my_as);
-    memcpy(&curpkt.buf[MY_AS_OFFSET], &my_as, sizeof(my_as));
-    memcpy(&curpkt.buf[IDEN_OFFSET], &op->iden.s_addr, sizeof(op->iden.s_addr));
+    memcpy(&msg->buf[MY_AS_OFFSET], &my_as, sizeof(my_as));
+    memcpy(&msg->buf[IDEN_OFFSET], &op->iden.s_addr, sizeof(op->iden.s_addr));
     return BGP_ENOERR;
 }
 
 void *getbgpparams(size_t *pn)
 {
-    if (checkanytype(BGP_OPEN, F_RDWR))
+    return getbgpparams_r(&curmsg, pn);
+}
+
+void *getbgpparams_r(bgp_msg_t *msg, size_t *pn)
+{
+    if (checkanytype(msg, BGP_OPEN, F_RDWR))
         return NULL;
 
     if (likely(pn))
-        *pn = curpkt.buf[PARAMS_LENGTH_OFFSET];
+        *pn = msg->buf[PARAMS_LENGTH_OFFSET];
 
-    return &curpkt.buf[PARAMS_OFFSET];
+    return &msg->buf[PARAMS_OFFSET];
 }
 
 int setbgpparams(const void *data, size_t n)
 {
-    if (checktype(BGP_OPEN, F_WR))
-        return curpkt.err;
+    return setbgpparams_r(&curmsg, data, n);
+}
+
+int setbgpparams_r(bgp_msg_t *msg, const void *data, size_t n)
+{
+    if (checktype(msg, BGP_OPEN, F_WR))
+        return msg->err;
 
     // TODO no assert but actual check
     assert(n <= PARAMS_SIZE_MAX);
 
-    curpkt.buf[PARAM_LENGTH_OFFSET] = n;
-    memcpy(&curpkt.buf[PARAMS_OFFSET], data, n);
+    msg->buf[PARAM_LENGTH_OFFSET] = n;
+    memcpy(&msg->buf[PARAMS_OFFSET], data, n);
 
-    curpkt.pktlen = PARAMS_OFFSET + n;
+    msg->pktlen = PARAMS_OFFSET + n;
     return BGP_ENOERR;
 }
 
 int startbgpcaps(void)
 {
-    if (checkanytype(BGP_OPEN, F_RDWR))
-        return curpkt.err;
+    return startbgpcaps_r(&curmsg);
+}
 
-    endpending();
+int startbgpcaps_r(bgp_msg_t *msg)
+{
+    if (checkanytype(msg, BGP_OPEN, F_RDWR))
+        return msg->err;
 
-    curpkt.flags |= F_PM;
-    curpkt.params = getbgpparams(NULL);
-    curpkt.pptr   = curpkt.params;
+    endpending(msg);
+
+    msg->flags |= F_PM;
+    msg->params = getbgpparams_r(msg, NULL);
+    msg->pptr   = msg->params;
     return BGP_ENOERR;
 }
 
 void *nextbgpcap(size_t *pn)
 {
-    if (checktype(BGP_OPEN, F_RD | F_PM))
+    return nextbgpcap_r(&curmsg, pn);
+}
+
+void *nextbgpcap_r(bgp_msg_t *msg, size_t *pn)
+{
+    if (checktype(msg, BGP_OPEN, F_RD | F_PM))
         return NULL;
 
     size_t n;
-    unsigned char *base  = getbgpparams(&n);
+    unsigned char *base  = getbgpparams_r(msg, &n);
     unsigned char *limit = base + n;
-    unsigned char *end   = curpkt.params + PARAM_HEADER_SIZE + curpkt.params[1];
-    unsigned char *ptr   = curpkt.pptr;
+    unsigned char *end   = msg->params + PARAM_HEADER_SIZE + msg->params[1];
+    unsigned char *ptr   = msg->pptr;
     if (ptr == end)
-        curpkt.params = end;  // move to next parameter
+        msg->params = end;  // move to next parameter
 
     // skip uninteresting parameters
-    while (ptr == curpkt.params) {
+    while (ptr == msg->params) {
         if (ptr >= limit) {
             // end of parameters in this packet
             if (unlikely(ptr > limit))
-                curpkt.err = BGP_EBADPARAMLEN;
+                msg->err = BGP_EBADPARAMLEN;
 
             return NULL;
         }
@@ -387,13 +413,13 @@ void *nextbgpcap(size_t *pn)
 
         // next parameter
         ptr = end;
-        curpkt.params = end;
+        msg->params = end;
         end = ptr + PARAM_HEADER_SIZE + ptr[1];
     }
 
     if (unlikely(ptr + ptr[1] + CAPABILITY_HEADER_SIZE > end)) {
         // bad packet
-        curpkt.err = BGP_EBADPARAMLEN;
+        msg->err = BGP_EBADPARAMLEN;
         return NULL;
     }
 
@@ -401,23 +427,28 @@ void *nextbgpcap(size_t *pn)
         *pn = ptr[CAPABILITY_LENGTH_OFFSET] + CAPABILITY_HEADER_SIZE;
 
     // advance to next parameter
-    curpkt.pptr = ptr + CAPABILITY_HEADER_SIZE + ptr[1];
+    msg->pptr = ptr + CAPABILITY_HEADER_SIZE + ptr[1];
     return ptr;
 }
 
 int putbgpcap(const void *data, size_t n)
 {
-    if (checktype(BGP_OPEN, F_WR | F_PM))
-        return curpkt.err;
+    return putbgpcap_r(&curmsg, data, n);
+}
 
-    unsigned char *ptr = curpkt.pptr;
-    if (ptr == curpkt.params) {
+int putbgpcap_r(bgp_msg_t *msg, const void *data, size_t n)
+{
+    if (checktype(msg, BGP_OPEN, F_WR | F_PM))
+        return msg->err;
+
+    unsigned char *ptr = msg->pptr;
+    if (ptr == msg->params) {
         // first capability in parameter
         ptr[PARAM_CODE_OFFSET]   = CAPABILITY_CODE;
         ptr[PARAM_LENGTH_OFFSET] = 0; // update later
         ptr += PARAM_HEADER_SIZE;
 
-        curpkt.pktlen += PARAM_HEADER_SIZE;
+        msg->pktlen += PARAM_HEADER_SIZE;
     }
 
     static_assert(BGPBUFSIZ >= MIN_OPEN_LENGTH + 0xff, "code assumes putbgpcap() can't overflow BGPBUFSIZ");
@@ -427,130 +458,145 @@ int putbgpcap(const void *data, size_t n)
     memcpy(ptr, data, n);
     ptr += n;
 
-    curpkt.pktlen += n;
-    curpkt.pptr = ptr;
+    msg->pktlen += n;
+    msg->pptr = ptr;
     return BGP_ENOERR;
 }
 
 int endbgpcaps(void)
 {
-    if (checktype(BGP_OPEN, F_PM))
-        return curpkt.err;
+    return endbgpcaps_r(&curmsg);
+}
 
-    if (curpkt.flags & F_WR) {
+int endbgpcaps_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_OPEN, F_PM))
+        return msg->err;
+
+    if (msg->flags & F_WR) {
         // write length for the last parameter
-        unsigned char *ptr = curpkt.pptr;
-        curpkt.params[1] = (ptr - curpkt.params) - PARAM_HEADER_SIZE;
+        unsigned char *ptr = msg->pptr;
+        msg->params[1] = (ptr - msg->params) - PARAM_HEADER_SIZE;
 
         // write length for the entire parameter list
-        const unsigned char *base = getbgpparams(NULL);
+        const unsigned char *base = getbgpparams_r(msg, NULL);
         size_t n = ptr - base;
 
         // TODO actual check rather than assert()
         assert(n <= PARAM_LENGTH_MAX);
-        curpkt.buf[PARAMS_LENGTH_OFFSET] = n;
+        msg->buf[PARAMS_LENGTH_OFFSET] = n;
     }
 
-    curpkt.flags &= ~F_PM;
+    msg->flags &= ~F_PM;
     return BGP_ENOERR;
 }
 
 // Update message read/write functions =========================================
 
-static int bgpensure(size_t len)
+static int bgpensure(bgp_msg_t *msg, size_t len)
 {
-    len += curpkt.pktlen;
-    if (unlikely(len > curpkt.bufsiz)) {
+    len += msg->pktlen;
+    if (unlikely(len > msg->bufsiz)) {
         // FIXME if len > 0xffff then oversized BGP packet (4K for regular BGP)!
         len += BGPGROWSTEP;
         if (unlikely(len > 0xffff))
             len = 0xffff;
 
-        unsigned char *buf = curpkt.buf;
-        if (buf == curpkt.fastbuf)
+        unsigned char *buf = msg->buf;
+        if (buf == msg->fastbuf)
             buf = NULL;
 
         unsigned char *larger = realloc(buf, len);
         if (unlikely(!larger)) {
-            curpkt.err = BGP_ENOMEM;
+            msg->err = BGP_ENOMEM;
             return false;
         }
 
         if (!buf)
-            memcpy(larger, curpkt.buf, curpkt.pktlen);
+            memcpy(larger, msg->buf, msg->pktlen);
 
-        curpkt.buf    = larger;
-        curpkt.bufsiz = len;
+        msg->buf    = larger;
+        msg->bufsiz = len;
     }
 
     return true;
 }
 
-static int bgppreserve(const unsigned char *from)
+static int bgppreserve(bgp_msg_t *msg, const unsigned char *from)
 {
-    unsigned char *end = &curpkt.buf[curpkt.pktlen];
+    unsigned char *end = &msg->buf[msg->pktlen];
     size_t size = end - from;
 
-    curpkt.presbuf = curpkt.fastpresbuf;
-    if (size > sizeof(curpkt.fastpresbuf)) {
-        curpkt.presbuf = malloc(size);
-        if (unlikely(!curpkt.presbuf)) {
-            curpkt.err = BGP_ENOMEM;
-            return curpkt.err;
+    msg->presbuf = msg->fastpresbuf;
+    if (size > sizeof(msg->fastpresbuf)) {
+        msg->presbuf = malloc(size);
+        if (unlikely(!msg->presbuf)) {
+            msg->err = BGP_ENOMEM;
+            return msg->err;
         }
     }
 
-    memcpy(curpkt.presbuf, from, size);
+    memcpy(msg->presbuf, from, size);
     return BGP_ENOERR;
 }
 
-static void bgprestore(void)
+static void bgprestore(bgp_msg_t *msg)
 {
-    unsigned char *end = &curpkt.buf[curpkt.pktlen];
+    unsigned char *end = &msg->buf[msg->pktlen];
 
-    memcpy(curpkt.uptr, curpkt.presbuf, end - curpkt.uptr);
-    if (curpkt.presbuf != curpkt.fastpresbuf)
-        free(curpkt.presbuf);
+    memcpy(msg->uptr, msg->presbuf, end - msg->uptr);
+    if (msg->presbuf != msg->fastpresbuf)
+        free(msg->presbuf);
 }
 
 int startwithdrawn(void)
 {
-    if (checkanytype(BGP_UPDATE, F_RDWR))
-        return curpkt.err;
+    return startwithdrawn_r(&curmsg);
+}
 
-    endpending();
+int startwithdrawn_r(bgp_msg_t *msg)
+{
+    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
+        return msg->err;
+
+    endpending(msg);
 
     size_t n;
-    unsigned char *ptr = getwithdrawn(&n);
-    if (curpkt.flags & F_WR) {
+    unsigned char *ptr = getwithdrawn_r(msg, &n);
+    if (msg->flags & F_WR) {
 
-        if (!bgppreserve(ptr + n))
-            return curpkt.err;
+        if (!bgppreserve(msg, ptr + n))
+            return msg->err;
 
-        curpkt.pktlen -= n;
+        msg->pktlen -= n;
     }
 
-    curpkt.uptr   = ptr;
-    curpkt.flags |= F_WITHDRN;
+    msg->uptr   = ptr;
+    msg->flags |= F_WITHDRN;
     return BGP_ENOERR;
 }
 
 int setwithdrawn(const void *data, size_t n)
 {
-    if (checktype(BGP_UPDATE, F_WR))
-        return curpkt.err;
+    return setwithdrawn_r(&curmsg, data, n);
+}
+
+int setwithdrawn_r(bgp_msg_t *msg, const void *data, size_t n)
+{
+    if (checktype(msg, BGP_UPDATE, F_WR))
+        return msg->err;
 
     uint16_t old_size;
 
-    unsigned char *ptr = &curpkt.buf[BASE_PACKET_LENGTH];
+    unsigned char *ptr = &msg->buf[BASE_PACKET_LENGTH];
     memcpy(&old_size, ptr, sizeof(old_size));
     old_size = frombig16(old_size);
 
-    if (n > old_size && !bgpensure(n - old_size))
-        return curpkt.err;
+    if (n > old_size && !bgpensure(msg, n - old_size))
+        return msg->err;
 
     unsigned char *start = ptr + sizeof(old_size) + old_size;
-    unsigned char *end   = curpkt.buf + curpkt.pktlen;
+    unsigned char *end   = msg->buf + msg->pktlen;
     size_t bufsiz        = end - start;
 
     unsigned char buf[bufsiz];
@@ -565,18 +611,23 @@ int setwithdrawn(const void *data, size_t n)
     ptr += n;
     memcpy(ptr, buf, bufsiz);
 
-    curpkt.pktlen -= old_size;
-    curpkt.pktlen += n;
+    msg->pktlen -= old_size;
+    msg->pktlen += n;
     return BGP_ENOERR;
 }
 
 void *getwithdrawn(size_t *pn)
 {
-    if (checkanytype(BGP_UPDATE, F_RDWR))
+    return getwithdrawn_r(&curmsg, pn);
+}
+
+void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn)
+{
+    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
         return NULL;
 
     uint16_t len;
-    unsigned char *ptr = &curpkt.buf[BASE_PACKET_LENGTH];
+    unsigned char *ptr = &msg->buf[BASE_PACKET_LENGTH];
     if (likely(pn)) {
         memcpy(&len, ptr, sizeof(len));
         *pn = frombig16(len);
@@ -588,54 +639,74 @@ void *getwithdrawn(size_t *pn)
 
 bgpprefix_t *nextwithdrawn(void)
 {
-    if (checktype(BGP_UPDATE, F_RD | F_WITHDRN))
+    return nextwithdrawn_r(&curmsg);
+}
+
+bgpprefix_t *nextwithdrawn_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_UPDATE, F_RD | F_WITHDRN))
         return NULL;
 
     // FIXME (also bound check the prefix)
-    memset(&curpkt.pfxbuf, 0, sizeof(curpkt.pfxbuf));
+    memset(&msg->pfxbuf, 0, sizeof(msg->pfxbuf));
 
-    const bgpprefix_t *src = (const bgpprefix_t *) curpkt.uptr;
+    const bgpprefix_t *src = (const bgpprefix_t *) msg->uptr;
     size_t len = bgpprefixlen(src);
-    memcpy(&curpkt.pfxbuf, src, len);
+    memcpy(&msg->pfxbuf, src, len);
     // END
 
-    curpkt.uptr += len;
-    return &curpkt.pfxbuf;
+    msg->uptr += len;
+    return &msg->pfxbuf;
 }
 
 int putwithdrawn(const bgpprefix_t *p)
 {
-    if (checktype(BGP_UPDATE, F_WR | F_WITHDRN))
-        return curpkt.err;
+    return putwithdrawn_r(&curmsg, p);
+}
+
+int putwithdrawn_r(bgp_msg_t *msg, const bgpprefix_t *p)
+{
+    if (checktype(msg, BGP_UPDATE, F_WR | F_WITHDRN))
+        return msg->err;
 
     size_t len = bgpprefixlen(p);
-    if (unlikely(!bgpensure(len)))
-        return curpkt.err;
+    if (unlikely(!bgpensure(msg, len)))
+        return msg->err;
 
-    memcpy(curpkt.uptr, p, len);
-    curpkt.uptr   += len;
-    curpkt.pktlen += len;
+    memcpy(msg->uptr, p, len);
+    msg->uptr   += len;
+    msg->pktlen += len;
     return BGP_ENOERR;
 }
 
 int endwithdrawn(void)
 {
-    if (checktype(BGP_UPDATE, F_RDWR | F_WITHDRN))
-        return curpkt.err;
+    return endwithdrawn_r(&curmsg);
+}
 
-    bgprestore();
+int endwithdrawn_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_UPDATE, F_RDWR | F_WITHDRN))
+        return msg->err;
 
-    curpkt.flags &= ~F_WITHDRN;
+    bgprestore(msg);
+
+    msg->flags &= ~F_WITHDRN;
     return BGP_ENOERR;
 }
 
 void *getbgpattribs(size_t *pn)
 {
-    if (checkanytype(BGP_UPDATE, F_RDWR))
+    return getbgpattribs_r(&curmsg, pn);
+}
+
+void *getbgpattribs_r(bgp_msg_t *msg, size_t *pn)
+{
+    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
         return NULL;
 
     size_t withdrawn_size;
-    unsigned char *ptr = getwithdrawn(&withdrawn_size);
+    unsigned char *ptr = getwithdrawn_r(msg, &withdrawn_size);
     ptr += withdrawn_size;
 
     uint16_t len;
@@ -650,50 +721,71 @@ void *getbgpattribs(size_t *pn)
 
 int startbgpattribs(void)
 {
-    if (checkanytype(BGP_UPDATE, F_RDWR))
-        return curpkt.err;
+    return startbgpattribs_r(&curmsg);
+}
 
-    endpending();
+int startbgpattribs_r(bgp_msg_t *msg)
+{
+    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
+        return msg->err;
+
+    endpending(msg);
 
     size_t n;
-    unsigned char *ptr = getbgpattribs(&n);
-    if (curpkt.flags & F_WR) {
+    unsigned char *ptr = getbgpattribs_r(msg, &n);
+    if (msg->flags & F_WR) {
 
-        if (!bgppreserve(ptr + n))
-            return curpkt.err;
+        if (!bgppreserve(msg, ptr + n))
+            return msg->err;
 
-        curpkt.pktlen -= n;
+        msg->pktlen -= n;
     }
 
-    curpkt.uptr   = ptr;
-    curpkt.flags |= F_PATTR;
+    msg->uptr   = ptr;
+    msg->flags |= F_PATTR;
     return BGP_ENOERR;
 }
 
 void *nextbgpattrib(size_t *pn)
 {
+    return nextbgpattrib_r(&curmsg, pn);
+}
+
+void *nextbgpattrib_r(bgp_msg_t *msg, size_t *pn)
+{
+    (void) msg; (void) pn;
     return NULL; // TODO
 }
 
 int endbgpattribs(void)
 {
-    if (checkanytype(BGP_UPDATE, F_RDWR | F_PATTR))
-        return curpkt.err;
+    return endbgpattribs_r(&curmsg);
+}
 
-    if (curpkt.flags & F_WR)
-        bgprestore();
+int endbgpattribs_r(bgp_msg_t *msg)
+{
+    if (checkanytype(msg, BGP_UPDATE, F_RDWR | F_PATTR))
+        return msg->err;
 
-    curpkt.flags &= ~F_PATTR;
+    if (msg->flags & F_WR)
+        bgprestore(msg);
+
+    msg->flags &= ~F_PATTR;
     return BGP_ENOERR;
 }
 
 void *getnlri(size_t *pn)
 {
-    if (checkanytype(BGP_UPDATE, F_RDWR))
+    return getnlri_r(&curmsg, pn);
+}
+
+void *getnlri_r(bgp_msg_t *msg, size_t *pn)
+{
+    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
         return NULL;
 
     size_t pattrs_length;
-    unsigned char *ptr = getbgpattribs(&pattrs_length);
+    unsigned char *ptr = getbgpattribs_r(msg, &pattrs_length);
     ptr += pattrs_length;
 
     uint16_t len;
@@ -706,15 +798,15 @@ void *getnlri(size_t *pn)
     return ptr;
 }
 
-int setnlri(const void *data, size_t n)
+int setnlri_r(bgp_msg_t *msg, const void *data, size_t n)
 {
-    if (checktype(BGP_UPDATE, F_WR))
-        return curpkt.err;
+    if (checktype(msg, BGP_UPDATE, F_WR))
+        return msg->err;
 
     size_t old_size;
-    unsigned char *ptr = getnlri(&old_size);
-    if (n > old_size && !bgpensure(n - old_size))
-        return curpkt.err;
+    unsigned char *ptr = getnlri_r(msg, &old_size);
+    if (n > old_size && !bgpensure(msg, n - old_size))
+        return msg->err;
 
     uint16_t len = tobig16(n);
     ptr -= sizeof(len);
@@ -723,67 +815,87 @@ int setnlri(const void *data, size_t n)
     ptr += sizeof(len);
     memcpy(ptr, data, n);
 
-    curpkt.pktlen -= old_size;
-    curpkt.pktlen += n;
+    msg->pktlen -= old_size;
+    msg->pktlen += n;
     return BGP_ENOERR;
 }
 
 int startnlri(void)
 {
-    if (checkanytype(BGP_UPDATE, F_RDWR))
-        return curpkt.err;
+    return startnlri_r(&curmsg);
+}
 
-    endpending();
+int startnlri_r(bgp_msg_t *msg)
+{
+    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
+        return msg->err;
+
+    endpending(msg);
 
     size_t n;
-    unsigned char *ptr = getnlri(&n);
-    if (curpkt.flags & F_WR)
-        curpkt.pktlen -= n;
+    unsigned char *ptr = getnlri_r(msg, &n);
+    if (msg->flags & F_WR)
+        msg->pktlen -= n;
 
-    curpkt.uptr   = ptr;
-    curpkt.flags |= F_NLRI;
+    msg->uptr   = ptr;
+    msg->flags |= F_NLRI;
     return BGP_ENOERR;
 }
 
 bgpprefix_t *nextnlri(void)
 {
-    if (checktype(BGP_UPDATE, F_RD | F_NLRI))
+    return nextnlri_r(&curmsg);
+}
+
+bgpprefix_t *nextnlri_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_UPDATE, F_RD | F_NLRI))
         return NULL;
 
     // FIXME (also bound check the prefix)
-    memset(&curpkt.pfxbuf, 0, sizeof(curpkt.pfxbuf));
+    memset(&msg->pfxbuf, 0, sizeof(msg->pfxbuf));
 
-    const bgpprefix_t *src = (const bgpprefix_t *) curpkt.uptr;
+    const bgpprefix_t *src = (const bgpprefix_t *) msg->uptr;
     size_t len = bgpprefixlen(src);
-    memcpy(&curpkt.pfxbuf, src, len);
+    memcpy(&msg->pfxbuf, src, len);
     // END
 
-    curpkt.uptr += len;
-    return &curpkt.pfxbuf;
+    msg->uptr += len;
+    return &msg->pfxbuf;
 }
 
 int putnlri(const bgpprefix_t *p)
 {
-    if (checktype(BGP_UPDATE, F_WR | F_NLRI))
-        return curpkt.err;
+    return putnlri_r(&curmsg, p);
+}
+
+int putnlri_r(bgp_msg_t *msg, const bgpprefix_t *p)
+{
+    if (checktype(msg, BGP_UPDATE, F_WR | F_NLRI))
+        return msg->err;
 
     size_t len = bgpprefixlen(p);
-    if (!bgpensure(len))
-        return curpkt.err;
+    if (!bgpensure(msg, len))
+        return msg->err;
 
-    memcpy(curpkt.uptr, p, len);
-    curpkt.uptr   += len;
-    curpkt.pktlen += len;
+    memcpy(msg->uptr, p, len);
+    msg->uptr   += len;
+    msg->pktlen += len;
     return BGP_ENOERR;
 }
 
 int endnlri(void)
 {
-    if (checkanytype(BGP_UPDATE, F_RDWR | F_NLRI))
-        return curpkt.err;
+    return endnlri_r(&curmsg);
+}
 
-    curpkt.flags &= ~F_NLRI;
-    return curpkt.err;
+int endnlri_r(bgp_msg_t *msg)
+{
+    if (checkanytype(msg, BGP_UPDATE, F_RDWR | F_NLRI))
+        return msg->err;
+
+    msg->flags &= ~F_NLRI;
+    return msg->err;
 }
 
 // TODO Route refresh message read/write functions =============================
