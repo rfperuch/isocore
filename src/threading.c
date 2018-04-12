@@ -44,6 +44,8 @@ extern long syscall(long number, ...);
 #define USE_GETTID
 #endif
 
+extern void smtpause(void);
+
 unsigned long long getthreaddescr(void)
 {
 #if defined(USE_THREADID)

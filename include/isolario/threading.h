@@ -43,6 +43,9 @@
 #define ISOLARIO_THREADING_H_
 
 #include <stddef.h>
+#ifdef __SSE2__
+#include <emmintrin.h>
+#endif
 
 typedef struct pool_s pool_t;
 
@@ -59,6 +62,18 @@ typedef struct pool_s pool_t;
  *          to ensure this function was successful.
  */
 unsigned long long getthreaddescr(void);
+
+/**
+ * @brief SMT pause hint for busy loops.
+ *
+ * @see [Benefitting power and performance sleep loops](https://software.intel.com/en-us/articles/benefitting-power-and-performance-sleep-loops)
+ */
+inline void smtpause(void)
+{
+#ifdef __SSE2__
+    _mm_pause();
+#endif
+}
 
 pool_t *pool_create(int nthreads, void (*handle_job)(void *job));
 
