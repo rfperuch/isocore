@@ -39,16 +39,16 @@
     do { \
         char buf__[4096]; \
         int off__ = snprintf(buf__, sizeof(buf__), "%s: ", #cond); \
-        snprintf(buf__ + off__, sizeof(buf__) - off__, fmt, __VA_ARGS__); \
+        snprintf(buf__ + off__, sizeof(buf__) - off__, fmt, ## __VA_ARGS__); \
         CU_assertImplementation((cond), line, buf__, file, func, fatal); \
     } while (0)
 
 
 #define CU_ASSERT_EX(cond, fmt, ...) \
-    CU_ASSERT_VERBOSE(cond, __LINE__, __FILE__, __func__, 0, fmt, __VA_ARGS__)
+    CU_ASSERT_VERBOSE(cond, __LINE__, __FILE__, __func__, 0, fmt, ## __VA_ARGS__)
 
 
 #define CU_ASSERT_STRING_EQUAL_EX(r, s, fmt, ...) \
-    CU_ASSERT_VERBOSE(strcmp(r, s) == 0, __LINE__, __FILE__, __func__, 0, fmt, __VA_ARGS__)
+    CU_ASSERT_VERBOSE(strcmp(r, s) == 0, __LINE__, __FILE__, __func__, 0, fmt, ## __VA_ARGS__)
 
 #endif
