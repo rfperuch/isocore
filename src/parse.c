@@ -123,6 +123,37 @@ char *parse(FILE *f)
             ungetc(c, f);
             break;
         }
+        if (c == '\\') {
+            // escape sequence
+            c = getc_unlocked(f);
+            switch (c) {
+            case '\n':
+                continue; // token follows after newline
+
+            case '#':
+            case '\\':
+            case ' ':
+                break;
+            case 'n':
+                c = '\n';
+                break;
+            case 't':
+                c = '\t';
+                break;
+            case 'v':
+                c = '\v';
+                break;
+            case 'r':
+                c = '\r';
+                break;
+            case EOF:
+                parsingerr("EOF after '\\'!");
+                continue;  // skip bad escape sequence
+            default:
+                parsingerr("bad escape sequence '\\%c'", c);
+                continue;  // skip bad escape sequence
+            }
+        }
         if (unlikely(i == TOK_LEN_MAX)) {
             parsingerr("'%.*s'...: token too long", i, parser.buf);
             ungetc(c, f);
