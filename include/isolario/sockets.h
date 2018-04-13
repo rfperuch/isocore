@@ -33,6 +33,8 @@
 
 #include <sys/socket.h>
 
+int socketflags(int fd, int flags);
+
 int setbacklog(int length);
 
 int getbacklog(void);

@@ -57,7 +57,7 @@ int getbacklog(void)
     return atomic_load(&backlog_length);
 }
 
-static int socketflags(int fd, int flags)
+int socketflags(int fd, int flags)
 {
     int mask = fcntl(fd, F_GETFL, NULL);
     if (mask < 0)
