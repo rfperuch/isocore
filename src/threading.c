@@ -34,14 +34,13 @@
 #if defined(__MACOSX__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 #define USE_THREADID
 #include <pthread_np.h>
-#endif
-#if defined(__linux__)
+#elif defined(__linux__)
+#define USE_GETTID
 #include <unistd.h>
 #include <sys/syscall.h>
 
 extern long syscall(long number, ...);
 
-#define USE_GETTID
 #endif
 
 extern void smtpause(void);
@@ -61,9 +60,9 @@ unsigned long long getthreaddescr(void)
     } descr;
 
     descr.handle = pthread_self();
-    if (sizeof(handle) == sizeof(descr.ul))
+    if (sizeof(descr.handle) == sizeof(descr.ul))
         return descr.ul;
-    if (sizeof(handle) == sizeof(descr.ull))
+    if (sizeof(descr.handle) == sizeof(descr.ull))
         return descr.ull;
 
     errno = ENOTSUP;
@@ -71,3 +70,4 @@ unsigned long long getthreaddescr(void)
 
 #endif
 }
+
