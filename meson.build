@@ -18,6 +18,9 @@ add_project_arguments(cc.get_supported_arguments([
 
 m_dep = cc.find_library('m', required : false)
 threads_dep = dependency('threads')
+bz2_dep = cc.find_library('bz2', required : true)
+zlib_dep = dependency('zlib')
+lz4_dep = cc.find_library('lz4', required : true)
 cunit_dep = dependency('cunit')
 # TODO cbench_dep = dependency('cbench' fallback : [ 'cbench', 'cbench_dep' ])
 
@@ -46,7 +49,7 @@ isocore = library('isocore',
         'src/vt100.c'
     ],
     include_directories : incdir,
-    dependencies : [ m_dep, threads_dep ],
+    dependencies : [ m_dep, threads_dep, zlib_dep, bz2_dep, lz4_dep ],
     install : true
 )
 install_subdir('include', install_dir : 'include')
@@ -76,6 +79,7 @@ core_test = executable('core_test',
     sources : [
         'test/core/main.c',
         'test/core/hexdump.c',
+        'test/core/io.c',
         'test/core/log.c',
         'test/core/netaddr.c',
         'test/core/patriciatrie.c',

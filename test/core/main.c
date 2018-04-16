@@ -61,25 +61,28 @@ int main(void)
 
     if (!CU_add_test(suite, "test for trimwhites()", testtrimwhites))
         goto error;
-    
+
     if (!CU_add_test(suite, "test netaddr", testnetaddr))
         goto error;
-    
+
     if (!CU_add_test(suite, "test patricia base", testpatbase))
         goto error;
-    
+
     if (!CU_add_test(suite, "test patricia get functions", testpatgetfuncs))
         goto error;
-    
+
     if (!CU_add_test(suite, "test patricia iterator", testpatiterator))
         goto error;
-    
+
     if (!CU_add_test(suite, "test patricia coverage", testpatcoverage))
         goto error;
 
     if (!CU_add_test(suite, "test patricia get first subnets", testpatgetfirstsubnets))
         goto error;
-        
+
+    if (!CU_add_test(suite, "test abstract I/O with Zlib", testzio))
+        goto error;
+
     CU_basic_set_mode(CU_BRM_VERBOSE);
     CU_basic_run_tests();
     unsigned int num_failures = CU_get_number_of_failures();

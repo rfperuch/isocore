@@ -57,4 +57,6 @@ void testpatcoverage(void);
 
 void testpatgetfirstsubnets(void);
 
+void testzio(void);
+
 #endif

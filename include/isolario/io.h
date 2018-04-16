@@ -31,25 +31,32 @@
 #ifndef ISOLARIO_IO_H_
 #define ISOLARIO_IO_H_
 
+#include <stddef.h>
 #include <stdio.h>
-#include <zlib.h>
 
 typedef struct io_rw_s io_rw_t;
 
 struct io_rw_s {
-    union {
-        struct {
-            int fd;
-            int err;
-        } un;
-        void *ptr;
-        FILE *file;
-    };
-
     size_t (*read)(io_rw_t *io, void *dst, size_t n);
     size_t (*write)(io_rw_t *io, const void *buf, size_t n);
     int    (*error)(io_rw_t *io);
     int    (*close)(io_rw_t *io);
+
+    union {
+        // Unix file descriptor
+        struct {
+            int fd;
+            int err;
+        } un;
+
+        // stdio.h standard FILE
+        FILE *file;
+
+        // User-defined data (generic)
+        void *ptr;
+
+        max_align_t padding[1]; /// @private
+    };
 };
 
 size_t io_fread(io_rw_t *io, void *dst, size_t n);
@@ -77,6 +84,10 @@ int    io_fdclose(io_rw_t *io);
     .error = io_fderror,   \
     .close = io_fdclose    \
 }
+
+io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode);
+io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode);
+io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode);
 
 #endif
 
