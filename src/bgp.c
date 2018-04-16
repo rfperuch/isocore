@@ -123,12 +123,9 @@ static int endpending(bgp_msg_t *msg)
         return endwithdrawn_r(msg);
     if (msg->flags & F_PATTR)
         return endbgpattribs_r(msg);
-    if (msg->flags & F_NLRI)
-        return endnlri_r(msg);
 
-    // should never reach here
-    assert(false);
-    return msg->err;
+    assert(msg->flags & F_NLRI);
+    return endnlri_r(msg);
 }
 
 // General functions ===========================================================
@@ -185,6 +182,58 @@ int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n)
     return BGP_ENOERR;
 }
 
+int setbgpreadfd(int fd)
+{
+    return setbgpreadfd_r(&curmsg, fd);
+}
+
+int setbgpreadfd_r(bgp_msg_t *msg, int fd)
+{
+    io_rw_t io = IO_FD_INIT(fd);
+    return setbgpreadfrom_r(msg, &io);
+}
+
+int setbgpreadfrom(io_rw_t *io)
+{
+    return setbgpreadfrom_r(&curmsg, io);
+}
+
+int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io)
+{
+    if (msg->flags & F_RDWR)
+        bgpclose();
+
+    unsigned char hdr[BASE_PACKET_LENGTH];
+    if (io->read(io, hdr, sizeof(hdr)) != sizeof(hdr))
+        return BGP_EIO;
+
+    uint16_t len;
+    memcpy(&len, &hdr[LENGTH_OFFSET], sizeof(hdr));
+    len = frombig16(len);
+
+    if (memcmp(hdr, bgp_marker, sizeof(bgp_marker)) != 0)
+        return BGP_EBADHDR;
+    if (len < BASE_PACKET_LENGTH)
+        return BGP_EBADHDR;
+
+    msg->buf = msg->fastbuf;
+    if (unlikely(len > sizeof(msg->fastbuf)))
+        msg->buf = malloc(len);
+    if (unlikely(!msg->buf))
+        return BGP_ENOMEM;
+
+    memcpy(msg->buf, hdr, sizeof(hdr));
+    size_t n = len - sizeof(hdr);
+    if (io->read(io, &msg->buf[sizeof(hdr)], n) != n)
+        return BGP_EIO;
+
+    msg->flags = F_RD;
+    msg->err = BGP_ENOERR;
+    msg->pktlen = len;
+    msg->bufsiz = len;
+    return BGP_ENOERR;
+}
+
 int setbgpwrite(int type)
 {
     return setbgpwrite_r(&curmsg, type);
@@ -225,6 +274,23 @@ int getbgptype_r(bgp_msg_t *msg)
         return BGP_BADTYPE;
 
     return msg->buf[TYPE_OFFSET];
+}
+
+size_t getbgplength(void)
+{
+    return getbgplength_r(&curmsg);
+}
+
+size_t getbgplength_r(bgp_msg_t *msg)
+{
+    if (unlikely((msg->flags & F_RD) == 0))
+        msg->err = BGP_EINVOP;
+    if (unlikely(msg->err))
+        return 0;
+
+    uint16_t len;
+    memcpy(&len, msg->buf, sizeof(len));
+    return frombig16(len);
 }
 
 int bgperror(void)

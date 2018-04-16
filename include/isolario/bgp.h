@@ -44,6 +44,7 @@
 
 #include <arpa/inet.h>
 #include <isolario/bgpprefix.h>
+#include <isolario/io.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -87,6 +88,7 @@ enum {
 
 enum {
     BGP_ENOERR = 0,    ///< No error (success) guaranteed to be zero.
+    BGP_EIO,           ///< Input/Output error during packet read.
     BGP_EINVOP,        ///< Invalid operation (e.g. write while reading packet).
     BGP_ENOMEM,        ///< Out of memory.
     BGP_EBADHDR,       ///< Bad BGP packet header.
@@ -102,6 +104,8 @@ inline const char *bgpstrerror(int err)
     switch (err) {
     case BGP_ENOERR:
         return "Success";
+    case BGP_EIO:
+        return "I/O error";
     case BGP_EINVOP:
         return "Invalid operation";
     case BGP_ENOMEM:
@@ -137,6 +141,11 @@ int setbgpwrite(int type);
  * @brief Get BGP packet type from header.
  */
 int getbgptype(void);
+
+/**
+ * @brief Get BGP packet length from header.
+ */
+size_t getbgplength(void);
 
 int bgperror(void);
 
@@ -294,9 +303,15 @@ typedef struct {
 
 int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n);
 
+int setbgpreadfd_r(bgp_msg_t *msg, int fd);
+
+int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io);
+
 int setbgpwrite_r(bgp_msg_t *msg, int type);
 
 int getbgptype_r(bgp_msg_t *msg);
+
+size_t getbgplength_r(bgp_msg_t *msg);
 
 int bgperror_r(bgp_msg_t *msg);
 

@@ -31,53 +31,53 @@
 #include <isolario/io.h>
 #include <unistd.h>
 
-size_t io_fread(io_handler_t *handler, void *dst, size_t n)
+size_t io_fread(io_rw_t *io, void *dst, size_t n)
 {
-    return fread(dst, 1, n, handler->file);
+    return fread(dst, 1, n, io->file);
 }
 
-size_t io_fwrite(io_handler_t *handler, const void *src, size_t n)
+size_t io_fwrite(io_rw_t *io, const void *src, size_t n)
 {
-    return fwrite(src, 1, n, handler->file);
+    return fwrite(src, 1, n, io->file);
 }
 
-int io_ferror(io_handler_t *handler)
+int io_ferror(io_rw_t *io)
 {
-    return ferror(handler->file);
+    return ferror(io->file);
 }
 
-int io_fclose(io_handler_t *handler)
+int io_fclose(io_rw_t *io)
 {
     return fclose(handler->file);
 }
 
-size_t io_fdread(io_handler_t *handler, void *dst, size_t n)
+size_t io_fdread(io_rw_t *io, void *dst, size_t n)
 {
-    ssize_t nr = read(handler->un.fd, dst, n);
+    ssize_t nr = read(io->un.fd, dst, n);
     if (nr < 0) {
-        handler->un.err = 1;
+        io->un.err = 1;
         nr = 0;
     }
     return nr;
 }
 
-size_t io_fdwrite(io_handler_t *handler, const void *src, size_t n)
+size_t io_fdwrite(io_rw_t *io, const void *src, size_t n)
 {
-    ssize_t nw = write(handler->un.fd, src, n);
+    ssize_t nw = write(io->un.fd, src, n);
     if (nw < 0) {
-        handler->un.err = 1;
+        io->un.err = 1;
         nw = 0;
     }
     return nw;
 }
 
-int io_fderror(io_handler_t *handler)
+int io_fderror(io_rw_t *io)
 {
-    return handler->un.err;
+    return io->un.err;
 }
 
-int io_fdclose(io_handler_t *handler)
+int io_fdclose(io_rw_t *io)
 {
-    return close(handler->un.fd);
+    return close(io->un.fd);
 }
 

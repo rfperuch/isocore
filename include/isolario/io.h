@@ -32,10 +32,11 @@
 #define ISOLARIO_IO_H_
 
 #include <stdio.h>
+#include <zlib.h>
 
-typedef struct io_handler_s io_handler_t;
+typedef struct io_rw_s io_rw_t;
 
-struct io_handler_s {
+struct io_rw_s {
     union {
         struct {
             int fd;
@@ -45,20 +46,37 @@ struct io_handler_s {
         FILE *file;
     };
 
-    size_t (*read)(io_handler_t *handler, void *dst, size_t n);
-    size_t (*write)(io_handler_t *handler, const void *buf, size_t n);
-    int    (*error)(io_handler_t *handler);
-    int    (*close)(io_handler_t *handler);
+    size_t (*read)(io_rw_t *io, void *dst, size_t n);
+    size_t (*write)(io_rw_t *io, const void *buf, size_t n);
+    int    (*error)(io_rw_t *io);
+    int    (*close)(io_rw_t *io);
 };
 
-size_t io_fread(io_handler_t *handler, void *dst, size_t n);
-size_t io_fwrite(io_handler_t *handler, const void *src, size_t n);
-int    io_ferror(io_handler_t *handler);
-int    io_fclose(io_handler_t *handler);
+size_t io_fread(io_rw_t *io, void *dst, size_t n);
+size_t io_fwrite(io_rw_t *io, const void *src, size_t n);
+int    io_ferror(io_rw_t *io);
+int    io_fclose(io_rw_t *io);
 
-size_t io_fdread(io_handler_t *handler, void *dst, size_t n);
-size_t io_fdwrite(io_handler_t *handler, const void *src, size_t n);
-int    io_fderror(io_handler_t *handler);
-int    io_fdclose(io_handler_t *handler);
+size_t io_fdread(io_rw_t *io, void *dst, size_t n);
+size_t io_fdwrite(io_rw_t *io, const void *src, size_t n);
+int    io_fderror(io_rw_t *io);
+int    io_fdclose(io_rw_t *io);
+
+#define IO_FILE_INIT(file) { \
+    .file  = file,           \
+    .read  = io_fread,       \
+    .write = io_fwrite,      \
+    .error = io_ferror,      \
+    .close = io_fclose       \
+}
+
+#define IO_FD_INIT(fd) {   \
+    .un    = { .fd = fd }, \
+    .read  = io_fdread,    \
+    .write = io_fdwrite,   \
+    .error = io_fderror,   \
+    .close = io_fdclose    \
+}
 
 #endif
+
