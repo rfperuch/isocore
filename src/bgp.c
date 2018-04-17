@@ -208,7 +208,7 @@ int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io)
         return BGP_EIO;
 
     uint16_t len;
-    memcpy(&len, &hdr[LENGTH_OFFSET], sizeof(hdr));
+    memcpy(&len, &hdr[LENGTH_OFFSET], sizeof(len));
     len = frombig16(len);
 
     if (memcmp(hdr, bgp_marker, sizeof(bgp_marker)) != 0)

@@ -34,7 +34,7 @@
  * @brief Isolario BGP packet reading and writing routines.
  *
  * @note This file is guaranteed to include POSIX \a arpa/inet.h, standard
- *       \a stddef.h and \a stdint.h and isolario-specific \a bgpprefix.h.
+ *       \a stdint.h and isolario-specific \a bgpprefix.h and \a io.h.
  *       It may include additional standard and isolario-specific
  *       headers to provide its functionality.
  */
@@ -44,8 +44,7 @@
 
 #include <arpa/inet.h>
 #include <isolario/bgpprefix.h>
-#include <isolario/io.h>
-#include <stddef.h>
+#include <isolario/io.h>  // also includes stddef.h
 #include <stdint.h>
 
 enum {
@@ -131,6 +130,10 @@ inline const char *bgpstrerror(int err)
  * @brief Initialize a BGP packet for read from pre-existing data.
  */
 int setbgpread(const void *data, size_t n);
+
+int setbgpreadfd(int fd);
+
+int setbgpreadfrom(io_rw_t *io);
 
 /**
  * @brief Initialize a BGP packet for writing a new packet of type \a type from scratch.
