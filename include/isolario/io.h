@@ -85,8 +85,8 @@ int    io_fdclose(io_rw_t *io);
     .close = io_fdclose    \
 }
 
-io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode);
-io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode);
+io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...);
+io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...);
 io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode);
 
 #endif
