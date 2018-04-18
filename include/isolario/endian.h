@@ -33,17 +33,31 @@
 
 #include <stdint.h>
 
-enum {
+typedef enum {
 #ifdef _WIN32
+
     ENDIAN_BIG = 0,
+#define ENDIAN_BIG 0
+
     ENDIAN_LITTLE = 1,
+#define ENDIAN_LITTLE 1
+
     ENDIAN_NATIVE = ENDIAN_LITTLE
+#define ENDIAN_NATIVE ENDIAN_LITTLE
+
 #else
+
     ENDIAN_BIG = __ORDER_BIG_ENDIAN__,
+#define ENDIAN_BIG __ORDER_BIG_ENDIAN__
+
     ENDIAN_LITTLE = __ORDER_LITTLE_ENDIAN__,
+#define ENDIAN_LITTLE __ORDER_LITTLE_ENDIAN__
+
     ENDIAN_NATIVE = __BYTE_ORDER__
+#define ENDIAN_NATIVE __BYTE_ORDER__
+
 #endif
-};
+} byte_order_t;
 
 #ifndef __STDC_IEC_559__
 #error endian.h requires IEEE 754 floating point
@@ -58,6 +72,40 @@ typedef union {
     double d;
     uint64_t u;
 } doubleint_t;
+
+#if ENDIAN_NATIVE == ENDIAN_BIG
+
+#define BIG16_INIT(C) (C)
+#define LITTLE16_INIT(C) ((((C) & 0xff) << 8) | (((C) & 0xff00) >> 8))
+
+#define BIG32_INIT(C) (C)
+#define LITTLE32_INIT(C) ((((C) & 0xff) << 24) | (((C) & 0xff00) << 16) | (((C) & 0xff0000) << 8) | (((C) & 0xff000000) >> 24))
+
+#define BIG64_INIT(C) (C)
+#define LITTLE64_INIT(C) ( \
+    ((C) & 0xffull << 56) | (((C) & 0xff00ull) << 48) | \
+    (((C) & 0xff0000ull) << 40) | (((C) & 0xff000000ull) << 32) | \
+    (((C) & 0xff00000000ull) << 24) | (((C) & 0xff0000000000ull) << 16) | \
+    (((C) & 0xff00000000000000ull) << 8) | (((C) & 0xff00000000000000ull) >> 56) \
+)
+
+#else
+
+#define BIG16_INIT(C) ((((C) & 0xff) << 8) | (((C) & 0xff00) >> 8))
+#define LITTLE16_INIT(C) (C)
+
+#define BIG32_INIT(C) ((((C) & 0xff) << 24) | (((C) & 0xff00) << 16) | (((C) & 0xff0000) << 8) | (((C) & 0xff000000) >> 24))
+#define LITTLE32_INIT(C) (C)
+
+#define BIG64_INIT(C) ( \
+    ((C) & 0xffull << 56) | (((C) & 0xff00ull) << 48) | \
+    (((C) & 0xff0000ull) << 40) | (((C) & 0xff000000ull) << 32) | \
+    (((C) & 0xff00000000ull) << 24) | (((C) & 0xff0000000000ull) << 16) | \
+    (((C) & 0xff00000000000000ull) << 8) | (((C) & 0xff00000000000000ull) >> 56) \
+)
+#define LITTLE64_INIT(C) (C)
+
+#endif
 
 /// @brief Swap from 16-bits little endian.
 inline uint16_t fromlittle16(uint16_t w)

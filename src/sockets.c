@@ -45,6 +45,14 @@ enum  {
     DEFAULT_BACKLOG = 32
 };
 
+extern int hashv4(const struct in_addr *addr);
+
+extern int hashv6(const struct in6_addr *addr6);
+
+extern int sockaddrincmp(const struct sockaddr *a, const struct sockaddr *b);
+
+extern int sockaddrin6cmp(const struct sockaddr *a, const struct sockaddr *b);
+
 static atomic_int backlog_length = DEFAULT_BACKLOG;
 
 int setbacklog(int length)

@@ -48,12 +48,12 @@
 #include <stdint.h>
 
 enum {
-    BGP_FSM_IDLE         = 1,
-    BGP_FSM_CONNECT      = 2,
-    BGP_FSM_ACTIVE       = 3,
-    BGP_FSM_OPENSENT     = 4,
-    BGP_FSM_OPENCONFIRM  = 5,
-    BGP_FSM_ESTABILISHED = 6
+    BGP_FSM_IDLE        = 1,
+    BGP_FSM_CONNECT     = 2,
+    BGP_FSM_ACTIVE      = 3,
+    BGP_FSM_OPENSENT    = 4,
+    BGP_FSM_OPENCONFIRM = 5,
+    BGP_FSM_ESTABLISHED = 6
 };
 
 enum {
