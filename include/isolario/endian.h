@@ -242,7 +242,7 @@ inline uint16_t tobig16(uint16_t w)
 inline uint32_t tobig32(uint32_t l)
 {
     if (ENDIAN_NATIVE != ENDIAN_BIG)
-        l = __builtin_bswap32(l);
+        l = byteswap32(l);
 
     return l;
 }
@@ -251,9 +251,10 @@ inline uint32_t tobig32(uint32_t l)
 inline uint64_t tobig64(uint64_t ll)
 {
     if (ENDIAN_NATIVE != ENDIAN_BIG)
-        ll = __builtin_bswap64(ll);
+        ll = byteswap64(ll);
 
     return ll;
 }
 
 #endif
+
