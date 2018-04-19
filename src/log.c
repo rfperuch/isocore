@@ -80,7 +80,7 @@ static const char *sev2str(logsev_t sev)
 logsev_t loglevel(logsev_t sev)
 {
     if (sev < logall || sev > lognone)
-        return atomic_load(&minlevel);
+        return atomic_load_explicit(&minlevel, memory_order_relaxed);
 
     return atomic_exchange_explicit(&minlevel, sev, memory_order_relaxed);
 }

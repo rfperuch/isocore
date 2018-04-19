@@ -30,6 +30,12 @@
 
 #include <isolario/endian.h>
 
+extern uint16_t byteswap16(uint16_t w);
+
+extern uint32_t byteswap32(uint32_t l);
+
+extern uint64_t byteswap64(uint64_t ll);
+
 extern uint16_t fromlittle16(uint16_t w);
 
 extern uint32_t fromlittle32(uint32_t l);

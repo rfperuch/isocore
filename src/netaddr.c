@@ -5,7 +5,7 @@
 #include <errno.h>
 
 extern int naddrsize(int bitlen);
-extern int saddrfamily(const char *s);
+extern sa_family_t saddrfamily(const char *s);
 
 void makenaddr(netaddr_t *ip, const void *sin, int bitlen)
 {

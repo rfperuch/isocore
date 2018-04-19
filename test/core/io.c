@@ -28,66 +28,39 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_IO_H_
-#define ISOLARIO_IO_H_
+#include <CUnit/CUnit.h>
+#include <isolario/io.h>
+#include <isolario/util.h>
+#include <string.h>
+#include <test_util.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
-#include <stddef.h>
-#include <stdio.h>
+#include "test.h"
 
-typedef struct io_rw_s io_rw_t;
+void testzio(void)
+{
+    const char *str = "the quick brown fox jumped over the lazy dog\n";
 
-struct io_rw_s {
-    size_t (*read)(io_rw_t *io, void *dst, size_t n);
-    size_t (*write)(io_rw_t *io, const void *buf, size_t n);
-    int    (*error)(io_rw_t *io);
-    int    (*close)(io_rw_t *io);
+    int fd = open("miao.Z", O_CREAT | O_TRUNC | O_WRONLY, 0666);
+    if (fd == -1)
+        CU_FAIL_FATAL("cannot open miao.Z");
 
-    union {
-        // Unix file descriptor
-        struct {
-            int fd;
-            int err;
-        } un;
+    io_rw_t *io = io_zopen(fd, 0, "w");
+    io->write(io, str, strlen(str));
+    io->close(io);
 
-        // stdio.h standard FILE
-        FILE *file;
+    fd = open("miao.Z", O_RDONLY);
+    if (fd == -1)
+        CU_FAIL_FATAL("cannot open miao.Z");
 
-        // User-defined data (generic)
-        void *ptr;
+    char buf[1024];
+    io = io_zopen(fd, 0, "r");
+    size_t len = io->read(io, buf, sizeof(buf) - 1);
 
-        max_align_t padding[1]; /// @private
-    };
-};
-
-size_t io_fread(io_rw_t *io, void *dst, size_t n);
-size_t io_fwrite(io_rw_t *io, const void *src, size_t n);
-int    io_ferror(io_rw_t *io);
-int    io_fclose(io_rw_t *io);
-
-size_t io_fdread(io_rw_t *io, void *dst, size_t n);
-size_t io_fdwrite(io_rw_t *io, const void *src, size_t n);
-int    io_fderror(io_rw_t *io);
-int    io_fdclose(io_rw_t *io);
-
-#define IO_FILE_INIT(file) { \
-    .file  = file,           \
-    .read  = io_fread,       \
-    .write = io_fwrite,      \
-    .error = io_ferror,      \
-    .close = io_fclose       \
+    buf[len] = '\0';
+    printf("%s\n", buf);
+    io->close(io);
 }
-
-#define IO_FD_INIT(fd) {   \
-    .un    = { .fd = fd }, \
-    .read  = io_fdread,    \
-    .write = io_fdwrite,   \
-    .error = io_fderror,   \
-    .close = io_fdclose    \
-}
-
-io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...);
-io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...);
-io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode);
-
-#endif
 

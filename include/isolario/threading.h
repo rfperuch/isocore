@@ -28,66 +28,59 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_IO_H_
-#define ISOLARIO_IO_H_
+/**
+ * @file isolario/threading.h
+ *
+ * @brief Thread and pool utilities
+ *
+ * @note This file is guaranteed to include standard \a stddef.h,
+ *       a number of other files may be included in the interest of providing
+ *       API functionality, but the includer of this file
+ *       should not rely on such behavior.
+ */
+
+#ifndef ISOLARIO_THREADING_H_
+#define ISOLARIO_THREADING_H_
 
 #include <stddef.h>
-#include <stdio.h>
-
-typedef struct io_rw_s io_rw_t;
-
-struct io_rw_s {
-    size_t (*read)(io_rw_t *io, void *dst, size_t n);
-    size_t (*write)(io_rw_t *io, const void *buf, size_t n);
-    int    (*error)(io_rw_t *io);
-    int    (*close)(io_rw_t *io);
-
-    union {
-        // Unix file descriptor
-        struct {
-            int fd;
-            int err;
-        } un;
-
-        // stdio.h standard FILE
-        FILE *file;
-
-        // User-defined data (generic)
-        void *ptr;
-
-        max_align_t padding[1]; /// @private
-    };
-};
-
-size_t io_fread(io_rw_t *io, void *dst, size_t n);
-size_t io_fwrite(io_rw_t *io, const void *src, size_t n);
-int    io_ferror(io_rw_t *io);
-int    io_fclose(io_rw_t *io);
-
-size_t io_fdread(io_rw_t *io, void *dst, size_t n);
-size_t io_fdwrite(io_rw_t *io, const void *src, size_t n);
-int    io_fderror(io_rw_t *io);
-int    io_fdclose(io_rw_t *io);
-
-#define IO_FILE_INIT(file) { \
-    .file  = file,           \
-    .read  = io_fread,       \
-    .write = io_fwrite,      \
-    .error = io_ferror,      \
-    .close = io_fclose       \
-}
-
-#define IO_FD_INIT(fd) {   \
-    .un    = { .fd = fd }, \
-    .read  = io_fdread,    \
-    .write = io_fdwrite,   \
-    .error = io_fderror,   \
-    .close = io_fdclose    \
-}
-
-io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...);
-io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...);
-io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode);
-
+#ifdef __SSE2__
+#include <emmintrin.h>
 #endif
 
+typedef struct pool_s pool_t;
+
+/**
+ * @brief Retrieve a platform-specific integral unique descriptor of the calling
+ *        thread.
+ *
+ * @return The platform specific integral descriptor of the calling thread.
+ *         If this platform does not provide any mean of retrieving such
+ *         descriptor, then 0 is returned, and \a errno is set to \a ENOTSUP.
+ *
+ * @warning Since 0, in theory, is a valid platform specific descriptor for a
+ *          thread, the caller should set \a errno to 0 and check it afterwards
+ *          to ensure this function was successful.
+ */
+unsigned long long getthreaddescr(void);
+
+/**
+ * @brief SMT pause hint for busy loops.
+ *
+ * @see [Benefitting power and performance sleep loops](https://software.intel.com/en-us/articles/benefitting-power-and-performance-sleep-loops)
+ */
+inline void smtpause(void)
+{
+#ifdef __SSE2__
+    _mm_pause();
+#endif
+}
+
+pool_t *pool_create(int nthreads, void (*handle_job)(void *job));
+
+int pool_nthreads(pool_t *pool);
+
+int pool_dispatch(pool_t *pool, const void *job, size_t size);
+
+void pool_join(pool_t *pool);
+
+#endif

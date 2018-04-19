@@ -31,7 +31,10 @@
 #ifndef ISOLARIO_SOCKETS_H_
 #define ISOLARIO_SOCKETS_H_
 
+#include <string.h>
 #include <sys/socket.h>
+
+int socketflags(int fd, int flags);
 
 int setbacklog(int length);
 
@@ -40,6 +43,36 @@ int getbacklog(void);
 int listeningsocket(int family, const struct sockaddr *addr, socklen_t addrlen, int flags);
 
 int connectsocket(int family, const struct sockaddr *addr, socklen_t addrlen, int flags);
+
+inline int hashv4(const struct in_addr *addr)
+{
+    return addr->s_addr;
+}
+
+inline int hashv6(const struct in6_addr *addr6)
+{
+    uint64_t hi, lo;
+    memcpy(&hi, &addr6->s6_addr[0], sizeof(hi));
+    memcpy(&lo, &addr6->s6_addr[sizeof(hi)], sizeof(lo));
+
+    return ((hi << 5) + hi + lo);
+}
+
+inline int sockaddrincmp(const struct sockaddr *a, const struct sockaddr *b)
+{
+    const struct sockaddr_in *first = (const struct sockaddr_in *)a;
+    const struct sockaddr_in *second = (const struct sockaddr_in *)b;
+    
+    return (first->sin_addr.s_addr > second->sin_addr.s_addr) - (second->sin_addr.s_addr > first->sin_addr.s_addr);
+}
+
+inline int sockaddrin6cmp(const struct sockaddr *a, const struct sockaddr *b)
+{
+    const struct sockaddr_in6 *first = (const struct sockaddr_in6 *)a;
+    const struct sockaddr_in6 *second = (const struct sockaddr_in6 *)b;
+    
+    return memcmp(first->sin6_addr.s6_addr, second->sin6_addr.s6_addr, sizeof(first->sin6_addr.s6_addr));
+}
 
 #endif
 

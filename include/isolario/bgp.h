@@ -34,7 +34,7 @@
  * @brief Isolario BGP packet reading and writing routines.
  *
  * @note This file is guaranteed to include POSIX \a arpa/inet.h, standard
- *       \a stddef.h and \a stdint.h and isolario-specific \a bgpprefix.h.
+ *       \a stdint.h and isolario-specific \a bgpprefix.h and \a io.h.
  *       It may include additional standard and isolario-specific
  *       headers to provide its functionality.
  */
@@ -44,16 +44,16 @@
 
 #include <arpa/inet.h>
 #include <isolario/bgpprefix.h>
-#include <stddef.h>
+#include <isolario/io.h>  // also includes stddef.h
 #include <stdint.h>
 
 enum {
-    BGP_FSM_IDLE         = 1,
-    BGP_FSM_CONNECT      = 2,
-    BGP_FSM_ACTIVE       = 3,
-    BGP_FSM_OPENSENT     = 4,
-    BGP_FSM_OPENCONFIRM  = 5,
-    BGP_FSM_ESTABILISHED = 6
+    BGP_FSM_IDLE = 1,
+    BGP_FSM_CONNECT = 2,
+    BGP_FSM_ACTIVE = 3,
+    BGP_FSM_OPENSENT = 4,
+    BGP_FSM_OPENCONFIRM = 5,
+    BGP_FSM_ESTABLISHED = 6
 };
 
 enum {
@@ -61,7 +61,7 @@ enum {
 };
 
 enum {
-    BGP_VERSION   = 4,
+    BGP_VERSION = 4,
 
     BGP_HOLD_SECS = 180
 };
@@ -75,19 +75,19 @@ enum {
 */
 
 enum {
-    BGP_BADTYPE       = -1,
+    BGP_BADTYPE = -1,
 
-    BGP_OPEN          = 1,
-    BGP_UPDATE        = 2,
-    BGP_NOTIFICATION  = 3,
-    BGP_KEEPALIVE     = 4,
+    BGP_OPEN = 1,
+    BGP_UPDATE = 2,
+    BGP_NOTIFICATION = 3,
+    BGP_KEEPALIVE = 4,
     BGP_ROUTE_REFRESH = 5,
-    BGP_CLOSE         = 255
+    BGP_CLOSE = 255
 };
 
 enum {
     BGP_ENOERR = 0,    ///< No error (success) guaranteed to be zero.
-    BGP_ERRNO,         ///< System error (see errno).
+    BGP_EIO,           ///< Input/Output error during packet read.
     BGP_EINVOP,        ///< Invalid operation (e.g. write while reading packet).
     BGP_ENOMEM,        ///< Out of memory.
     BGP_EBADHDR,       ///< Bad BGP packet header.
@@ -101,28 +101,28 @@ enum {
 inline const char *bgpstrerror(int err)
 {
     switch (err) {
-    case BGP_ENOERR:
-        return "Success";
-    case BGP_ERRNO:
-        return "System error";
-    case BGP_EINVOP:
-        return "Invalid operation";
-    case BGP_ENOMEM:
-        return "Out of memory";
-    case BGP_EBADHDR:
-        return "Bad BGP header";
-    case BGP_EBADTYPE:
-        return "Bad BGP packet type";
-    case BGP_EBADPARAMLEN:
-        return "Oversized or inconsistent BGP open parameters length";
-    case BGP_EBADWDRWNLEN:
-        return "Oversized or inconsistent BGP update Withdrawn length";
-    case BGP_EBADATTRSLEN:
-        return "Oversized or inconsistent BGP update Path Attributes length";
-    case BGP_EBADNLRILEN:
-        return "Oversized or inconsistent BGP update NLRI length";
-    default:
-        return "Unknown error";
+        case BGP_ENOERR:
+            return "Success";
+        case BGP_EIO:
+            return "I/O error";
+        case BGP_EINVOP:
+            return "Invalid operation";
+        case BGP_ENOMEM:
+            return "Out of memory";
+        case BGP_EBADHDR:
+            return "Bad BGP header";
+        case BGP_EBADTYPE:
+            return "Bad BGP packet type";
+        case BGP_EBADPARAMLEN:
+            return "Oversized or inconsistent BGP open parameters length";
+        case BGP_EBADWDRWNLEN:
+            return "Oversized or inconsistent BGP update Withdrawn length";
+        case BGP_EBADATTRSLEN:
+            return "Oversized or inconsistent BGP update Path Attributes length";
+        case BGP_EBADNLRILEN:
+            return "Oversized or inconsistent BGP update NLRI length";
+        default:
+            return "Unknown error";
     }
 }
 
@@ -136,6 +136,10 @@ int setbgpreadfd(int fd);
  */
 int setbgpread(const void *data, size_t n);
 
+int setbgpreadfd(int fd);
+
+int setbgpreadfrom(io_rw_t *io);
+
 /**
  * @brief Initialize a BGP packet for writing a new packet of type \a type from scratch.
  */
@@ -145,6 +149,11 @@ int setbgpwrite(int type);
  * @brief Get BGP packet type from header.
  */
 int getbgptype(void);
+
+/**
+ * @brief Get BGP packet length from header.
+ */
+size_t getbgplength(void);
 
 int bgperror(void);
 
@@ -239,5 +248,137 @@ int endnlri(void);
 
 /** @} */
 
-#endif
+/**
+ * @defgroup BGP_reentrant Reentrant version of the BGP API
+ *
+ * @brief A variation of the BGP API allowing elaboration of multiple
+ *        messages in the same thread.
+ *
+ * @{
+ */
 
+enum {
+    /**
+     * @brief A good initial buffer size to store a BGP message.
+     *
+     * A buffer with this size should be enough to store most (if not all)
+     * BGP messages without any reallocation, but code should be ready to
+     * reallocate buffer to a larger size if necessary.
+     *
+     * @see [BGP extended messages draft](https://tools.ietf.org/html/draft-ietf-idr-bgp-extended-messages-24)
+     */
+    BGPBUFSIZ = 4096
+};
+
+/**
+ * @brief BGP message structure.
+ *
+ * A structure encapsulating all the relevant status used to read or write a
+ * BGP message.
+ *
+ * @warning This structure must be considered opaque, no field in this structure
+ *          is to be accessed directly, use the appropriate functions instead!
+ */
+typedef struct {
+    uint16_t flags;      ///< @private General status flags.
+    uint16_t pktlen;     ///< @private Actual packet length.
+    uint16_t bufsiz;     ///< @private Packet buffer capacity
+    int16_t err;         ///< @private Last error code.
+    unsigned char *buf;  ///< @private Packet buffer base.
+    /// @private Relevant status for each BGP packet.
+    union {
+        struct {
+            unsigned char *pptr;    ///< @private Current parameter pointer
+            unsigned char *params;  ///< @private Pointer to parameters base
+
+            bgp_open_t opbuf;  ///< @private Convenience field for reading
+        };
+        /// @private BGP update specific fields
+        struct {
+            unsigned char *presbuf;  ///< @private Preserved fields buffer, for out of order field writing.
+            unsigned char *uptr;     ///< @private Current update message field pointer.
+
+            /// @private following fields are mutually exclusive, so reuse storage
+            union {
+                bgpprefix_t pfxbuf;              ///< @private Convenience field for reading.
+                unsigned char fastpresbuf[128];  ///< @private Fast preserved buffer, to avoid malloc()s.
+            };
+        };
+    };
+
+    unsigned char fastbuf[BGPBUFSIZ];  ///< @private Fast buffer to avoid malloc()s.
+} bgp_msg_t;
+
+int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n);
+
+int setbgpreadfd_r(bgp_msg_t *msg, int fd);
+
+int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io);
+
+int setbgpwrite_r(bgp_msg_t *msg, int type);
+
+int getbgptype_r(bgp_msg_t *msg);
+
+size_t getbgplength_r(bgp_msg_t *msg);
+
+int bgperror_r(bgp_msg_t *msg);
+
+void *bgpfinish_r(bgp_msg_t *msg, size_t *pn);
+
+int bgpclose_r(bgp_msg_t *msg);
+
+bgp_open_t *getbgpopen_r(bgp_msg_t *msg);
+
+int setbgpopen_r(bgp_msg_t *msg, const bgp_open_t *open);
+
+void *getbgpparams_r(bgp_msg_t *msg, size_t *pn);
+
+int setbgpparams_r(bgp_msg_t *msg, const void *params, size_t n);
+
+int startbgpcaps_r(bgp_msg_t *msg);
+
+void *nextbgpcap_r(bgp_msg_t *msg, size_t *pn);
+
+int putbgpcap_r(bgp_msg_t *msg, const void *data, size_t n);
+
+int endbgpcaps_r(bgp_msg_t *msg);
+
+int setwithdrawn_r(bgp_msg_t *msg, const void *data, size_t n);
+
+void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn);
+
+int startwithdrawn_r(bgp_msg_t *msg);
+
+bgpprefix_t *nextwithdrawn_r(bgp_msg_t *msg);
+
+int putwithdrawn_r(bgp_msg_t *msg, const bgpprefix_t *p);
+
+int endwithdrawn_r(bgp_msg_t *msg);
+
+int setbgpattribs_r(bgp_msg_t *msg, const void *data, size_t n);
+
+void *getbgpattribs_r(bgp_msg_t *msg, size_t *pn);
+
+int startbgpattribs_r(bgp_msg_t *msg);
+
+void *nextbgpattrib_r(bgp_msg_t *msg, size_t *pn);
+
+int putbgpattrib_r(bgp_msg_t *msg, const void *attr, size_t n);
+
+int endbgpattribs_r(bgp_msg_t *msg);
+
+int setnlri_r(bgp_msg_t *msg, const void *data, size_t n);
+
+void *getnlri_r(bgp_msg_t *msg, size_t *pn);
+
+int startnlri_r(bgp_msg_t *msg);
+
+int putnlri_r(bgp_msg_t *msg, const bgpprefix_t *p);
+
+bgpprefix_t *nextnlri_r(bgp_msg_t *msg);
+
+int endnlri_r(bgp_msg_t *msg);
+
+/** @} */
+
+#endif

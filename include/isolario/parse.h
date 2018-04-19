@@ -62,6 +62,16 @@
  *              it may not be used inside a token. A comment may appear
  *              anywhere in text.
  *
+ * The parser also recognizes the following escape sequences:
+ * * '\n'  - newline
+ * * '\v'  - vertical tab
+ * * '\t'  - horizontal tab
+ * * '\r'  - caret return
+ * * '\#'  - hash character
+ * * '\\'  - backslash character
+ * * '\ '  - space character
+ * * '\\n' - token follows after newline
+ *
  * Error handling is performed via callbacks, an error callback may be
  * registered to handle parsing errors, when such error is encountered,
  * a callback is invoked with a human readable message, when available,

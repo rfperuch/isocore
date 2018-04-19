@@ -46,10 +46,6 @@
 #include <isolario/branch.h>
 #include <stdint.h>
 
-enum {
-    AF_BAD = -1  ///< Constant to signal a bad Unix address family.
-};
-
 /// @brief Address Family Identifier values.
 typedef uint16_t afi_t;
 
@@ -89,7 +85,7 @@ enum {
 };
 
 typedef struct {
-    short family;    ///< Unix address family: \a AF_BAD, \a AF_INET or \a AF_INET6.
+    short family;    ///< Unix address family: \a AF_UNSPEC, \a AF_INET or \a AF_INET6.
     short bitlen;  ///< Address length in bits.
     union {
         struct in_addr sin;
@@ -127,12 +123,12 @@ inline int naddrsize(int bitlen)
  *
  * @return \a AF_INET if address is a candidate to be an IPv4 address,
  *         \a AF_INET6 if address is a candidate to be an IPv6 address,
- *         \a AF_BAD if string is definitely a bad address.
+ *         \a AF_UNSPEC if string is definitely a bad address.
  */
-inline int saddrfamily(const char *s)
+inline sa_family_t saddrfamily(const char *s)
 {
     if (unlikely(!s))
-        return AF_BAD;
+        return AF_UNSPEC;
 
     for (int i = 0; i < 4; i++) {
         char c = *s++;
@@ -141,9 +137,9 @@ inline int saddrfamily(const char *s)
         if (c == ':')
             return AF_INET6;
         if (unlikely(c == '\0'))
-            return AF_BAD;
+            return AF_UNSPEC;
     }
-    return likely(*s == ':') ? AF_INET6 : AF_BAD;
+    return likely(*s == ':') ? AF_INET6 : AF_UNSPEC;
 }
 
 /**

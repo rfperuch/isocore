@@ -28,56 +28,514 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+#include <assert.h>
+#include <bzlib.h>
+#include <ctype.h>
+#include <errno.h>
+#include <isolario/branch.h>
 #include <isolario/io.h>
+#include <isolario/util.h>
+#include <limits.h>
+#include <lz4.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
-size_t io_fread(io_handler_t *handler, void *dst, size_t n)
+// stdio.h =====================================================================
+
+size_t io_fread(io_rw_t *io, void *dst, size_t n)
 {
-    return fread(dst, 1, n, handler->file);
+    return fread(dst, 1, n, io->file);
 }
 
-size_t io_fwrite(io_handler_t *handler, const void *src, size_t n)
+size_t io_fwrite(io_rw_t *io, const void *src, size_t n)
 {
-    return fwrite(src, 1, n, handler->file);
+    return fwrite(src, 1, n, io->file);
 }
 
-int io_ferror(io_handler_t *handler)
+int io_ferror(io_rw_t *io)
 {
-    return ferror(handler->file);
+    return ferror(io->file);
 }
 
-int io_fclose(io_handler_t *handler)
+int io_fclose(io_rw_t *io)
 {
-    return fclose(handler->file);
+    return fclose(io->file);
 }
 
-size_t io_fdread(io_handler_t *handler, void *dst, size_t n)
+// Unix fd =====================================================================
+
+size_t io_fdread(io_rw_t *io, void *dst, size_t n)
 {
-    ssize_t nr = read(handler->un.fd, dst, n);
+    ssize_t nr = read(io->un.fd, dst, n);
     if (nr < 0) {
-        handler->un.err = 1;
+        io->un.err = 1;
         nr = 0;
     }
     return nr;
 }
 
-size_t io_fdwrite(io_handler_t *handler, const void *src, size_t n)
+size_t io_fdwrite(io_rw_t *io, const void *src, size_t n)
 {
-    ssize_t nw = write(handler->un.fd, src, n);
+    ssize_t nw = write(io->un.fd, src, n);
     if (nw < 0) {
-        handler->un.err = 1;
+        io->un.err = 1;
         nw = 0;
     }
     return nw;
 }
 
-int io_fderror(io_handler_t *handler)
+int io_fderror(io_rw_t *io)
 {
-    return handler->un.err;
+    return io->un.err;
 }
 
-int io_fdclose(io_handler_t *handler)
+int io_fdclose(io_rw_t *io)
 {
-    return close(handler->un.fd);
+    return close(io->un.fd);
+}
+
+// Dynamically allocated I/O types =============================================
+
+static void *io_getstate(io_rw_t *io)
+{
+    return &io->padding[0];
+}
+
+static size_t io_getsize(size_t size)
+{
+    return offsetof(io_rw_t, padding) + size;
+}
+
+// Zlib ========================================================================
+
+typedef struct {
+    int fd;
+    int err;
+    int mode;  // either 'r' or 'w'
+    int bufsiz;
+    z_stream stream;
+    unsigned char buf[];  // bufsiz large
+} io_zstate;
+
+static size_t io_zread(io_rw_t *io, void *dst, size_t n)
+{
+    io_zstate *z = io_getstate(io);
+
+    z_stream *str = &z->stream;
+    str->next_out = dst;
+    str->avail_out = n;
+    while (str->avail_out > 0) {
+        if (str->avail_in == 0) {
+            ssize_t nr = read(z->fd, z->buf, z->bufsiz);
+            if (nr < 0) {
+                z->err = Z_ERRNO;
+                break;
+            }
+            if (nr == 0)
+                break;  // EOF
+
+            str->next_in = z->buf;
+            str->avail_in = nr;
+        }
+
+        int err = inflate(str, Z_NO_FLUSH);
+        if (unlikely(err == Z_NEED_DICT))
+            err = Z_DATA_ERROR;
+        if (unlikely(err != Z_OK && err != Z_STREAM_END)) {
+            z->err = err;
+            break;
+        }
+    }
+    return n - str->avail_out;
+}
+
+static size_t io_zwrite(io_rw_t *io, const void *src, size_t n)
+{
+    io_zstate *z  = io_getstate(io);
+    z_stream *str = &z->stream;
+
+    str->next_in  = (void *) src;
+    str->avail_in = n;
+    while (str->avail_in > 0) {
+        if (str->avail_out == 0) {
+            ssize_t nw = write(z->fd, z->buf, z->bufsiz);
+            if (unlikely(nw < z->bufsiz)) {
+                z->err = Z_ERRNO;
+                break;
+            }
+
+            str->next_out  = z->buf;
+            str->avail_out = z->bufsiz;
+        }
+
+        int err = deflate(str, Z_NO_FLUSH);
+        if (unlikely(err == Z_NEED_DICT))
+            err = Z_DATA_ERROR;
+        if (unlikely(err != Z_OK)) {
+            z->err = err;
+            break;
+        }
+    }
+    return n - str->avail_in;
+}
+
+static int io_zerror(io_rw_t *io)
+{
+    io_zstate *z = io_getstate(io);
+    return z->err;
+}
+
+static int io_zclose(io_rw_t *io)
+{
+    io_zstate *z  = io_getstate(io);
+    z_stream *str = &z->stream;
+
+    int err;
+    switch (z->mode) {
+    case 'r':
+        inflateEnd(str);
+        break;
+    case 'w':
+        err = deflate(str, Z_FINISH);
+        if (err == Z_STREAM_END)
+            write(z->fd, z->buf, z->bufsiz - str->avail_out);
+
+        deflateEnd(str);
+        break;
+    default:
+        assert(false);
+        break;
+    }
+
+    err = close(z->fd);
+    free(io);
+    return err;
+}
+
+io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...)
+{
+    if (bufsiz == 0)
+        bufsiz = BUFSIZ;
+    if (unlikely(bufsiz > INT_MAX))
+        bufsiz = INT_MAX;  // ssize_t used for Unix I/O is signed, pick safe values
+
+    io_zstate *z;
+    io_rw_t *io = malloc(io_getsize(sizeof(*z) + bufsiz));
+    if (unlikely(!io))
+        return NULL;
+
+    io->read  = io_zread;
+    io->write = io_zwrite;
+    io->error = io_zerror;
+    io->close = io_zclose;
+
+    va_list va;
+    va_start(va, mode);
+
+    z         = io_getstate(io);
+    z->fd     = fd;
+    z->err    = 0;
+    z->mode   = *mode++;
+    z->bufsiz = bufsiz;
+
+    int compression = Z_DEFAULT_COMPRESSION;
+    int wbits = 15;
+    switch (z->mode) {
+    case 'r':
+        if (*mode == '*')
+            wbits = va_arg(va, int);
+        else if (isdigit(*mode))
+            wbits = atoi(mode);
+
+        break;
+    case 'w':
+        if (*mode == '*')
+            compression = va_arg(va, int);
+        else if (isdigit(*mode))
+            compression = atoi(mode);
+
+        break;
+    default:
+        va_end(va);
+        errno = EINVAL;
+        goto fail;
+    }
+
+    va_end(va);
+
+    // normalize arguments for Zlib
+    compression = clamp(compression, 1, 9);
+    wbits       = clamp(wbits, 8, 15);
+
+    z_stream *str = &z->stream;
+    memset(str, 0, sizeof(*str));
+
+    int err;
+    if (z->mode == 'r') {
+        err = inflateInit2(str, wbits);
+    } else {
+        err = deflateInit(str, compression);
+
+        str->next_out  = z->buf;
+        str->avail_out = z->bufsiz;
+    }
+
+    if (err != Z_OK)
+        goto fail;
+
+    return io;
+
+fail:
+    free(io);
+    return NULL;
+}
+
+// BZip2 =======================================================================
+
+typedef struct {
+    int fd;
+    int err;
+    int mode;  // either 'r' or 'w'
+    int32_t bufsiz;
+    bz_stream stream;
+    char buf[];  // bufsiz large
+} io_bz2state;
+
+static size_t io_bz2read(io_rw_t *io, void *dst, size_t n)
+{
+    io_bz2state *bz = io_getstate(io);
+    bz_stream *str  = &bz->stream;
+
+    str->next_out  = dst;
+    str->avail_out = n;
+    while (str->avail_out > 0) {
+        if (str->avail_in == 0) {
+            ssize_t rd = read(bz->fd, bz->buf, bz->bufsiz);
+            if (rd < 0) {
+                bz->err = BZ_IO_ERROR;
+                break;
+            }
+            if (rd == 0)
+                break;  // EOF
+
+            str->next_in  = bz->buf;
+            str->avail_in = rd;
+        }
+
+        int err = BZ2_bzDecompress(str);
+        if (err == BZ_STREAM_END)
+            break;
+
+        if (err != BZ_OK) {
+            bz->err = err;
+            break;
+        }
+    }
+
+    return n - str->avail_out;
+}
+
+static size_t io_bz2write(io_rw_t *io, const void *src, size_t n)
+{
+    io_bz2state *bz = io_getstate(io);
+    bz_stream *str  = &bz->stream;
+
+    str->next_in  = (char *) src;
+    str->avail_in = n;
+    while (str->avail_in) {
+        if (str->avail_out == 0) {
+            ssize_t wr = write(bz->fd, bz->buf, bz->bufsiz);
+            if (unlikely(wr != bz->bufsiz)) {
+                bz->err = BZ_IO_ERROR;
+                break;
+            }
+
+            str->next_out  = bz->buf;
+            str->avail_out = bz->bufsiz;
+        }
+
+        int err = BZ2_bzCompress(str, BZ_RUN);
+        if (err != BZ_OK)  {
+            bz->err = err;
+            break;
+        }
+    }
+
+    return n - str->avail_in;
+}
+
+static int io_bz2error(io_rw_t *io)
+{
+    io_bz2state *bz = io_getstate(io);
+    return bz->err;
+}
+
+static void io_bz2finish(io_bz2state *bz)
+{
+    bz_stream *str = &bz->stream;
+
+    int err;
+    do {
+        if (str->avail_out == 0) {
+            if (write(bz->fd, bz->buf, bz->bufsiz) != bz->bufsiz) {
+                bz->err = BZ_IO_ERROR;
+                return;
+            }
+
+            str->next_out  = bz->buf;
+            str->avail_out = bz->bufsiz;
+        }
+
+        err = BZ2_bzCompress(str, BZ_FINISH);
+        if (err != BZ_OK) {
+            bz->err = err;
+            break;
+        }
+    } while (err != BZ_STREAM_END);
+
+    // flush
+    ssize_t n = bz->bufsiz - str->avail_out;
+    if (write(bz->fd, bz->buf, n) != n)
+        bz->err = BZ_IO_ERROR;
+}
+
+static int io_bz2close(io_rw_t *io)
+{
+    io_bz2state *bz = io_getstate(io);
+    if (bz->mode == 'r') {
+        BZ2_bzDecompressEnd(&bz->stream);
+    } else {
+        io_bz2finish(bz);
+        BZ2_bzCompressEnd(&bz->stream);
+    }
+
+    if (close(bz->fd) != 0)
+        bz->err = BZ_IO_ERROR;
+
+    int err = bz->err;
+    free(io);
+    return err;
+}
+
+io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...)
+{
+    if (bufsiz == 0)
+        bufsiz = BUFSIZ;
+
+    if (unlikely(bufsiz > INT_MAX))
+        bufsiz = INT_MAX; // restrict to signed values for Unix ssize_t
+
+    io_bz2state *bz;
+    io_rw_t *io = malloc(io_getsize(sizeof(*bz) + bufsiz));
+    if (unlikely(!io))
+        return NULL;
+
+    io->read  = io_bz2read;
+    io->write = io_bz2write;
+    io->error = io_bz2error;
+    io->close = io_bz2close;
+
+    va_list va;
+    va_start(va, mode);
+
+    bz         = io_getstate(io);
+    bz->fd     = fd;
+    bz->err    = 0;
+    bz->mode   = *mode++;
+    bz->bufsiz = bufsiz;
+
+    bz_stream *str = &bz->stream;
+    memset(str, 0, sizeof(*str));
+
+    // defaults for BZ2
+    int verbosity = 0;
+    int small = false;
+    int compression = 9;
+    int factor = 0;
+
+    switch (bz->mode) {
+    case 'r':
+        if (*mode == '-') {
+            small = true;
+            mode++;
+        }
+
+        break;
+    case 'w':
+        if (*mode == '*') {
+            compression = va_arg(va, int);
+            mode++;
+        } else if (isdigit(*mode)) {
+            compression = atoi(mode);
+            do mode++; while (isdigit(*mode));
+        }
+
+        if (*mode == '+') {
+            mode++;
+            if (*mode == '*') {
+                factor = va_arg(va, int);
+                mode++;
+            } else if (isdigit(*mode)) {
+                factor = atoi(mode);
+                do mode++; while (isdigit(*mode));
+            }
+        }
+
+        break;
+    default:
+        // bad mode string
+        va_end(va);
+        errno = EINVAL;
+        goto fail;
+    }
+
+    if (*mode == 'v') {
+        mode++;
+
+        if (*mode == '*')
+            verbosity = va_arg(va, int);
+        else
+            verbosity = atoi(mode);  // on bad value verbosity = 0, which is good
+    }
+    va_end(va);
+
+    // normalize arguments for BZ2 (silently ignore bad values)
+    compression = clamp(compression, 1, 9);
+    verbosity   = clamp(verbosity, 0, 4);
+    factor      = clamp(factor, 0, 255);
+
+    int err;
+    if (bz->mode == 'r') {
+        err = BZ2_bzDecompressInit(str, verbosity, small);
+    } else {
+        err = BZ2_bzCompressInit(str, compression, verbosity, factor);
+
+        str->next_out  = bz->buf;
+        str->avail_out = bufsiz;
+    }
+    if (unlikely(err != BZ_OK)) {
+        errno = ENOMEM;
+        goto fail;
+    }
+
+    return io;
+
+fail:
+    free(io);
+    return NULL;
+}
+
+// LZ4 =========================================================================
+
+io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode)
+{
+    (void) fd; (void) bufsiz; (void) mode;
+    // FIXME
+    return NULL;
 }
 

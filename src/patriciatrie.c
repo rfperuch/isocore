@@ -2,13 +2,17 @@
 #include <isolario/util.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 enum {
     PATRICIA_GLUE_NODE = 1,
 };
 
-
+/**
+ * the "public" node is trienode_t. (see patriciatrie.h).
+ * It contains a prefix and a payload.
+ * 
+ * the actual node is a pnode_s.
+*/
 union pnode_s {
     trienode_t pub;  // keep underlying structure in sync!
     struct {
@@ -20,7 +24,6 @@ union pnode_s {
     union pnode_s *next; ///< used when the node is a free node (to create a linked list of free nodes)
 };
 
-
 struct nodepage_s {
     struct nodepage_s *next;
     pnode_t block[256];
@@ -29,11 +32,11 @@ struct nodepage_s {
 static void pnodeinit(pnode_t *n, const netaddr_t *prefix)
 {
     memset(n, 0, sizeof(*n));
-    
+
     if (prefix)
         n->prefix = *prefix;
     else
-        n->prefix.family = AF_BAD;
+        n->prefix.family = AF_UNSPEC;
 }
 
 static pnode_t *getpnodeparent(pnode_t *n)
@@ -47,7 +50,7 @@ static void setpnodeparent(pnode_t *n, pnode_t *parent)
     n->parent = (pnode_t *) ((uintptr_t) n->parent | (uintptr_t) parent);
 }
 
-static bool ispnodeglue(pnode_t *n)
+static int ispnodeglue(pnode_t *n)
 {
     return ((uintptr_t)n->parent) & PATRICIA_GLUE_NODE;
 }
@@ -89,7 +92,7 @@ static pnode_t* getfreenode(patricia_trie_t *pt)
             return NULL;
     }
     pt->freenodes = pt->freenodes->next;
-    
+
     return n;
 }
 
@@ -100,10 +103,10 @@ static void putfreenode(patricia_trie_t *pt, pnode_t *n)
     n->next = save;
 }
 
-void patinit(patricia_trie_t *pt, afi_t type)
+void patinit(patricia_trie_t *pt, afi_t family)
 {
     pt->head = NULL;
-    pt->type = type;
+    pt->family = family;
     pt->nprefs = 0;
     pt->pages = NULL;
     pt->freenodes = NULL;
@@ -112,7 +115,7 @@ void patinit(patricia_trie_t *pt, afi_t type)
 void patdestroy(patricia_trie_t *pt)
 {
     nodepage_t *ptr = pt->pages;
-    
+
     while (ptr) {
         nodepage_t* next = ptr->next;
         free(ptr);
@@ -122,15 +125,15 @@ void patdestroy(patricia_trie_t *pt)
 
 static int patmaxbits(const patricia_trie_t *pt)
 {
-    return (pt->type == AFI_IPV4) ? 32 : 128;
+    return (pt->family == AFI_IPV4) ? 32 : 128;
 }
 
 static int patcompwithmask(const netaddr_t *addr, const netaddr_t *dest, int mask)
 {
-    if (memcmp(&(addr->bytes[0]), &(dest->bytes[0]), mask / 8) == 0) {
+    if (memcmp(&addr->bytes[0], &dest->bytes[0], mask / 8) == 0) {
         int n = mask / 8;
         int m = ((unsigned int)(~0) << (8 - (mask % 8)));
-        
+
         if (((mask & 0x7) == 0) || ((addr->bytes[n] & m) == (dest->bytes[n] & m)))
             return 1;
     }
@@ -143,16 +146,16 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
     int dummy;
     if (!inserted)
         inserted = &dummy;
-        
+
     pnode_t *n;
 
     *inserted = PREFIX_ALREADY_PRESENT;
-    
+
     if (pt->head == NULL) {
         pnode_t *n = getfreenode(pt);
         if (unlikely(!n))
             return NULL;
-            
+
         pnodeinit(n, prefix);
         pt->head = n;
         pt->nprefs++;
@@ -160,15 +163,15 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
 
         return &n->pub;
     }
-    
+
     n = pt->head;
     int maxbits = patmaxbits(pt);
-    
+
     while (n->prefix.bitlen < prefix->bitlen || ispnodeglue(n)) {
         int bit = (n->prefix.bitlen < maxbits) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> n->prefix.bitlen & 0x07));
         if (n->children[bit] == NULL)
             break;
-        
+            
         n = n->children[bit];
     }
     
@@ -182,20 +185,20 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
             differ_bit = z + 8;
             continue;
         }
-        
+
         int j;
         for (j = 0; j < 8; j++) {
             if (r & (0x80 >> j))
                 break;
         }
-        
+
         differ_bit = z + j;
         break;
     }
     
     if (differ_bit > check_bit)
         differ_bit = check_bit;
-    
+
     pnode_t* parent = getpnodeparent(n);
     while (parent && parent->prefix.bitlen >= differ_bit) {
         n = parent;
@@ -205,18 +208,18 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
     if (differ_bit == prefix->bitlen && n->prefix.bitlen == prefix->bitlen) {
         if (ispnodeglue(n))
             return &n->pub;
-        
+
         pt->nprefs++;
         n->prefix = *prefix;
         resetpnodeglue(n);
-        
+
         return &n->pub;
     }
     
     pnode_t *newnode = getfreenode(pt);
     if (unlikely(!newnode))
         return NULL;
-        
+
     pnodeinit(newnode, prefix);
     pt->nprefs++;
    
@@ -225,9 +228,9 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         
         int bit = (n->prefix.bitlen < maxbits) && (prefix->bytes[n->prefix.bitlen >> 3] & 0x80 >> (n->prefix.bitlen & 0x07));
         n->children[bit] = newnode;
-        
+
         *inserted = PREFIX_INSERTED;
-        
+
         return &newnode->pub;
     }
     
@@ -252,12 +255,12 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         glue->prefix.bitlen = differ_bit;
         setpnodeglue(glue);
         setpnodeparent(glue, getpnodeparent(n));
-        
+
         int bit = (differ_bit < maxbits) && (prefix->bytes[differ_bit >> 3] & (0x80 >> (differ_bit & 0x07)));
-        
+
         glue->children[bit] = newnode;
         glue->children[!bit] = n;
-        
+
         setpnodeparent(newnode, glue);
         if (!getpnodeparent(n)) {
             pt->head = glue;
@@ -265,12 +268,12 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
             int bit = (getpnodeparent(n)->children[1] == n);
             getpnodeparent(n)->children[bit] = glue;
         }
-        
+
         setpnodeparent(n, glue);
     }
     
     *inserted = PREFIX_INSERTED;
-    
+
     return &newnode->pub;
 }
 
@@ -279,7 +282,7 @@ trienode_t* patinsertc(patricia_trie_t *pt, const char *cprefix, int *inserted)
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return NULL;
-    
+
     return patinsertn(pt, &prefix, inserted);
 }
 
@@ -287,23 +290,23 @@ trienode_t* patsearchexactn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
     if (!pt->head)
         return NULL;
-    
+
     pnode_t *n = pt->head;
     
     while (n->prefix.bitlen < prefix->bitlen) {
         int bit = (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
         n = n->children[bit];
-        
+
         if (!n)
             return NULL;
     }
     
     if (n->prefix.bitlen > prefix->bitlen || ispnodeglue(n))
         return NULL;
-    
+
     if (patcompwithmask(&n->prefix, prefix, prefix->bitlen))
         return &n->pub;
-        
+
     return NULL;
 }
 
@@ -437,8 +440,8 @@ trienode_t** patgetsupernetsofn(const patricia_trie_t *pt, const netaddr_t *pref
 
     pnode_t *n = pt->head;
     
-    trienode_t **res = malloc((prefix->bitlen + 2) * sizeof(trienode_t *));
-    memset(res, 0, (prefix->bitlen + 2) * sizeof(trienode_t *));
+    trienode_t **res = calloc(1, (prefix->bitlen + 2) * sizeof(trienode_t *));
+    
     int i = 0;
 
     while (n && n->prefix.bitlen < prefix->bitlen) {
@@ -472,59 +475,303 @@ trienode_t** patgetsupernetsofc(const patricia_trie_t *pt, const char *cprefix)
     return patgetsupernetsofn(pt, &prefix);
 }
 
-static _Thread_local struct {
-    pnode_t *stack[129];
-    pnode_t **sp;
-    pnode_t *curr;
-} patiteratorstate;
-
-void patiteratormovenext()
+trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
-    pnode_t *l = patiteratorstate.curr->children[0];
-    pnode_t *r = patiteratorstate.curr->children[1];
+    if (!pt->head)
+        return NULL;
+    
+    pnode_t *start = pt->head;
+    
+    while (start && start->prefix.bitlen < prefix->bitlen) {
+        int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen & 0x07));
+        start = start->children[bit];
+    }
+    
+    uint64_t n;
+    if (prefix->family == AF_INET || prefix->bitlen >= 96) {
+        n = (1ull << (patmaxbits(pt) - prefix->bitlen));
+        if (pt->nprefs < n)
+            n = pt->nprefs;
+    } else {
+        n = pt->nprefs;
+    }
+    
+    n++;
+    
+    trienode_t **res = calloc(1, n*sizeof(trienode_t*));
+    
+    int i = 0;
+    
+    pnode_t *node;
+    
+    pnode_t *stack[patmaxbits(pt)+1];
+    pnode_t **sp = stack;
+    pnode_t *next = start;
+    while ((node = next)) {
+        if (!ispnodeglue(node)) {
+            if (patcompwithmask(&node->prefix, prefix, prefix->bitlen)) {
+                res[i++] = &node->pub;
+            } else {
+                break;
+            }
+        }
+        
+        if (next->children[0]) {
+            if (next->children[1]) {
+                *sp++ = next->children[1];
+            }
+            next = next->children[0];
+        } else if (next->children[1]) {
+            next = next->children[1];
+        } else if (sp != stack) {
+            next = *(sp--);
+        } else {
+            next = NULL;
+        }
+    }
+    
+    res[i] = NULL;
+    
+    return res;
+}
+
+trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix)
+{
+    netaddr_t prefix;
+    if (stonaddr(&prefix, cprefix) != 0)
+        return NULL;
+    
+    return patgetsubnetsofn(pt, &prefix);
+}
+
+trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
+{
+    if (!pt->head)
+        return NULL;
+    
+    pnode_t *start = pt->head;
+    
+    uint64_t n;
+    if (prefix->family == AF_INET || prefix->bitlen >= 96) {
+        n = (1ull << (patmaxbits(pt) - prefix->bitlen));
+        if (pt->nprefs < n)
+            n = pt->nprefs;
+    } else {
+        n = pt->nprefs;
+    }
+    
+    n += prefix->bitlen + 3;
+    
+    trienode_t **res = calloc(1, n*sizeof(trienode_t*));
+    
+    int i = 0;
+    while (start && start->prefix.bitlen < prefix->bitlen) {
+        if (!ispnodeglue(start)) {
+            if (patcompwithmask(&start->prefix, prefix, start->prefix.bitlen)) {
+                res[i++] = &start->pub;
+            } else {
+                return res;
+            }
+        }
+        
+        int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen) & 0x07);
+        start = start->children[bit];
+    }
+    
+    pnode_t *node;
+    pnode_t *stack[patmaxbits(pt)+1];
+    pnode_t **sp = stack;
+    pnode_t *next = start;
+    while ((node = next)) {
+        if (!ispnodeglue(node)) {
+            if (patcompwithmask(&node->prefix, prefix, prefix->bitlen)) {
+                res[i++] = &node->pub;
+            } else {
+                break;
+            }
+        }
+        
+        if (next->children[0]) {
+            if (next->children[1]) {
+                *sp++ = next->children[1];
+            }
+            next = next->children[0];
+        } else if (next->children[1]) {
+            next = next->children[1];
+        } else if (sp != stack) {
+            next = *(sp--);
+        } else {
+            next = NULL;
+        }
+    }
+    
+    res[i] = NULL;
+    
+    return res;
+    
+}
+
+trienode_t** patgetrelatedofc(const patricia_trie_t *pt, const char *cprefix)
+{
+    netaddr_t prefix;
+    if (stonaddr(&prefix, cprefix) != 0)
+        return NULL;
+    
+    return patgetrelatedofn(pt, &prefix);
+}
+
+uint128_t patcoverage(const patricia_trie_t *pt)
+{
+    uint128_t coverage = UINT128_ZERO;
+    
+    pnode_t *n;
+    pnode_t *stack[patmaxbits(pt) + 1];
+    pnode_t **sp = stack;
+    pnode_t *next = pt->head;
+    
+    while ((n = next)) {
+        if (!ispnodeglue(n) && n->prefix.bitlen != 0) {
+            coverage = u128add(coverage, u128shl(UINT128_ONE, (patmaxbits(pt) - n->prefix.bitlen)));
+            if (sp != stack)
+                next = *(--sp);
+            else
+                next = NULL;
+            
+            continue;
+        }
+        
+        if (next->children[0]) {
+            if (next->children[1])
+                *sp++ = next->children[1];
+            next = n->children[0];
+        } else if (next->children[1]) {
+            next = next->children[1];
+        } else if (sp != stack) {
+            next = *(--sp);
+        } else {
+            next = NULL;
+        }
+    }
+    
+    return coverage;
+}
+
+trienode_t** patgetfirstsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
+{
+    if (!pt->head)
+        return NULL;
+    
+    pnode_t *node = pt->head;
+
+    while (node && node->prefix.bitlen < prefix->bitlen) {
+        int bit = prefix->bytes[node->prefix.bitlen >> 3] & (0x80 >> (node->prefix.bitlen & 0x07));
+        node = node->children[bit];
+    }
+
+    pnode_t *stack[patmaxbits(pt) + 1];
+    pnode_t **sp = stack;
+    pnode_t *next = node;
+
+    uint64_t n;
+    if (prefix->family == AF_INET || prefix->bitlen >= 96) {
+        n = (1ull << (patmaxbits(pt) - prefix->bitlen));
+        if (pt->nprefs < n)
+            n = pt->nprefs;
+    } else {
+        n = pt->nprefs;
+    }
+    
+    n++;
+    
+    trienode_t **res = calloc(1, n*sizeof(trienode_t*));
+    
+    int i = 0;
+    while ((node = next)) {
+        if (!ispnodeglue(node) && node->prefix.bitlen != 0) {
+            res[i++] = &node->pub;
+            if (sp != stack)
+                next = *(--sp);
+            else
+                next = NULL;
+            
+            continue;
+        }
+        
+        if (next->children[0]) {
+            if (next->children[1])
+                *sp++ = next->children[1];
+            next = node->children[0];
+        } else if (next->children[1]) {
+            next = next->children[1];
+        } else if (sp != stack) {
+            next = *(--sp);
+        } else {
+            next = NULL;
+        }
+    }
+    
+    res[i] = NULL;
+    
+    return res;
+}
+
+trienode_t** patgetfirstsubnetsofc(const patricia_trie_t *pt, const char *cprefix)
+{
+    netaddr_t prefix;
+    if (stonaddr(&prefix, cprefix) != 0)
+        return NULL;
+    
+    return patgetfirstsubnetsofn(pt, &prefix);
+}
+
+/* Iterator */
+
+void patiteratormovenext(patiterator_t *state)
+{
+    pnode_t *l = state->curr->children[0];
+    pnode_t *r = state->curr->children[1];
     
     if (l) {
         if (r) {
-            *patiteratorstate.sp++ = r;
+            *state->sp++ = r;
         }
-        patiteratorstate.curr = l;
+        state->curr = l;
     } else if (r) {
-        patiteratorstate.curr = r;
-    } else if (patiteratorstate.sp != patiteratorstate.stack) {
-        patiteratorstate.curr = *(--patiteratorstate.sp);
+        state->curr = r;
+    } else if (state->sp != state->stack) {
+        state->curr = *(--state->sp);
     } else {
-        patiteratorstate.curr = NULL;
+        state->curr = NULL;
     }
 }
 
-void patiteratorskipglue()
+void patiteratorskipglue(patiterator_t *state)
 {
-    while (patiteratorstate.curr && ispnodeglue(patiteratorstate.curr))
-        patiteratormovenext();
+    while (state->curr && ispnodeglue(state->curr))
+        patiteratormovenext(state);
 }
 
-
-void patiteratorinit(patricia_trie_t *pt)
+void patiteratorinit(patiterator_t *state, const patricia_trie_t *pt)
 {
-    patiteratorstate.sp = patiteratorstate.stack;
-    patiteratorstate.curr = pt->head;
-    patiteratorskipglue();
+    state->sp = state->stack;
+    state->curr = pt->head;
+    patiteratorskipglue(state);
 }
 
-trienode_t* patiteratorget()
+trienode_t* patiteratorget(patiterator_t *state)
 {
-    return &patiteratorstate.curr->pub;
+    return &state->curr->pub;
 }
 
-void patiteratornext()
+void patiteratornext(patiterator_t *state)
 {
-    patiteratormovenext();
-    patiteratorskipglue();
+    patiteratormovenext(state);
+    patiteratorskipglue(state);
 }
 
-bool patiteratorend()
+int patiteratorend(const patiterator_t *state)
 {
-    return (patiteratorstate.curr == NULL);
+    return (state->curr == NULL);
 }
 
 /*void patblah(trie_node_t *n)

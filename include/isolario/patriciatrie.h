@@ -8,7 +8,7 @@
 #define ISOLARIO_PATRICIA_TRIE_H_
 
 #include <isolario/netaddr.h>
-#include <stdbool.h>
+#include <isolario/uint128_t.h>
 
 enum {
     PREFIX_INSERTED,
@@ -28,15 +28,22 @@ typedef struct {
 typedef union pnode_s pnode_t;
 typedef struct nodepage_s nodepage_t;
 
+/**
+ * The patricia memory is allocated in pages.
+ * A list of pages is maintained.
+ * Each page is a block of 256 nodes.
+ * Each node can be free or not. Each node has the possibility to be in a list
+ * of free nodes. When no more free nodes are available, a new page is allocated.
+*/
 typedef struct {
     pnode_t* head;
-    afi_t type;
+    afi_t family;
     unsigned int nprefs;
     nodepage_t* pages;
     pnode_t* freenodes;
 } patricia_trie_t;
 
-void patinit(patricia_trie_t* pt, afi_t type);
+void patinit(patricia_trie_t* pt, afi_t family);
 
 void patdestroy(patricia_trie_t* pt);
 
@@ -56,14 +63,6 @@ void* patremoven(patricia_trie_t *pt, const netaddr_t *prefix);
 
 void* patremovec(patricia_trie_t *pt, const char *prefix);
 
-void patiteratorinit(patricia_trie_t *pt);
-
-trienode_t* patiteratorget();
-
-void patiteratornext();
-
-bool patiteratorend();
-
 /**
  * @brief Supernets of a prefix
  *
@@ -76,6 +75,68 @@ bool patiteratorend();
 trienode_t** patgetsupernetsofn(const patricia_trie_t *pt, const netaddr_t *prefix);
 
 trienode_t** patgetsupernetsofc(const patricia_trie_t *pt, const char *cprefix);
+
+/**
+ * @brief Subnets of a prefix
+ *
+ * @return The subnets of the provided prefix
+ *
+ * @note If present, the provided prefix is returned into the result.
+ * If not NULL, the returned value must bee free'd by the caller
+ *
+ */
+trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+
+trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix);
+
+/**
+ * @brief Related of a prefix
+ *
+ * @return The related prefixes of the provided prefix
+ *
+ * @note If present, the provided prefix is returned into the result. FIXME?
+ * If not NULL, the returned value must bee free'd by the caller
+ *
+ */
+trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+
+trienode_t** patgetrelatedofc(const patricia_trie_t *pt, const char *cprefix);
+
+/**
+ * @brief Coverage of prefixes
+ *
+ * @return The amount of address space covered by the prefixes insrted into the patricia
+ *
+ * @note the default route is ignored
+ *
+ */
+uint128_t patcoverage(const patricia_trie_t *pt);
+
+/**
+ * @brief Get the first subnets of a given prefix
+ *
+ * @return the subnets of first-level of a given prefix
+ *
+ */
+trienode_t** patgetfirstsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+
+trienode_t** patgetfirstsubnetsofc(const patricia_trie_t *pt, const char *cprefix);
+
+/* Iterator */
+
+typedef struct {
+    pnode_t *stack[129];
+    pnode_t **sp;
+    pnode_t *curr;
+} patiterator_t;
+
+void patiteratorinit(patiterator_t *state, const patricia_trie_t *pt);
+
+trienode_t* patiteratorget(patiterator_t *state);
+
+void patiteratornext(patiterator_t *state);
+
+int patiteratorend(const patiterator_t *state);
 
 #endif
 

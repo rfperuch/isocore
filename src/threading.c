@@ -28,66 +28,46 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_IO_H_
-#define ISOLARIO_IO_H_
+#include <errno.h>
+#include <isolario/threading.h>
+#include <pthread.h>
+#if defined(__MACOSX__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#define USE_THREADID
+#include <pthread_np.h>
+#elif defined(__linux__)
+#define USE_GETTID
+#include <unistd.h>
+#include <sys/syscall.h>
 
-#include <stddef.h>
-#include <stdio.h>
-
-typedef struct io_rw_s io_rw_t;
-
-struct io_rw_s {
-    size_t (*read)(io_rw_t *io, void *dst, size_t n);
-    size_t (*write)(io_rw_t *io, const void *buf, size_t n);
-    int    (*error)(io_rw_t *io);
-    int    (*close)(io_rw_t *io);
-
-    union {
-        // Unix file descriptor
-        struct {
-            int fd;
-            int err;
-        } un;
-
-        // stdio.h standard FILE
-        FILE *file;
-
-        // User-defined data (generic)
-        void *ptr;
-
-        max_align_t padding[1]; /// @private
-    };
-};
-
-size_t io_fread(io_rw_t *io, void *dst, size_t n);
-size_t io_fwrite(io_rw_t *io, const void *src, size_t n);
-int    io_ferror(io_rw_t *io);
-int    io_fclose(io_rw_t *io);
-
-size_t io_fdread(io_rw_t *io, void *dst, size_t n);
-size_t io_fdwrite(io_rw_t *io, const void *src, size_t n);
-int    io_fderror(io_rw_t *io);
-int    io_fdclose(io_rw_t *io);
-
-#define IO_FILE_INIT(file) { \
-    .file  = file,           \
-    .read  = io_fread,       \
-    .write = io_fwrite,      \
-    .error = io_ferror,      \
-    .close = io_fclose       \
-}
-
-#define IO_FD_INIT(fd) {   \
-    .un    = { .fd = fd }, \
-    .read  = io_fdread,    \
-    .write = io_fdwrite,   \
-    .error = io_fderror,   \
-    .close = io_fdclose    \
-}
-
-io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...);
-io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...);
-io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode);
+extern long syscall(long number, ...);
 
 #endif
+
+extern void smtpause(void);
+
+unsigned long long getthreaddescr(void)
+{
+#if defined(USE_THREADID)
+    return pthread_threadid_np();
+#elif defined(USE_GETTID)
+    return syscall(SYS_gettid);
+#else
+    // disgusting, but kind of works
+    union {
+        pthread_t handle;
+        unsigned long ul;
+        unsigned long long ull;
+    } descr;
+
+    descr.handle = pthread_self();
+    if (sizeof(descr.handle) == sizeof(descr.ul))
+        return descr.ul;
+    if (sizeof(descr.handle) == sizeof(descr.ull))
+        return descr.ull;
+
+    errno = ENOTSUP;
+    return 0;
+
+#endif
+}
 

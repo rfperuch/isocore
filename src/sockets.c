@@ -45,6 +45,14 @@ enum  {
     DEFAULT_BACKLOG = 32
 };
 
+extern int hashv4(const struct in_addr *addr);
+
+extern int hashv6(const struct in6_addr *addr6);
+
+extern int sockaddrincmp(const struct sockaddr *a, const struct sockaddr *b);
+
+extern int sockaddrin6cmp(const struct sockaddr *a, const struct sockaddr *b);
+
 static atomic_int backlog_length = DEFAULT_BACKLOG;
 
 int setbacklog(int length)
@@ -57,7 +65,7 @@ int getbacklog(void)
     return atomic_load(&backlog_length);
 }
 
-static int socketflags(int fd, int flags)
+int socketflags(int fd, int flags)
 {
     int mask = fcntl(fd, F_GETFL, NULL);
     if (mask < 0)
