@@ -79,41 +79,41 @@ typedef union {
 
 #if ENDIAN_NATIVE == ENDIAN_BIG
 
-#define BIG16_INIT(C) (C)
+#define BIG16_C(C) (C)
 #define LITTLE16_INIT(C) ((((C) & 0xff) << 8) | (((C) & 0xff00) >> 8))
 
-#define BIG32_INIT(C) (C)
-#define LITTLE32_INIT(C) ( \
-    (((C) & 0xff) << 24) | (((C) & 0xff00) << 16) | \
-    (((C) & 0xff0000) << 8) | (((C) & 0xff000000) >> 24) \
+#define BIG32_C(C) (C)
+#define LITTLE32_C(C) (                                      \
+    (((C) & 0xff000000) >> 24) | (((C) & 0x00ff0000) >> 8) | \
+    (((C) & 0x0000ff00) << 8)  | (((C) & 0x000000ff) << 24)  \
 )
 
-#define BIG64_INIT(C) (C)
-#define LITTLE64_INIT(C) ( \
-    ((C) & 0xffull << 56) | (((C) & 0xff00ull) << 48) | \
-    (((C) & 0xff0000ull) << 40) | (((C) & 0xff000000ull) << 32) | \
-    (((C) & 0xff00000000ull) << 24) | (((C) & 0xff0000000000ull) << 16) | \
-    (((C) & 0xff00000000000000ull) << 8) | (((C) & 0xff00000000000000ull) >> 56) \
+#define BIG64_C(C) (C)
+#define LITTLE64_C(C) (                                                             \
+    (((C) & 0xff00000000000000ull) >> 56) | (((C) & 0x00ff000000000000ull) >> 40) | \
+    (((C) & 0x0000ff0000000000ull) >> 24) | (((C) & 0x000000ff00000000ull) >> 8)  | \
+    (((C) & 0x00000000ff000000ull) << 8)  | (((C) & 0x0000000000ff0000ull) << 24) | \
+    (((C) & 0x000000000000ff00ull) << 40) | (((C) & 0x00000000000000ffull) << 56)   \
 )
 
 #else
 
-#define BIG16_INIT(C) ((((C) & 0xff) << 8) | (((C) & 0xff00) >> 8))
-#define LITTLE16_INIT(C) (C)
+#define BIG16_C(C) ((((C) & 0xff) << 8) | (((C) & 0xff00) >> 8))
+#define LITTLE16_C(C) (C)
 
-#define BIG32_INIT(C) ( \
-    (((C) & 0xff) << 24) | (((C) & 0xff00) << 16) | \
-    (((C) & 0xff0000) << 8) | (((C) & 0xff000000) >> 24) \
+#define BIG32_C(C) (                                         \
+    (((C) & 0xff000000) >> 24) | (((C) & 0x00ff0000) >> 8) | \
+    (((C) & 0x0000ff00) << 8)  | (((C) & 0x000000ff) << 24)  \
 )
-#define LITTLE32_INIT(C) (C)
+#define LITTLE32_C(C) (C)
 
-#define BIG64_INIT(C) ( \
-    ((C) & 0xffull << 56) | (((C) & 0xff00ull) << 48) | \
-    (((C) & 0xff0000ull) << 40) | (((C) & 0xff000000ull) << 32) | \
-    (((C) & 0xff00000000ull) << 24) | (((C) & 0xff0000000000ull) << 16) | \
-    (((C) & 0xff00000000000000ull) << 8) | (((C) & 0xff00000000000000ull) >> 56) \
+#define BIG64_C(C) (                                                                \
+    (((C) & 0xff00000000000000ull) >> 56) | (((C) & 0x00ff000000000000ull) >> 40) | \
+    (((C) & 0x0000ff0000000000ull) >> 24) | (((C) & 0x000000ff00000000ull) >> 8)  | \
+    (((C) & 0x00000000ff000000ull) << 8)  | (((C) & 0x0000000000ff0000ull) << 24) | \
+    (((C) & 0x000000000000ff00ull) << 40) | (((C) & 0x00000000000000ffull) << 56)   \
 )
-#define LITTLE64_INIT(C) (C)
+#define LITTLE64_C(C) (C)
 
 #endif
 
