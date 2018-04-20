@@ -41,7 +41,7 @@
 
 void testzio(void)
 {
-    const char *str = "the quick brown fox jumped over the lazy dog\n";
+    const char *str = "the quick brown fox jumps over the lazy dog\n";
 
     int fd = open("miao.Z", O_CREAT | O_TRUNC | O_WRONLY, 0666);
     if (fd == -1)
