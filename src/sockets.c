@@ -29,16 +29,19 @@
 //
 
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <isolario/sockets.h>
 #include <netinet/in.h>
-#include <stdatomic.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/select.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <string.h>
 #include <unistd.h>
 
 enum  {
@@ -53,18 +56,6 @@ extern int sockaddrincmp(const struct sockaddr *a, const struct sockaddr *b);
 
 extern int sockaddrin6cmp(const struct sockaddr *a, const struct sockaddr *b);
 
-static atomic_int backlog_length = DEFAULT_BACKLOG;
-
-int setbacklog(int length)
-{
-    return atomic_exchange_explicit(&backlog_length, length, memory_order_relaxed);
-}
-
-int getbacklog(void)
-{
-    return atomic_load(&backlog_length);
-}
-
 int socketflags(int fd, int flags)
 {
     int mask = fcntl(fd, F_GETFL, NULL);
@@ -78,54 +69,137 @@ int socketflags(int fd, int flags)
     return 0;
 }
 
-int listeningsocket(int family, const struct sockaddr *addr, socklen_t addrlen, int flags)
+int setmd5key(int sd, char *md5key)
 {
-    int err;
+    #ifdef __linux__
+    struct sockaddr_storage addr;
+    socklen_t len = sizeof(addr);
+    if (getpeername(sd, (struct sockaddr*)&addr, &len) < 0)
+        return -1;
+ 
+    struct tcp_md5sig md5sig;
+    memset(&md5sig, 0, sizeof(md5sig));
+    md5sig.tcpm_addr = addr;
+    strcpy(md5sig.tcpm_key, md5key);
+    
+    return setsockopt(sd, IPPROTO_TCP, TCP_MD5SIG, &md5sig, sizeof(md5sig));
+    #else
+        #error Please provide an implementation for that OS!
+    #endif
+}
 
-    int fd = socket(family, SOCK_STREAM, 0);
+int sopen(const struct sockaddr *addr, socklen_t addrlen, const char *options, ...)
+{
+    va_list va;
+    va_start(va, options);
+
+    struct sockaddr *saddr = NULL;
+    socklen_t saddrlen;
+    bool should_listen = false;
+    
+    int backlog = 0;
+    int family = AF_INET;
+    int type = SOCK_STREAM;
+    int reuse = 0;
+    int flags = 0;
+    int err;
+    
+    while (*options != '\0') {
+        switch (*options++) {
+        case '4':
+            family = AF_INET;
+            
+            break;
+        case '6':
+            family = AF_INET6;
+            
+            break;
+        case '#':
+            type = SOCK_DGRAM;
+            
+            break;
+        case 'b':
+            if (*options == '*') {
+                backlog = va_arg(va, int);
+            } else {
+                backlog = atoi(options);
+                do options++; while (isdigit(*options));
+            }
+            
+            break;
+        
+        case 'C':
+            saddr = va_arg(va, struct sockaddr *);
+            saddrlen = va_arg(va, socklen_t);
+            
+            break;
+        
+        case 'c':
+        
+            break;
+       
+        
+        case 'l':
+            should_listen = true;
+                
+            break;
+            
+        case 'n':
+            flags |= O_NONBLOCK;
+                
+            break;
+                
+        
+        case 'r':
+            reuse = 1;
+            
+            break;
+        
+        case 'u':
+            family = AF_UNIX;
+            
+            break;
+
+        default:
+            errno= EINVAL;
+            return -1;
+        }
+    }
+    
+    int fd = socket(family, type, 0);
     if (fd < 0)
         return fd;
-
-    if (bind(fd, addr, addrlen) < 0)
+    
+    if (reuse && setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0)
         goto error;
-
-    if (listen(fd, getbacklog()) < 0)
+    
+    if (flags && socketflags(fd, flags) < 0)
         goto error;
+    
+    if (should_listen) {
+        if (backlog < 1)
+            backlog = DEFAULT_BACKLOG;
+            
+        if (listen(fd, backlog) < 0)
+            goto error;
+    } else {
+        if (saddr && bind(fd, saddr, saddrlen) < 0)
+            goto error;
 
-    if (socketflags(fd, flags) < 0)
-        goto error;
+        if (connect(fd, addr, addrlen) < 0 && errno != EINPROGRESS)
+            goto error;
+            
+    }
 
+    va_end(va);
     return fd;
 
 error:
-    err = errno;  // don't clobber errno with close()
+    err = errno;
     close(fd);
     errno = err;
-
+    va_end(va);
     return -1;
 }
 
-int connectsocket(int family, const struct sockaddr *addr, socklen_t addrlen, int flags)
-{
-    int err;
-
-    int fd = socket(family, SOCK_STREAM, 0);
-    if (fd < 0)
-        return fd;
-
-    if (connect(fd, addr, addrlen) < 0)
-        goto error;
-
-    if (socketflags(fd, flags) < 0)
-        goto error;
-
-    return fd;
-
-error:
-    err = errno;  // don't clobber errno with close()
-    close(fd);
-    errno = err;
-
-    return -1;
-}
 

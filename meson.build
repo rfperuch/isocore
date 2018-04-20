@@ -13,7 +13,8 @@ add_project_arguments(cc.get_supported_arguments([
     '-D_LARGEFILE_SOURCE',
     '-D_LARGEFILE64_SOURCE',
     '-D_FILE_OFFSET_BITS=64',
-    '-D_POSIX_C_SOURCE=200809L'
+    '-D_POSIX_C_SOURCE=200809L',
+    '-D_DEFAULT_SOURCE'
 ]), language : 'c')
 
 m_dep = cc.find_library('m', required : false)
