@@ -156,44 +156,6 @@ static int checkanytype(bgp_msg_t *msg, int type, int flags)
     return msg->err;
 }
 
-int setbgpreadfd(int fd) {
-    if (curpkt.flags & F_RDWR)
-        bgpclose();
-    
-    unsigned char header[BASE_PACKET_LENGTH];
-    ssize_t n = read(fd, header, sizeof(header));
-    if(n < (ssize_t) sizeof(header))
-        return BGP_ERRNO;
-    
-    if(memcmp(header, bgp_marker, sizeof(bgp_marker) != 0)
-        return BGP_EBADHDR;
-
-    uint16_t length;
-    memcpy(&length, header + LENGTH_OFFSET, sizeof(length));
-    length = frombig16(length);
-    if(length < sizeof(header))
-        return BGP_EBADHDR;
-    
-    curpkt.buf = curpkt.fastbuf;
-    if (unlikely(length > sizeof(curpkt.fastbuf)))
-        curpkt.buf = malloc(n);
-
-    if (unlikely(!curpkt.buf))
-        return BGP_ENOMEM;
-
-    curpkt.flags = F_RD;
-    curpkt.err = BGP_ENOERR;
-    curpkt.pktlen = length;
-    curpkt.bufsiz = length;
-    memcpy(curpkt.buf, header, sizeof(header));
-    length -= sizeof(header);
-    n = read(fd, header + sizeof(header), length);
-    if(n != (ssize_t) length)
-        return BGP_ERRNO;
-    
-    return BGP_ENOERR;
-}
-
 int setbgpread(const void *data, size_t n)
 {
     return setbgpread_r(&curmsg, data, n);
