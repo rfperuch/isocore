@@ -22,7 +22,7 @@ bz2_dep = cc.find_library('bz2', required : true)
 zlib_dep = dependency('zlib')
 lz4_dep = cc.find_library('lz4', required : true)
 cunit_dep = dependency('cunit')
-# TODO cbench_dep = dependency('cbench' fallback : [ 'cbench', 'cbench_dep' ])
+cbench_dep = dependency('cbench', fallback : [ 'cbench', 'cbench_dep' ])
 
 incdir = include_directories('include')
 
@@ -60,6 +60,7 @@ isocore_dep = declare_dependency(
 )
 
 testincdir = include_directories('test')
+benchincdir = include_directories('bench')
 
 bgp_test = executable('bgp_test',
     sources : [
@@ -78,13 +79,13 @@ test('bgp', bgp_test)
 core_test = executable('core_test',
     sources : [
         'test/core/main.c',
-        'test/core/hexdump.c',
-        'test/core/io.c',
-        'test/core/log.c',
-        'test/core/netaddr.c',
-        'test/core/patriciatrie.c',
-        'test/core/strutil.c',
-        'test/core/uint128.c'
+        'test/core/hexdump_t.c',
+        'test/core/io_t.c',
+        'test/core/log_t.c',
+        'test/core/netaddr_t.c',
+        'test/core/patriciatrie_t.c',
+        'test/core/strutil_t.c',
+        'test/core/uint128_t.c'
     ],
     dependencies : [
         isocore_dep,
@@ -93,4 +94,17 @@ core_test = executable('core_test',
     include_directories : testincdir
 )
 test('core', core_test)
+
+core_bench = executable('core_bench',
+    sources : [
+        'bench/core/main.c',
+        'bench/core/strutil_b.c'
+    ],
+    dependencies : [
+        isocore_dep,
+        cbench_dep
+    ],
+    include_directories : benchincdir
+)
+benchmark('core', core_bench)
 
