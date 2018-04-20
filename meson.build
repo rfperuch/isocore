@@ -1,7 +1,7 @@
 project('isocore', 'c', version : '2.31',
                         meson_version : '>=0.45.0',
                         license : 'BSD3',
-                        default_options : [ 'c_std=c11' ])
+                        default_options : [ 'c_std=c11', 'b_ndebug=if-release' ])
 
 cc = meson.get_compiler('c')
 add_project_arguments(cc.get_supported_arguments([
