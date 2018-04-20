@@ -32,7 +32,6 @@
 #include <isolario/strutil.h>
 #include <stdlib.h>
 
-
 void bsplit(cbench_state_t *state)
 {
     while (cbench_next_iteration(state)) {
