@@ -34,7 +34,7 @@
  * @brief Isolario BGP packet reading and writing routines.
  *
  * @note This file is guaranteed to include POSIX \a arpa/inet.h, standard
- *       \a stdint.h and isolario-specific \a bgpprefix.h and \a io.h.
+ *       \a stdint.h and isolario-specific \a netaddr.h and \a io.h.
  *       It may include additional standard and isolario-specific
  *       headers to provide its functionality.
  */
