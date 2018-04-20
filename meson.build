@@ -108,3 +108,17 @@ core_bench = executable('core_bench',
 )
 benchmark('core', core_bench)
 
+
+bgp_bench = executable('bgp_bench',
+    sources : [
+        'bench/bgp/main.c',
+        'bench/bgp/update_b.c'
+    ],
+    dependencies : [
+        isocore_dep,
+        cbench_dep
+    ],
+    include_directories : benchincdir
+)
+benchmark('bgp', bgp_bench)
+
