@@ -28,7 +28,6 @@ incdir = include_directories('include')
 
 isocore = library('isocore',
     sources : [
-        'src/backtrace.c',
         'src/bgp.c',
         'src/bgpattribs.c',
         'src/bgpparams.c',
