@@ -640,8 +640,6 @@ static ssize_t io_lz4fillbuf(io_lz4state *lz)
     }
     if (LZ4F_isError(dn)) {
         lz->err = dn;
-        printf("LZ4 dimmmmmerda: %s\n", LZ4F_getErrorName(dn));
-        abort();
         return -1;
     }
 
