@@ -36,7 +36,7 @@
 #include <isolario/io.h>
 #include <isolario/util.h>
 #include <limits.h>
-#include <lz4.h>
+#include <lz4frame.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -532,10 +532,278 @@ fail:
 
 // LZ4 =========================================================================
 
-io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode)
+typedef struct {
+    int fd;
+    LZ4F_errorCode_t err;
+    unsigned char *bufptr;
+    unsigned char *cbufptr;
+    int bufavail;
+    int bufsiz;
+    size_t cbufsiz;
+    size_t cbufavail;
+    LZ4F_compressionContext_t cctx;
+    LZ4F_decompressionContext_t dctx;
+    unsigned char buf[];
+} io_lz4state;
+
+#ifndef LZ4F_HEADER_SIZE_MAX
+#define LZ4F_HEADER_SIZE_MAX 19
+#endif
+
+#define LZ4_END_FRAME_SIZE_MAX 8
+
+static LZ4F_errorCode_t io_lz4begincompress(io_lz4state *lz, const LZ4F_preferences_t *prefs)
 {
-    (void) fd; (void) bufsiz; (void) mode;
-    // FIXME
-    return NULL;
+    lz->err = LZ4F_createCompressionContext(&lz->cctx, LZ4F_VERSION);
+    if (LZ4F_isError(lz->err))
+        return lz->err;
+
+    size_t hdrsiz = LZ4F_compressBegin(lz->cctx, lz->cbufptr, lz->cbufsiz, prefs);
+    if (LZ4F_isError(hdrsiz)) {
+        LZ4F_freeCompressionContext(lz->cctx);
+        return hdrsiz;
+    }
+
+    lz->cbufptr   += hdrsiz;
+    lz->cbufavail -= hdrsiz;
+    return lz->err;
+}
+
+static ssize_t io_lz4flush(io_lz4state *lz)
+{
+    ssize_t size = lz->cbufsiz - lz->cbufavail;
+    ssize_t n = write(lz->fd, &lz->buf[lz->bufsiz], size);
+    if (unlikely(n != size)) {
+        lz->err = errno;
+        return -1;
+    }
+
+    lz->cbufptr   = &lz->buf[lz->bufsiz];
+    lz->cbufavail = lz->cbufsiz;
+    return n;
+}
+
+static ssize_t io_lz4docompress(io_lz4state *lz)
+{
+    size_t cn = LZ4F_compressUpdate(lz->cctx, lz->cbufptr, lz->cbufsiz - lz->cbufavail, lz->buf, lz->bufsiz - lz->bufavail, NULL);
+    if (unlikely(LZ4F_isError(cn))) {
+        lz->err = 1;
+        return -1;
+    }
+
+    lz->cbufavail -= cn;
+    lz->cbufptr   += cn;
+
+    ssize_t n = io_lz4flush(lz);
+    if (likely(n >= 0)) {
+        lz->bufptr   = lz->buf;
+        lz->bufavail = lz->bufsiz;
+    }
+    return n;
+}
+
+static ssize_t io_lz4fillbuf(io_lz4state *lz)
+{
+    // LZ4 wants unconsumed data to be available to subsequent calls
+    memmove(&lz->buf[lz->bufsiz], lz->cbufptr, lz->cbufavail);
+
+    lz->cbufptr   = &lz->buf[lz->bufsiz] + lz->cbufavail;
+    lz->cbufavail = lz->cbufsiz - lz->cbufavail;
+
+    ssize_t n = read(lz->fd, lz->cbufptr, lz->cbufavail);
+    if (unlikely(n < 0)) {
+        lz->err = errno;
+        return -1;
+    }
+    if (n == 0)
+        return 0; // FIXME EOF
+
+    lz->cbufptr   += n;
+    lz->cbufavail -= n;
+
+    size_t dstsize = lz->bufsiz;
+    size_t srcsize = lz->cbufsiz - lz->cbufavail;
+    size_t dn = LZ4F_decompress(lz->dctx, lz->buf, &dstsize, &lz->buf[lz->bufsiz], &srcsize, NULL);
+    if (dn == 0) {
+        // FIXME sucks
+        LZ4F_frameInfo_t frame;
+
+        const unsigned char *src = &lz->buf[lz->bufsiz];
+        dn = LZ4F_getFrameInfo(lz->dctx, &frame, src, &srcsize);
+        if (!LZ4F_isError(dn)) {
+            src     += srcsize;
+            srcsize  = (lz->cbufsiz - lz->cbufavail) - srcsize;
+            dstsize  = lz->bufsiz;
+
+            dn = LZ4F_decompress(lz->dctx, lz->buf, &dstsize, src, &srcsize, NULL);
+        }
+    }
+    if (LZ4F_isError(dn)) {
+        lz->err = dn;
+        printf("LZ4 dimmmmmerda: %s\n", LZ4F_getErrorName(dn));
+        abort();
+        return -1;
+    }
+
+    lz->cbufptr   += srcsize;
+    lz->cbufavail -= srcsize;
+
+    lz->bufptr   = lz->buf;
+    lz->bufavail = dstsize;
+    return n;
+}
+
+static size_t io_lz4read(io_rw_t *io, void *dst, size_t n)
+{
+    io_lz4state *lz = io_getstate(io);
+
+    unsigned char *ptr = dst;
+    size_t avail       = n;
+    while (avail > 0) {
+        size_t size = min(avail, (size_t) lz->bufavail);
+        memcpy(ptr, lz->bufptr, size);
+
+        ptr   += size;
+        avail -= size;
+
+        lz->bufptr   += size;
+        lz->bufavail -= size;
+
+        if (lz->bufavail == 0 && io_lz4fillbuf(lz) <= 0)
+            break;
+    }
+
+    return n - avail;
+}
+
+static size_t io_lz4write(io_rw_t *io, const void *src, size_t n)
+{
+    io_lz4state *lz = io_getstate(io);
+
+    const unsigned char *ptr = src;
+    size_t avail             = n;
+    while (avail > 0) {
+        size_t size = min(avail, (size_t) lz->bufavail);
+        memcpy(lz->bufptr, ptr, size);
+
+        lz->bufptr   += size;
+        lz->bufavail -= size;
+        if (io_lz4docompress(lz) < 0)
+            break;
+
+        ptr   += size;
+        avail -= size;
+    }
+    return n - avail;
+}
+
+static void io_lz4finish(io_lz4state *lz)
+{
+    if (lz->cbufavail < LZ4_END_FRAME_SIZE_MAX)
+        io_lz4flush(lz);  // TODO error check
+
+    size_t n = LZ4F_compressEnd(lz->cctx, lz->cbufptr, lz->cbufavail, NULL);
+    if (LZ4F_isError(n)) {
+        lz->err = 1;
+        return;
+    }
+
+    // lz->cbufptr   += n; useless
+    lz->cbufavail -= n;
+    io_lz4flush(lz);
+}
+
+static int io_lz4error(io_rw_t *io)
+{
+    io_lz4state *lz = io_getstate(io);
+    return lz->err;
+}
+
+static int io_lz4close(io_rw_t *io)
+{
+    io_lz4state *lz = io_getstate(io);
+    LZ4F_freeDecompressionContext(lz->dctx);
+    if (lz->cctx) {
+        io_lz4finish(lz);
+        LZ4F_freeCompressionContext(lz->cctx);
+    }
+    if (close(lz->fd) != 0)
+        lz->err = BZ_IO_ERROR;
+
+    int err = lz->err;
+    free(io);
+    return err;
+}
+
+io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode, ...)
+{
+    if (bufsiz == 0)
+        bufsiz = BUFSIZ;
+    if (unlikely(bufsiz > INT_MAX))
+        bufsiz = INT_MAX;
+    if (unlikely(bufsiz < LZ4F_HEADER_SIZE_MAX))
+        bufsiz = LZ4F_HEADER_SIZE_MAX;  // at least enough room for LZ4 header
+
+    LZ4F_preferences_t prefs = {
+        .frameInfo = { .frameType = LZ4F_frame }
+    };
+
+    va_list va;
+    va_start(va, mode);
+
+    int rw = *mode++;
+    switch (rw) {
+    case 'r':
+        break;
+    case 'w':
+        if (*mode == '*')
+            prefs.compressionLevel = va_arg(va, int);
+        else
+            prefs.compressionLevel = atoi(mode);
+
+        break;
+    default:
+        va_end(va);
+        errno = EINVAL;
+        return NULL;
+    }
+    va_end(va);
+
+    size_t bound = LZ4F_compressBound(bufsiz, &prefs);
+
+    io_lz4state *lz;
+    io_rw_t *io = malloc(io_getsize(sizeof(*lz) + bufsiz + bound));
+    if (unlikely(!io))
+        return NULL;
+
+    io->read  = io_lz4read;
+    io->write = io_lz4write;
+    io->error = io_lz4error;
+    io->close = io_lz4close;
+
+    lz            = io_getstate(io);
+    lz->fd        = fd;
+    lz->err       = 0;
+    lz->bufptr    = lz->buf;
+    lz->cbufptr   = &lz->buf[bufsiz];
+    lz->bufavail  = bufsiz;
+    lz->bufsiz    = bufsiz;
+    lz->cbufsiz   = bound;
+    lz->cbufavail = bound;
+    lz->cctx      = NULL;
+    lz->dctx      = NULL;
+    if (rw == 'r') {
+        lz->bufavail = 0; // FIXME
+        lz->cbufavail = 0; // FIXME
+        lz->err = LZ4F_createDecompressionContext(&lz->dctx, LZ4F_VERSION);
+    } else {
+        lz->err = io_lz4begincompress(lz, &prefs);
+    }
+    if (LZ4F_isError(lz->err)) {
+        free(io);
+        return NULL;
+    }
+
+    return io;
 }
 
