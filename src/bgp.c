@@ -704,12 +704,12 @@ void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn)
     return ptr;
 }
 
-bgpprefix_t *nextwithdrawn(void)
+netaddr_t *nextwithdrawn(void)
 {
     return nextwithdrawn_r(&curmsg);
 }
 
-bgpprefix_t *nextwithdrawn_r(bgp_msg_t *msg)
+netaddr_t *nextwithdrawn_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_UPDATE, F_RD | F_WITHDRN))
         return NULL;
@@ -717,30 +717,29 @@ bgpprefix_t *nextwithdrawn_r(bgp_msg_t *msg)
     // FIXME (also bound check the prefix)
     memset(&msg->pfxbuf, 0, sizeof(msg->pfxbuf));
 
-    const bgpprefix_t *src = (const bgpprefix_t *) msg->uptr;
-    size_t len = bgpprefixlen(src);
-    memcpy(&msg->pfxbuf, src, len);
+    size_t bitlen = *msg->uptr++;
+    makenaddr(&msg->pfxbuf, msg->uptr, bitlen);
     // END
 
-    msg->uptr += len;
+    msg->uptr += naddrsize(bitlen);
     return &msg->pfxbuf;
 }
 
-int putwithdrawn(const bgpprefix_t *p)
+int putwithdrawn(const netaddr_t *p)
 {
     return putwithdrawn_r(&curmsg, p);
 }
 
-int putwithdrawn_r(bgp_msg_t *msg, const bgpprefix_t *p)
+int putwithdrawn_r(bgp_msg_t *msg, const netaddr_t *p)
 {
     if (checktype(msg, BGP_UPDATE, F_WR | F_WITHDRN))
         return msg->err;
 
-    size_t len = bgpprefixlen(p);
+    size_t len = naddrsize(p->bitlen);
     if (unlikely(!bgpensure(msg, len)))
         return msg->err;
 
-    memcpy(msg->uptr, p, len);
+    memcpy(msg->uptr, p->bytes, len);
     msg->uptr   += len;
     msg->pktlen += len;
     return BGP_ENOERR;
@@ -909,12 +908,12 @@ int startnlri_r(bgp_msg_t *msg)
     return BGP_ENOERR;
 }
 
-bgpprefix_t *nextnlri(void)
+netaddr_t *nextnlri(void)
 {
     return nextnlri_r(&curmsg);
 }
 
-bgpprefix_t *nextnlri_r(bgp_msg_t *msg)
+netaddr_t *nextnlri_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_UPDATE, F_RD | F_NLRI))
         return NULL;
@@ -922,30 +921,29 @@ bgpprefix_t *nextnlri_r(bgp_msg_t *msg)
     // FIXME (also bound check the prefix)
     memset(&msg->pfxbuf, 0, sizeof(msg->pfxbuf));
 
-    const bgpprefix_t *src = (const bgpprefix_t *) msg->uptr;
-    size_t len = bgpprefixlen(src);
-    memcpy(&msg->pfxbuf, src, len);
+    size_t bitlen = *msg->uptr++;
+    makenaddr(&msg->pfxbuf, msg->uptr, bitlen);
     // END
 
-    msg->uptr += len;
+    msg->uptr += naddrsize(bitlen);
     return &msg->pfxbuf;
 }
 
-int putnlri(const bgpprefix_t *p)
+int putnlri(const netaddr_t *p)
 {
     return putnlri_r(&curmsg, p);
 }
 
-int putnlri_r(bgp_msg_t *msg, const bgpprefix_t *p)
+int putnlri_r(bgp_msg_t *msg, const netaddr_t *p)
 {
     if (checktype(msg, BGP_UPDATE, F_WR | F_NLRI))
         return msg->err;
 
-    size_t len = bgpprefixlen(p);
+    size_t len = naddrsize(p->bitlen);
     if (!bgpensure(msg, len))
         return msg->err;
 
-    memcpy(msg->uptr, p, len);
+    memcpy(msg->uptr, p->bytes, len);
     msg->uptr   += len;
     msg->pktlen += len;
     return BGP_ENOERR;

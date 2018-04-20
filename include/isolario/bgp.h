@@ -43,7 +43,7 @@
 #define ISOLARIO_BGP_H_
 
 #include <arpa/inet.h>
-#include <isolario/bgpprefix.h>
+#include <isolario/netaddr.h>
 #include <isolario/io.h>  // also includes stddef.h
 #include <stdint.h>
 
@@ -101,28 +101,28 @@ enum {
 inline const char *bgpstrerror(int err)
 {
     switch (err) {
-        case BGP_ENOERR:
-            return "Success";
-        case BGP_EIO:
-            return "I/O error";
-        case BGP_EINVOP:
-            return "Invalid operation";
-        case BGP_ENOMEM:
-            return "Out of memory";
-        case BGP_EBADHDR:
-            return "Bad BGP header";
-        case BGP_EBADTYPE:
-            return "Bad BGP packet type";
-        case BGP_EBADPARAMLEN:
-            return "Oversized or inconsistent BGP open parameters length";
-        case BGP_EBADWDRWNLEN:
-            return "Oversized or inconsistent BGP update Withdrawn length";
-        case BGP_EBADATTRSLEN:
-            return "Oversized or inconsistent BGP update Path Attributes length";
-        case BGP_EBADNLRILEN:
-            return "Oversized or inconsistent BGP update NLRI length";
-        default:
-            return "Unknown error";
+    case BGP_ENOERR:
+        return "Success";
+    case BGP_EIO:
+        return "I/O error";
+    case BGP_EINVOP:
+        return "Invalid operation";
+    case BGP_ENOMEM:
+        return "Out of memory";
+    case BGP_EBADHDR:
+        return "Bad BGP header";
+    case BGP_EBADTYPE:
+        return "Bad BGP packet type";
+    case BGP_EBADPARAMLEN:
+        return "Oversized or inconsistent BGP open parameters length";
+    case BGP_EBADWDRWNLEN:
+        return "Oversized or inconsistent BGP update Withdrawn length";
+    case BGP_EBADATTRSLEN:
+        return "Oversized or inconsistent BGP update Path Attributes length";
+    case BGP_EBADNLRILEN:
+        return "Oversized or inconsistent BGP update NLRI length";
+    default:
+        return "Unknown error";
     }
 }
 
@@ -216,9 +216,9 @@ void *getwithdrawn(size_t *pn);
 
 int startwithdrawn(void);
 
-bgpprefix_t *nextwithdrawn(void);
+netaddr_t *nextwithdrawn(void);
 
-int putwithdrawn(const bgpprefix_t *p);
+int putwithdrawn(const netaddr_t *p);
 
 int endwithdrawn(void);
 
@@ -240,9 +240,9 @@ void *getnlri(size_t *pn);
 
 int startnlri(void);
 
-int putnlri(const bgpprefix_t *p);
+int putnlri(const netaddr_t *p);
 
-bgpprefix_t *nextnlri(void);
+netaddr_t *nextnlri(void);
 
 int endnlri(void);
 
@@ -300,7 +300,7 @@ typedef struct {
 
             /// @private following fields are mutually exclusive, so reuse storage
             union {
-                bgpprefix_t pfxbuf;              ///< @private Convenience field for reading.
+                netaddr_t pfxbuf;                ///< @private Convenience field for reading.
                 unsigned char fastpresbuf[128];  ///< @private Fast preserved buffer, to avoid malloc()s.
             };
         };
@@ -349,9 +349,9 @@ void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn);
 
 int startwithdrawn_r(bgp_msg_t *msg);
 
-bgpprefix_t *nextwithdrawn_r(bgp_msg_t *msg);
+netaddr_t *nextwithdrawn_r(bgp_msg_t *msg);
 
-int putwithdrawn_r(bgp_msg_t *msg, const bgpprefix_t *p);
+int putwithdrawn_r(bgp_msg_t *msg, const netaddr_t *p);
 
 int endwithdrawn_r(bgp_msg_t *msg);
 
@@ -373,9 +373,9 @@ void *getnlri_r(bgp_msg_t *msg, size_t *pn);
 
 int startnlri_r(bgp_msg_t *msg);
 
-int putnlri_r(bgp_msg_t *msg, const bgpprefix_t *p);
+int putnlri_r(bgp_msg_t *msg, const netaddr_t *p);
 
-bgpprefix_t *nextnlri_r(bgp_msg_t *msg);
+netaddr_t *nextnlri_r(bgp_msg_t *msg);
 
 int endnlri_r(bgp_msg_t *msg);
 
