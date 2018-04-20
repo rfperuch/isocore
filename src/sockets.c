@@ -87,7 +87,7 @@ int setmd5key(int sd, char *md5key)
     return setsockopt(sd, IPPROTO_TCP, TCP_MD5SIG, &md5sig, sizeof(md5sig));
 
 #else
-    #error Please provide an implementation for that OS!
+#error Please provide an implementation for that OS!
 #endif
 }
 
