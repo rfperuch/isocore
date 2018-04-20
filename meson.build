@@ -22,7 +22,7 @@ bz2_dep = cc.find_library('bz2', required : true)
 zlib_dep = dependency('zlib')
 lz4_dep = cc.find_library('lz4', required : true)
 cunit_dep = dependency('cunit')
-cbench_dep = dependency('cbench', fallback : [ 'cbench', 'cbench_dep' ])
+cbench_dep = dependency('cbench', static : true, fallback : [ 'cbench', 'cbench_dep' ])
 
 incdir = include_directories('include')
 
