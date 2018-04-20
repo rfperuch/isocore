@@ -35,5 +35,9 @@
 
 void bsplit(cbench_state_t *state);
 
+void bjoinv(cbench_state_t *state);
+
+void bjoin(cbench_state_t *state);
+
 #endif
 

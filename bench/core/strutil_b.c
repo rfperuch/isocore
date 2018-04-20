@@ -30,12 +30,41 @@
 
 #include <cbench/cbench.h>
 #include <isolario/strutil.h>
+#include <isolario/util.h>
 #include <stdlib.h>
 
 void bsplit(cbench_state_t *state)
 {
     while (cbench_next_iteration(state)) {
         char **str = splitstr(" ", "a b c d e f g h i j k l m n o p q r s t u v w x y z", NULL);
+        free(str);
+    }
+}
+
+void bjoinv(cbench_state_t *state)
+{
+    while (cbench_next_iteration(state)) {
+        char *str = joinstrv(" ", "a", "b", "c", "d", "e", "f",
+                                  "g", "h", "i", "j", "k", "l",
+                                  "m", "n", "o", "p", "q", "r",
+                                  "s", "t", "u", "v", "w", "x",
+                                  "y", "z", (char *) NULL);
+        free(str);
+    }
+}
+
+void bjoin(cbench_state_t *state)
+{
+    static char *strarr[] = {
+        "a", "b", "c", "d", "e", "f",
+        "g", "h", "i", "j", "k", "l",
+        "m", "n", "o", "p", "q", "r",
+        "s", "t", "u", "v", "w", "x",
+        "y", "z"
+    };
+
+    while (cbench_next_iteration(state)) {
+        char *str = joinstr(" ", strarr, nelems(strarr));
         free(str);
     }
 }

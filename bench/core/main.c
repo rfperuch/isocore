@@ -44,9 +44,14 @@ int main(void)
     if (!suite)
         goto out;
 
-    if (!cbench_add_bench(suite, "split", bsplit, NULL))
+    if (!cbench_add_bench(suite, "splitstr", bsplit, NULL))
         goto out;
 
+    if (!cbench_add_bench(suite, "joinstrv", bjoinv, NULL))
+        goto out;
+
+    if (!cbench_add_bench(suite, "joinstr", bjoin, NULL))
+        goto out;
 
     cbench_run();
 
