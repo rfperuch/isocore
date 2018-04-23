@@ -159,7 +159,7 @@ inline uint64_t byteswap64(uint64_t q)
 
 /** @def ENDIAN_BIG
  *
- * @brief A macro constant identifying the big endian byte ordering,
+ * @brief A macro constant identifying the big endian byte ordering.
  *
  * @see #ENDIAN_NATIVE
  */
