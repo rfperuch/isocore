@@ -34,29 +34,29 @@ extern uint16_t byteswap16(uint16_t w);
 
 extern uint32_t byteswap32(uint32_t l);
 
-extern uint64_t byteswap64(uint64_t ll);
+extern uint64_t byteswap64(uint64_t q);
 
 extern uint16_t fromlittle16(uint16_t w);
 
 extern uint32_t fromlittle32(uint32_t l);
 
-extern uint64_t fromlittle64(uint64_t ll);
+extern uint64_t fromlittle64(uint64_t q);
 
 extern uint16_t tolittle16(uint16_t w);
 
 extern uint32_t tolittle32(uint32_t l);
 
-extern uint64_t tolittle64(uint64_t ll);
+extern uint64_t tolittle64(uint64_t q);
 
 extern uint16_t frombig16(uint16_t w);
 
 extern uint32_t frombig32(uint32_t l);
 
-extern uint64_t frombig64(uint64_t ll);
+extern uint64_t frombig64(uint64_t q);
 
 extern uint16_t tobig16(uint16_t w);
 
 extern uint32_t tobig32(uint32_t l);
 
-extern uint64_t tobig64(uint64_t ll);
+extern uint64_t tobig64(uint64_t q);
 
