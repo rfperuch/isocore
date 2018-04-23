@@ -321,7 +321,7 @@ typedef enum {
 #if ENDIAN_NATIVE == ENDIAN_BIG
 
 #define BIG16_C(C) (C)
-#define LITTLE16_INIT(C) ((((C) & 0xff) << 8) | (((C) & 0xff00) >> 8))
+#define LITTLE16_C(C) ((((C) & 0xff) << 8) | (((C) & 0xff00) >> 8))
 
 #define BIG32_C(C) (C)
 #define LITTLE32_C(C) (                                      \
