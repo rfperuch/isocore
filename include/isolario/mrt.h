@@ -64,119 +64,15 @@ enum {
 };
 
 enum {
-    MRT_ENOERR = 0,      ///< No error (success) guaranteed to be zero.
-    BGP_ERRNO,           ///< System error (see errno).
-    MRT_EINVOP,          ///< Invalid operation (e.g. write while reading packet).
-    MRT_ENOMEM,          ///< Out of memory.
-    MRT_EBADHDR,         ///< Bad BGP packet header.
-    MRT_BGPERROR,        ///< Error in BGP wrapped
-    MRT_LENGTHOVERFLOW,  ///< Overflow of MRT length + wrapped data length
-    BGP_EBADTYPE,        ///< Unrecognized BGP packet type.
-    BGP_EBADPARAMLEN,    ///< Open message has invalid parameters field length.
-    BGP_EBADWDRWNLEN,    ///< Update message has invalid Withdrawn field length.
-    BGP_EBADATTRSLEN,    ///< Update message has invalid Path Attributes field length.
-    BGP_EBADNLRILEN      ///< Update message has invalid NLRI field length.
+    MRT_BGP_NULL = 0,
+    MRT_BGP_UPDATE = 1,
+    MRT_BGP_PREF_UPDATE = 2,
+    MRT_BGP_STATE_CHANGE = 3,
+    MRT_BGP_SYNC = 4,
+    MRT_BGP_OPEN = 5,
+    MRT_BGP_NOTIFY = 6,
+    MRT_BGP_KEEPALIVE = 7
 };
-
-/**
-* @brief table_dumpv2 sub types
-* 
-* [iana table dumpv2 Subtype Codes](https://www.iana.org/assignments/mrt/mrt.xhtml#table-dump-v2-subtype-codes)
-* further detail at https://tools.ietf.org/html/rfc6396#section-4.3
-* 
-*/
-enum class table_dumpv2_sub_type_t : std::uint_least16_t {
-    PEER_INDEX_TABLE = 1,             /// RFC6396
-    RIB_IPV4_UNICAST = 2,             /// RFC6396
-    RIB_IPV4_MULTICAST = 3,           /// RFC6396
-    RIB_IPV6_UNICAST = 4,             /// RFC6396
-    RIB_IPV6_MULTICAST = 5,           /// RFC6396
-    RIB_GENERIC = 6,                  /// RFC6396
-    GEO_PEER_TABLE = 7,               /// RFC6397
-    RIB_IPV4_UNICAST_ADDPATH = 8,     /// RFC8050
-    RIB_IPV4_MULTICAST_ADDPATH = 9,   /// RFC8050
-    RIB_IPV6_UNICAST_ADDPATH = 10,    /// RFC8050
-    RIB_IPV6_MULTICAST_ADDPATH = 11,  /// RFC8050
-    RIB_GENERIC_ADDPATH = 12          /// RFC8050
-};
-
-inline const char *bgpstrerror(int err)
-{
-    switch (err) {
-        case MRT_ENOERR:
-            return "Success";
-        case MRT_ERRNO:
-            return "System error";
-        case MRT_EINVOP:
-            return "Invalid operation";
-        case MRT_ENOMEM:
-            return "Out of memory";
-        case MRT_EBADHDR:
-            return "Bad BGP header";
-        case MRT_EBADTYPE:
-            return "Bad MRT packet type";
-        case MRT_BGPERROR:
-            return "Error in wrapped BGP";
-        case MRT_LENGTHOVERFLOW:
-            return "Error in wrapped BGP";
-            /*
-    case BGP_EBADPARAMLEN:
-        return "Oversized or inconsistent BGP open parameters length";
-    case BGP_EBADWDRWNLEN:
-        return "Oversized or inconsistent BGP update Withdrawn length";
-    case BGP_EBADATTRSLEN:
-        return "Oversized or inconsistent BGP update Path Attributes length";
-    case BGP_EBADNLRILEN:
-        return "Oversized or inconsistent BGP update NLRI length";
-        */
-        default:
-            return "Unknown error";
-    }
-}
-
-/**
- * @brief Read MRT from Unix file descriptor.
- */
-int setmrtreadfd(int fd);
-
-/**
- * @brief Initialize a MRT packet for read from pre-existing data.
- */
-int setmrtread(const void *data, size_t n);
-
-/**
- * @brief Initialize a MRT packet for writing a new packet white type \a type and subtype \a subtype from scratch.
- */
-int setmrtwrite(int type, int subtype);
-
-/**
- * @brief Get MRT packet type from header.
- */
-int getmrttype(void);
-
-/**
- * @brief Get MRT packet subtype from header.
- */
-int getmrtsubtype(void);
-
-/**
- * @brief Get MRT packet length from header.
- */
-size_t getmrtlen(void);
-
-int mrterror(void);
-
-void *mrtfinish(size_t *pn);
-
-int mrtclose(void);
-
-typedef struct {
-    uint32_t timestamp;
-    uint16_t type;
-    uint16_t subtype;
-    uint32_t length;
-    uint32_t microseconds;
-} mrt_header_t;
 
 /**
 *   @brief BGP4_mp types
@@ -212,5 +108,123 @@ enum {
     BGP4MP_OPENCONFIRM = 5,
     BGP4MP_ESTABLISHED = 6
 };
+
+
+/**
+ *
+ * further detail at https://tools.ietf.org/html/rfc6396#section-4.3
+ */
+/// [iana table dumpv2 Subtype Codes](https://www.iana.org/assignments/mrt/mrt.xhtml#table-dump-v2-subtype-codes)
+enum 
+{
+    MRT_TABLE_DUMPV2_PEER_INDEX_TABLE = 1,               /// RFC6396
+    MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST = 2,               /// RFC6396
+    MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST = 3,             /// RFC6396
+    MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST = 4,               /// RFC6396
+    MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST = 5,             /// RFC6396
+    MRT_TABLE_DUMPV2_RIB_GENERIC = 6,                    /// RFC6396
+    MRT_TABLE_DUMPV2_GEO_PEER_TABLE = 7,                 /// RFC6397
+    MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST_ADDPATH = 8,       /// RFC8050
+    MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST_ADDPATH = 9,     /// RFC8050
+    MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST_ADDPATH = 10,      /// RFC8050
+    MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST_ADDPATH = 11,    /// RFC8050
+    MRT_TABLE_DUMPV2_RIB_GENERIC_ADDPATH = 12            /// RFC8050
+};
+
+
+
+enum {
+    //recoverable errors
+    MRT_NOTPI = -1,
+    //unrecoverable
+    MRT_ENOERR = 0,      ///< No error (success) guaranteed to be zero.
+    MRT_EIO,             ///< Input/Output error during packet read.
+    MRT_EINVOP,          ///< Invalid operation (e.g. write while reading packet).
+    MRT_ENOMEM,          ///< Out of memory.
+    MRT_EBADHDR,         ///< Bad MRT packet header.
+    MRT_EBADTYPE,        ///< Bad MRT packet type.
+};
+
+inline const char *mrtstrerror(int err)
+{
+    switch (err) {
+        case MRT_NOTPI:
+            return "Not Peer Index message";
+        case MRT_ENOERR:
+            return "Success";
+        case MRT_EIO:
+            return "I/O error";
+        case MRT_EINVOP:
+            return "Invalid operation";
+        case MRT_ENOMEM:
+            return "Out of memory";
+        case MRT_EBADHDR:
+            return "Bad MRT header";
+        case MRT_EBADTYPE:
+            return "Bad MRT packet type";
+        default:
+            return "Unknown error";
+    }
+}
+
+int mrterror(void);
+
+int mrtpierror(void);
+
+int setmrtread(const void *data, size_t n);
+
+int setmrtpiread(const void *data, size_t n);
+
+int mrtclose(void);
+
+int mrtpiclose(void);
+
+
+//header section
+size_t getmrtlen(void);
+
+size_t getmrtpilen(void);
+
+int getmrttype(void);
+
+int getmrtpitype(void);
+
+int getmrtsubtype(void);
+
+int getmrtpisubtype(void);
+
+enum {
+    MRTBUFSIZ = 4096,
+    MRTGROWSTEP = 256,
+    MRTTMPBUFSIZ = 128  ///< Small additional buffer to use for out-of-order fields
+};
+
+/// @brief Packet reader/writer global status structure.
+typedef struct {
+    uint16_t flags;      ///< General status flags.
+    uint16_t pktlen;     ///< MRT packet length 
+    uint16_t bufsiz;     ///< Packet buffer capacity
+    int16_t err;         ///< Last error code.
+    unsigned char *buf;  ///< Packet buffer base.
+    unsigned char fastbuf[MRTBUFSIZ];  ///< Fast buffer to avoid malloc()s.
+} mrt_msg_t;
+
+int mrterror_r(mrt_msg_t *msg);
+
+int mrtclose_r(mrt_msg_t *msg);
+
+int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n);
+
+int setmrtreadfd_r(mrt_msg_t *msg, int fd);
+
+int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io);
+
+//header
+size_t getmrtlength_r(mrt_msg_t *msg);
+
+int getmrttype_r(mrt_msg_t *msg);
+
+int getmrtsubtype_r(mrt_msg_t *msg);
+
 
 #endif

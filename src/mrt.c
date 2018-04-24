@@ -29,6 +29,15 @@
 //
 
 #include <isolario/mrt.h>
+#include <isolario/branch.h>
+#include <isolario/endian.h>
+//#include <isolario/util.h>
+//#include <limits.h>
+//#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+//#include <unistd.h>
+
 
 /// @brief Offsets for various MRT packet fields
 enum {
@@ -78,23 +87,13 @@ enum {
 
     // BGP4MP_MESSAGE
     BGP4MP_MESSAGE_PEER_AS_NUMBER = BASE_PACKET_LENGTH,
-    BGP4MP_MESSAGE_LOCAL_AS_NUMBER = BGP4MP_STATE_CHANGE_PEER_AS_NUMBER + sizeof(uint16_t),
-    BGP4MP_MESSAGE_INTERFACE_INDEX = BGP4MP_STATE_CHANGE_LOCAL_AS_NUMBER + sizeof(uint16_t),
-    BGP4MP_MESSAGE_ADDRESS_FAMILY = BGP4MP_STATE_CHANGE_INTERFACE_INDEX + sizeof(uint16_t),
-    BGP4MP_MESSAGE_PEER_IP = BGP4MP_STATE_CHANGE_ADDRESS_FAMILY + sizeof(uint16_t),
+    BGP4MP_MESSAGE_LOCAL_AS_NUMBER = BGP4MP_MESSAGE_PEER_AS_NUMBER + sizeof(uint16_t),
+    BGP4MP_MESSAGE_INTERFACE_INDEX = BGP4MP_MESSAGE_LOCAL_AS_NUMBER + sizeof(uint16_t),
+    BGP4MP_MESSAGE_ADDRESS_FAMILY = BGP4MP_MESSAGE_INTERFACE_INDEX + sizeof(uint16_t),
+    BGP4MP_MESSAGE_PEER_IP = BGP4MP_MESSAGE_ADDRESS_FAMILY + sizeof(uint16_t),
     // min size calculated with static member compreding old/new state but ip length 0 (no sense pkg)
-    BGP4MP_STATE_CHANGE_MIN_LENGTH = BGP4MP_STATE_CHANGE_PEER_IP + sizeof(uint8_t) * 2 + sizeof(uint16_t) * 2,
-    -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-       |         Peer AS Number        |        Local AS Number        |
-       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-       |        Interface Index        |        Address Family         |
-       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-       |                      Peer IP Address (variable)               |
-       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-       |                      Local IP Address (variable)              |
-       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-       |                    BGP Message... (variable)
-       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    BGP4MP_MESSAGE_CHANGE_MIN_LENGTH = BGP4MP_STATE_CHANGE_PEER_IP + sizeof(uint8_t) * 2 + sizeof(uint16_t) * 2,
+    
     // BGP4MP_MESSAGE_AS4
     // BGP4MP_STATE_CHANGE_AS4
     // BGP4MP_MESSAGE_LOCAL
@@ -115,17 +114,17 @@ enum {
     EXTENDED = 1,
 };
 
-static const int mrtisext(int type)
+static int mrtisext(int type)
 {
     switch (type) {
-        case BGP:          // Deprecated
-        case BGP4PLUS:     // Deprecated
-        case BGP4PLUS_01:  // Deprecated
-        case TABLE_DUMP:
-        case TABLE_DUMPV2:
-        case BGP4MP:
+        case MRT_BGP:          // Deprecated
+        case MRT_BGP4PLUS:     // Deprecated
+        case MRT_BGP4PLUS_01:  // Deprecated
+        case MRT_TABLE_DUMP:
+        case MRT_TABLE_DUMPV2:
+        case MRT_BGP4MP:
             return NOTEXTENDED;
-        case BGP4MP_ET:
+        case MRT_BGP4MP_ET:
             return EXTENDED;
         default:
             /*
@@ -147,17 +146,17 @@ static const int mrtisext(int type)
     }
 }
 
-static const int mrtbgp(int type, int subtype)
+static int mrtbgp(int type)
 {
     switch (type) {
-        case BGP:          // Deprecated
-        case BGP4PLUS:     // Deprecated
-        case BGP4PLUS_01:  // Deprecated
-        case BGP4MP:
-        case BGP4MP_ET:
-            return 1;
-        default:
+        case MRT_BGP:          // Deprecated
+        case MRT_BGP4PLUS:     // Deprecated
+        case MRT_BGP4PLUS_01:  // Deprecated
+        case MRT_BGP4MP:
+        case MRT_BGP4MP_ET:
             return 0;
+        default:
+            return 1;
     }
 }
 
@@ -165,7 +164,7 @@ static const int mrtbgp(int type, int subtype)
  *  @{
  */
 
-static const int mrtheaderlen(int type)
+static int mrtheaderlen(int type)
 {
     switch (mrtisext(type)) {
         case EXTENDED:
@@ -178,29 +177,7 @@ static const int mrtheaderlen(int type)
     }
 }
 
-/**
- *  @brief read from raw data (MUST point to valid MRT header or NULL if internal buff) if wrapbgp
- */
-static const int mrtwrapbgp(void *data)
-{
-    unsigned char *b = data;
-    uint16_t type;
-    memset(&type, b[TYPE_OFFSET], sizeof(type));
-    type = frombig32(type);
-    uint16_t subtype;
-    memset(&subtype, b[SUBTYPE_OFFSET], sizeof(subtype));
-    subtype = frombig32(subtype);
 
-    return mrtbgp(, SUBTYPE_OFFSET[SUBTYPE_OFFSET]);
-}
-
-/** @}*/
-
-enum {
-    MRTBUFSIZ = 4096 + BASE_PACKET_EXTENDED_LENGTH,  ///< Working buffer for packet writing, should be large
-    MRTGROWSTEP = 256,
-    MRTTMPBUFSIZ = 128  ///< Small additional buffer to use for out-of-order fields
-};
 
 /// @brief Packet reader/writer status flags
 enum {
@@ -211,299 +188,214 @@ enum {
     BGP_WRAPPER = 1 << 2   ///< Commodity flag to not check types
 };
 
-/// @brief check if in read or write state
-static int mrtrw(void)
-{
-    return curpkt.flags & F_RDWR;
-}
-
-/// @brief check if in read state
-static int mrtrd(void)
-{
-    return curpkt.flags & F_RD;
-}
-
-/// @brief check if in write state
-static int mrtwr(void)
-{
-    return curpkt.flags & F_WRs;
-}
-
-static int mrtbgp(void)
-{
-    return curpkt.flags & BGP_WRAPPER;
-}
-
-/// @brief Packet reader/writer global status structure.
-typedef struct {
-    uint16_t flags;      ///< General status flags.
-    uint16_t pktlen;     ///< MRT packet length (BGP wrapped data it's stored in another buffer).
-    uint16_t bufsiz;     ///< Packet buffer capacity
-    int16_t err;         ///< Last error code.
-    unsigned char *buf;  ///< Packet buffer base.
-    /*
-    union {              ///< Relevant status for each BGP packet.
-        struct {
-            // BGP open specific fields
-
-            unsigned char *pptr;   ///< Current parameter pointer
-            unsigned char *params; ///< Pointer to parameters base
-
-            bgp_open_t opbuf;      ///< Convenience field for reading
-        };
-        struct {
-            // BGP update specific fields
-
-            unsigned char *presbuf;  ///< Preserved fields buffer, for out of order field writing.
-            unsigned char *uptr;     ///< Current update message field pointer.
-
-            // following fields are mutually exclusive, so reuse storage
-            union {
-                bgpprefix_t pfxbuf;                      ///< Convenience field for reading.
-                unsigned char fastpresbuf[BGPTMPBUFSIZ]; ///< Fast preserved buffer, to avoid malloc()s.
-            };
-        };
-    };
-    */
-    unsigned char fastbuf[MRTBUFSIZ];  ///< Fast buffer to avoid malloc()s.
-} packet_state_t;
 
 /// @brief Packet reader/writer instance
-static _Thread_local packet_state_t curpkt, curpipkt;
-
-/// @brief Close any pending field from packet.
-static int endpending(void)
-{
-    /*
-    // small optimization for common case
-    if (likely((curpkt.flags & (F_PM | F_WITHDRN | F_PATTR | F_NLRI)) == 0))
-        return curpkt.err;
-
-    // only one flag can be set
-    if (curpkt.flags & F_PM)
-        return endbgpcaps();
-    if (curpkt.flags & F_WITHDRN)
-        return endwithdrawn();
-    if (curpkt.flags & F_PATTR)
-        return endbgpattribs();
-    if (curpkt.flags & F_NLRI)
-        return endnlri();
-    */
-}
+static _Thread_local mrt_msg_t curmsg, curpimsg;
 
 // extern version of inline function
 extern const char *mrtstrerror(int err);
 
-size_t getmrtlen(void)
+int mrterror(void)
 {
-    uint32_t length;
-    memcpy(&length, curpkt.fastbuf + LENGTH_OFFSET, sizeof(length));
-    return frombig32(length);
+    return mrterror_r(&curmsg);
+}
+
+int mrtpierror(void)
+{
+    return mrterror_r(&curpimsg);
+}
+
+int mrterror_r(mrt_msg_t *msg)
+{
+    return msg->err;
+}
+
+static int checkpi(int err)
+{
+    if(err != MRT_ENOERR)
+        return err;
+    
+    int type = getmrtpitype();
+    type = frombig16(type);
+    if(type != MRT_TABLE_DUMPV2)
+        return MRT_NOTPI;
+
+    int subtype = getmrtpisubtype();
+    subtype = frombig16(subtype);
+    if(subtype != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE)
+        return MRT_NOTPI;
+
+    return MRT_ENOERR;
+}
+
+//read section
+int setmrtread(const void *data, size_t n)
+{
+    return setmrtread_r(&curmsg, data, n);
+}
+
+int setmrtpiread(const void *data, size_t n)
+{
+    return checkpi(setmrtread_r(&curpimsg, data, n));
+}
+
+int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
+{
+    assert(n <= UINT32_MAX);
+    if (msg->flags & F_RDWR)
+        mrtclose_r(msg);
+
+    msg->buf = msg->fastbuf;
+    if (unlikely(n > sizeof(msg->fastbuf)))
+        msg->buf = malloc(n);
+    
+    if (unlikely(!msg->buf))
+        return MRT_ENOMEM;
+
+    msg->flags = F_RD;
+    msg->err = MRT_ENOERR;
+    msg->pktlen = n;
+    msg->bufsiz = n;
+
+    memcpy(msg->buf, data, n);
+    return MRT_ENOERR;
 }
 
 int setmrtreadfd(int fd)
 {
-    mrtclose();
+    return setmrtreadfd_r(&curmsg, fd);
+}
 
-    ssize_t n = read(fd, curpkt.fastbuf, BASE_PACKET_LENGTH);  //read the minimun header
-    if (n < (ssize_t)BASE_PACKET_LENGTH)
-        return MRT_ERRNO;
+int setmrtpireadfd(int fd)
+{
+    return checkpi(setmrtreadfd_r(&curpimsg, fd));
+}
 
-    size_t length = getmrtlen();
-    if (length < BASE_PACKET_LENGTH)
+int setmrtreadfd_r(mrt_msg_t *msg, int fd)
+{
+    io_rw_t io = IO_FD_INIT(fd);
+    return setmrtreadfrom_r(msg, &io);
+}
+
+int setmrtreadfrom(io_rw_t *io)
+{
+    return setmrtreadfrom_r(&curmsg, io);
+}
+
+int setmrtpireadfrom(io_rw_t *io)
+{
+    return checkpi(setmrtreadfrom_r(&curmsg, io));
+}
+
+int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
+{
+    if (msg->flags & F_RDWR)
+        mrtclose_r(msg);
+
+    unsigned char hdr[BASE_PACKET_LENGTH];
+    if (io->read(io, hdr, sizeof(hdr)) != sizeof(hdr))
+        return MRT_EIO;
+
+    uint32_t len;
+    memcpy(&len, &hdr[LENGTH_OFFSET], sizeof(len));
+    len = frombig32(len);
+
+    if (len < BASE_PACKET_LENGTH)
         return MRT_EBADHDR;
 
-    packet_state_t *pkt;
-    if (getmrttype() == TABLE_DUMPV2 && getmrtsubtype() == PEER_INDEX_TABLE) {
-        pkt = &curpipkt;
-        mrtpiclose();
-        curpkt.flags = F_DEFAULT;
-        curpkt.err = MRT_ENOERR;
-        memcpy(curpipkt.buf, curpkt.fastbuf, BASE_PACKET_LENGTH);
-    } else
-        pkt = &curpkt;
+    msg->buf = msg->fastbuf;
+    if (unlikely(len > sizeof(msg->fastbuf)))
+        msg->buf = malloc(len);
+    if (unlikely(!msg->buf))
+        return MRT_ENOMEM;
 
-    if (unlikely(length > sizeof(pkt->fastbuf))) {
-        pkt->buf = malloc(n);
-        if (unlikely(!pkt->buf))
-            return MRT_ENOMEM;
+    memcpy(msg->buf, hdr, sizeof(hdr));
+    size_t n = len - sizeof(hdr);
+    if (io->read(io, &msg->buf[sizeof(hdr)], n) != n)
+        return MRT_EIO;
 
-        memcpy(pkt->buf, curpkt.fastbuf, BASE_PACKET_LENGTH);
-    } else
-        pkt->buf = pkt->buffastbuf;
-
-    pkt->flags = F_RD;
-    pkt->err = MRT_ENOERR;
-    pkt->pktlen = length;
-    pkt->bufsiz = length;
-    length -= BASE_PACKET_LENGTH;
-    n = read(fd, pkt->buf + BASE_PACKET_LENGTH, length);
-    if (n != (ssize_t)length)
-        return MRT_ERRNO;
-
+    msg->flags = F_RD;
+    msg->err = MRT_ENOERR;
+    msg->pktlen = len;
+    msg->bufsiz = len;
     return MRT_ENOERR;
 }
 
-int setmrtread(const void *data, size_t n)
-{
-    assert(n <= UINT32_MAX);
-    packet_state_t *pkt;
-    if (data == curpkt.buf)
-        curpkt.flags = F_RD;
-    else if (data == curpipkt.buf)
-        curpipkt.flags = F_RD;
-    else
+//header section 
 
-        || data == curpipkt.buf)
-    if (data == curpkt.buf)
-        {
-            int err = mrtclose();
-            if (unlikely(err != MRT_ENOERR))
-                return err;
-
-            if (likely(n > sizeof(curpkt.fastbuf)))
-                curpkt.buf = curpkt.fastbuf;
-            else {
-                curpkt.buf = malloc(n);
-                if (unlikely(!curpkt.buf))
-                    return MRT_ENOMEM;
-            }
-
-            curpkt.flags = F_RD;
-            curpkt.err = MRT_ENOERR;
-            curpkt.pktlen = n;
-            curpkt.bufsiz = n;
-
-            memcpy(curpkt.buf, data, n);
-        }
-    return MRT_ENOERR;
+size_t getmrtlen(void) {
+    return getmrtlength_r(&curmsg);
 }
 
-int setmrtwrite(int type, int subtype)
+size_t getmrtpilen(void) {
+    return getmrtlength_r(&curmsg);
+}
+
+size_t getmrtlength_r(mrt_msg_t *msg)
 {
-    if (mrtrw())
-        mrtclose();
+    if (unlikely((msg->flags & F_RD) == 0))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return 0;
 
-    if (unlikely(type < 0 || subtype < 0))
-        return MRT_EBADTYPE;
-
-    size_t min_len = mrtheaderlen(type);
-    if (unlikely(min_len == 0))
-        return MRT_EBADTYPE;
-
-    curpkt.flags = F_WR;
-    curpkt.pktlen = min_len;
-    curpkt.bufsiz = sizeof(curpkt.fastbuf);
-    curpkt.err = MRT_ENOERR;
-    curpkt.buf = curpkt.fastbuf;
-
-    memset(curpkt.buf, 0, min_len);
-    curpkt.buf[TYPE_OFFSET] = type;
-    return MRT_ENOERR;
+    uint32_t len;
+    memcpy(&len, msg->buf, sizeof(len));
+    return frombig32(len);
 }
 
 int getmrttype(void)
 {
-    if (!mrtrw())
-        return MRT_EINVOP;
+    return getmrttype_r(&curmsg);
+}
 
-    return curpkt.buf[TYPE_OFFSET];
+int getmrtpitype(void)
+{
+    return getmrttype_r(&curpimsg);
+}
+
+int getmrttype_r(mrt_msg_t *msg)
+{
+    if (unlikely((msg->flags & F_RDWR) == 0))
+        return MRT_EBADTYPE;
+
+    return msg->buf[TYPE_OFFSET];
 }
 
 int getmrtsubtype(void)
 {
-    if (!mrtrw())
-        return MRT_EINVOP;
-
-    return curpkt.buf[SUBTYPE_OFFSET];
+    return getmrtsubtype_r(&curmsg);
 }
 
-int mrterror(void)
+int getmrtpisubtype(void)
 {
-    return curpkt.err;
+    return getmrtsubtype_r(&curpimsg);
 }
 
-void endpending(void){/* TODO */};
-
-void *mrtfinish(size_t *pn)
+int getmrtsubtype_r(mrt_msg_t *msg)
 {
-    if (!mrtrw())
-        curpkt.err = MRT_EINVOP;
-    if (unlikely(curpkt.err))
-        return NULL;
+    if (unlikely((msg->flags & F_RDWR) == 0))
+        return MRT_EBADTYPE;
 
-    endpending();
-
-    if (mrtbgp()) {
-        size_t bgplen;
-        void *bgppkt = bgpfinish(&bgplen);
-        if (unlikely(!bgppkt)) {
-            curpkt.err = MRT_BGPERROR;
-            return NULL;
-        }
-
-        size_t mrtlen = bgplen + curpkt.pktlen;
-        if (unlikely(mrtlen > UINT32_MAX)) {
-            curpkt.err = MRT_LENGTHOVERFLOW;
-            return NULL;
-        }
-
-        if (curpkt.bufsiz < mrtlen) {
-            unsigned char *m;
-            if (likely(curpkt.buf == curpkt.fastbuf)) {
-                if (unlikely(!(m = malloc(mrtlen))))
-                    goto memerror;
-
-                memcpy(m, curpkt.buf, curpkt.pktlen);
-            } else if (unlikely(!(m = realloc(curpkt.buf, mrtlen))))
-                goto memerror;
-
-            curpkt.buf = m;
-        }
-
-        memcpy(curpkt.buf + curpkt.pktlen, bgppkt, bgplen);
-        if (likely(pn))
-            *pn = mrtlen;
-
-        uint32_t len = tobig32(mrtlen);
-        memcpy(&curpkt.buf[LENGTH_OFFSET], &len, sizeof(len));
-    } else {
-        size_t n = curpkt.pktlen;
-        uint32_t len = tobig32(n);
-        memcpy(&curpkt.buf[LENGTH_OFFSET], &len, sizeof(len));
-        if (likely(pn))
-            *pn = n;
-    }
-
-    return curpkt.buf;
-memerror:
-    curpkt.err = MRT_ENOMEM;
-    return NULL;
+    return msg->buf[SUBTYPE_OFFSET];
 }
 
-/// @brief free the current pkt
-int mrtclose(void)
+int mrtclose(void) {
+    return mrtclose_r(&curmsg);
+}
+
+int mrtpiclose(void) {
+    return mrtclose_r(&curpimsg);
+}
+
+int mrtclose_r(mrt_msg_t *msg)
 {
     int err = MRT_ENOERR;
-    if (mrtrw()) {
-        err = mrterror();
-        if (unlikely(curpkt.buf != curpkt.fastbuf)) {
-            free(curpkt.buf);
-            curpkt.buf = curpkt.fastbuf;
-        }
-    }
-    return err;
-}
+    if (msg->flags & F_RDWR) {
+        err = mrterror_r(msg);
+        if (unlikely(msg->buf != msg->fastbuf))
+            free(msg->buf);
 
-int mrtpiclose(void)
-{
-    int err = MRT_ENOERR;
-    if (mrtpirw()) {
-        err = mrtpierror();
-        if (unlikely(curpipkt.buf != curpipkt.fastbuf)) {
-            free(curpipkt.buf);
-            curpipkt.buf = curpipkt.fastbuf;
-        }
+        memset(msg, 0, sizeof(*msg));  // XXX: optimize
     }
     return err;
 }
