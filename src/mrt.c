@@ -100,13 +100,6 @@ enum {
     // BGP4MP_MESSAGE_AS4_LOCAL
 };
 
-/**
- *  @brief check if mrt is extedended by is type \a type
- * 
- *  \retval 0  if mrt is extended
- *  \retval 1  if mrt is not extended
- *  \retval -1 if invalid type or not handled type is given
- */
 
 enum {
     UNHANDLED = -1,
@@ -177,16 +170,51 @@ static int mrtheaderlen(int type)
     }
 }
 
-
-
 /// @brief Packet reader/writer status flags
 enum {
     F_DEFAULT = 0,
     F_RD = 1 << 0,         ///< Packet opened for read
     F_WR = 1 << 1,         ///< Packet opened for write
     F_RDWR = F_RD | F_WR,  ///< Shorthand for \a (F_RD | F_WR).
-    BGP_WRAPPER = 1 << 2   ///< Commodity flag to not check types
+    F_EXT = 1 << 2,        ///< Commodity flag to not check type 1 Extended 0 not Extended
+    F_AST = 1 << 3,        ///< Commodity flag to not check subtype 1 AS32 0 AS16
+    
 };
+
+static int mrtisas32(int type, int subtype) 
+{
+    switch (type){
+        case MRT_BGP:          // Deprecated
+        case MRT_BGP4PLUS:     // Deprecated
+        case MRT_BGP4PLUS_01:  // Deprecated
+        case MRT_TABLE_DUMP:
+            return 0;   // AS16
+        case MRT_TABLE_DUMPV2:
+        default:    //depreacted or unhandled
+            return 0;   // AS32 or AS16 but not in the header
+
+        case MRT_BGP4MP:
+        case MRT_BGP4MP_ET:
+            switch(subtype) {
+                case BGP4MP_STATE_CHANGE:
+                case BGP4MP_MESSAGE:
+                case BGP4MP_ENTRY:
+                case BGP4MP_SNAPSHOT:
+                case BGP4MP_MESSAGE_LOCAL:
+                case BGP4MP_MESSAGE_ADDPATH:
+                case BGP4MP_MESSAGE_LOCAL_ADDPATH:
+                    return 0; // AS16
+                case BGP4MP_MESSAGE_AS4:
+                case BGP4MP_STATE_CHANGE_AS4:
+                case BGP4MP_MESSAGE_AS4_LOCAL:
+                case BGP4MP_MESSAGE_AS4_ADDPATH:
+                case BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH:
+                    return F_AST; // AS32
+                default:
+                    return -1;   // shuld not appen!
+            }
+    }
+}
 
 
 /// @brief Packet reader/writer instance
@@ -256,8 +284,14 @@ int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
     msg->err = MRT_ENOERR;
     msg->pktlen = n;
     msg->bufsiz = n;
-
     memcpy(msg->buf, data, n);
+    int type = getmrttype_r(msg), subtype = getmrtsubtype_r(msg);
+    msg->flags |= (mrtisext(type) == EXTENDED)?F_EXT:0;
+    type = mrtisas32(type, subtype);
+    if(unlikely(type == -1))
+        return MRT_EBADTYPE;    
+    msg->flags |= type;
+
     return MRT_ENOERR;
 }
 
@@ -315,6 +349,13 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
         return MRT_EIO;
 
     msg->flags = F_RD;
+    int type = getmrttype_r(msg), subtype = getmrtsubtype_r(msg);
+    msg->flags |= (mrtisext(type) == EXTENDED)?F_EXT:0;
+    type = mrtisas32(type, subtype);
+    if(unlikely(type == -1))
+        return MRT_EBADTYPE;
+
+    msg->flags |= type;
     msg->err = MRT_ENOERR;
     msg->pktlen = len;
     msg->bufsiz = len;
@@ -322,13 +363,40 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
 }
 
 //header section 
+struct timespec getmrttimestamp(void) {
+    return getmrttimestamp_r(&curmsg);
+}
+
+struct timespec getmrtpitimestamp(void) {
+    return getmrttimestamp_r(&curmsg);
+}
+
+struct timespec getmrttimestamp_r(mrt_msg_t *msg)
+{
+    if (unlikely((msg->flags & F_RD) == 0))
+        msg->err = MRT_EINVOP;
+
+    struct timespec tm = {0 , 0};
+    if (unlikely(msg->err))
+        return tm;
+
+    uint32_t time;
+    memcpy(&time, msg->buf, sizeof(time));
+    tm.tv_sec = frombig32(time);
+    if((msg->flags & F_EXT) == 0) {
+        memcpy(&time, msg->buf + MICROSECOND_TIMESTAMP_OFFSET, sizeof(time));
+        tm.tv_nsec = frombig32(time) * 1000;
+    }
+
+    return tm;
+}
 
 size_t getmrtlen(void) {
     return getmrtlength_r(&curmsg);
 }
 
 size_t getmrtpilen(void) {
-    return getmrtlength_r(&curmsg);
+    return getmrtlength_r(&curpimsg);
 }
 
 size_t getmrtlength_r(mrt_msg_t *msg)

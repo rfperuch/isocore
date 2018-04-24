@@ -39,6 +39,8 @@
 #ifndef ISOLARIO_MRT_H_
 #define ISOLARIO_MRT_H_
 #include <isolario/bgp.h>
+#include <time.h>
+
 
 enum {
     MRT_NULL = 0,          // Deprecated
@@ -179,8 +181,11 @@ int mrtclose(void);
 
 int mrtpiclose(void);
 
-
 //header section
+struct timespec getmrttimestamp(void);
+
+struct timespec getmrtpitimestamp(void);
+
 size_t getmrtlen(void);
 
 size_t getmrtpilen(void);
@@ -202,9 +207,9 @@ enum {
 /// @brief Packet reader/writer global status structure.
 typedef struct {
     uint16_t flags;      ///< General status flags.
-    uint16_t pktlen;     ///< MRT packet length 
-    uint16_t bufsiz;     ///< Packet buffer capacity
     int16_t err;         ///< Last error code.
+    uint32_t pktlen;     ///< MRT packet length 
+    uint32_t bufsiz;     ///< Packet buffer capacity
     unsigned char *buf;  ///< Packet buffer base.
     unsigned char fastbuf[MRTBUFSIZ];  ///< Fast buffer to avoid malloc()s.
 } mrt_msg_t;
@@ -220,6 +225,9 @@ int setmrtreadfd_r(mrt_msg_t *msg, int fd);
 int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io);
 
 //header
+
+struct timespec getmrttimestamp_r(mrt_msg_t *msg);
+
 size_t getmrtlength_r(mrt_msg_t *msg);
 
 int getmrttype_r(mrt_msg_t *msg);
