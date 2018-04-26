@@ -812,15 +812,52 @@ int startbgpattribs_r(bgp_msg_t *msg)
     return BGP_ENOERR;
 }
 
-void *nextbgpattrib(size_t *pn)
+int putbgpattrib(const bgpattr_t *attr)
 {
-    return nextbgpattrib_r(&curmsg, pn);
+    return putbgpattrib_r(&curmsg, attr);
 }
 
-void *nextbgpattrib_r(bgp_msg_t *msg, size_t *pn)
+int putbgpattrib_r(bgp_msg_t *msg, const bgpattr_t *attr)
 {
-    (void) msg; (void) pn;
-    return NULL; // TODO
+    if (checktype(msg, BGP_UPDATE, F_WR | F_PATTR))
+        return msg->err;
+
+    size_t hdrsize = ATTR_HEADER_SIZE;
+    size_t len = attr->len;
+    if (attr->flags & ATTR_EXTENDED_LENGTH) {
+        hdrsize = ATTR_EXTENDED_HEADER_SIZE;
+        len <<= 8;
+        len |= attr->exlen[1];  // len was exlen[0]
+    }
+
+    memcpy(msg->uptr, attr, hdrsize + len);
+    msg->uptr += hdrsize + len;
+    return BGP_ENOERR;
+}
+
+bgpattr_t *nextbgpattrib(void)
+{
+    return nextbgpattrib_r(&curmsg);
+}
+
+bgpattr_t *nextbgpattrib_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_UPDATE, F_WR | F_PATTR))
+        return msg->err;
+
+    bgpattr_t *attr = (bgpattr_t *) msg->uptr;
+
+    size_t hdrsize = ATTR_HEADER_SIZE;
+    size_t len = attr->len;
+    if (attr->flags & ATTR_EXTENDED_LENGTH) {
+        hdrsize = ATTR_EXTENDED_HEADER_SIZE;
+        len <<= 8;
+        len |= attr->exlen[1];  // len was exlen[0]
+    }
+
+    msg->uptr += hdrsize;
+    msg->uptr += len;
+    return attr;
 }
 
 int endbgpattribs(void)
