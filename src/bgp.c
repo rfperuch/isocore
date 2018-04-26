@@ -165,7 +165,7 @@ int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n)
 {
     assert(n <= UINT16_MAX);
     if (msg->flags & F_RDWR)
-        bgpclose();
+        bgpclose_r(msg);
 
     msg->buf = msg->fastbuf;
     if (unlikely(n > sizeof(msg->fastbuf)))
@@ -202,7 +202,7 @@ int setbgpreadfrom(io_rw_t *io)
 int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io)
 {
     if (msg->flags & F_RDWR)
-        bgpclose();
+        bgpclose_r(msg);
 
     unsigned char hdr[BASE_PACKET_LENGTH];
     if (io->read(io, hdr, sizeof(hdr)) != sizeof(hdr))
@@ -243,7 +243,7 @@ int setbgpwrite(int type)
 int setbgpwrite_r(bgp_msg_t *msg, int type)
 {
     if (msg->flags & F_RDWR)
-        bgpclose();
+        bgpclose_r(msg);
 
     if (unlikely(type < 0 || (unsigned int) type >= nelems(bgp_minlengths)))
         return BGP_EBADTYPE;
