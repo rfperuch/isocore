@@ -198,7 +198,6 @@ enum {
 typedef struct mrt_msg_s {
     uint16_t flags;      ///< General status flags.
     int16_t err;         ///< Last error code.
-    uint32_t pktlen;     ///< MRT packet length 
     uint32_t bufsiz;     ///< Packet buffer capacity
 
     mrt_header_t hdr;

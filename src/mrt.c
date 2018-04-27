@@ -244,24 +244,24 @@ static int ismrtpi(const mrt_header_t *hdr)
 
 // read section
 
-static void readmrtheader(mrt_msg_t *msg)
+static void readmrtheader(mrt_msg_t *msg, const unsigned char *hdr)
 {
     uint32_t time;
-    memcpy(&time, &msg->buf[TIMESTAMP_OFFSET], sizeof(time));
+    memcpy(&time, &hdr[TIMESTAMP_OFFSET], sizeof(time));
     msg->hdr.stamp.tv_sec = frombig32(time);
     msg->hdr.stamp.tv_nsec = 0;
 
     uint16_t type, subtype;
-    memcpy(&type, &msg->buf[TYPE_OFFSET], sizeof(type));
-    memcpy(&subtype, &msg->buf[SUBTYPE_OFFSET], sizeof(subtype));
+    memcpy(&type, &hdr[TYPE_OFFSET], sizeof(type));
+    memcpy(&subtype, &hdr[SUBTYPE_OFFSET], sizeof(subtype));
     msg->hdr.type = frombig16(type);
     msg->hdr.subtype = frombig16(subtype);
 
     uint32_t len;
-    memcpy(&len, msg->buf, sizeof(len));
+    memcpy(&len, hdr, sizeof(len));
     msg->hdr.len = frombig32(len);
     if (msg->flags & F_EXT) {
-        memcpy(&time, &msg->buf[MICROSECOND_TIMESTAMP_OFFSET], sizeof(time));
+        memcpy(&time, &hdr[MICROSECOND_TIMESTAMP_OFFSET], sizeof(time));
         msg->hdr.stamp.tv_nsec = frombig32(time) * 1000ull;
     }
 }
@@ -286,11 +286,10 @@ int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
 
     msg->flags = F_RD;
     msg->err = MRT_ENOERR;
-    msg->pktlen = n;
     msg->bufsiz = n;
     memcpy(msg->buf, data, n);
 
-    readmrtheader(msg);
+    readmrtheader(msg, msg->buf);
 
     /*
     int type = getmrttype_r(msg), subtype = getmrtsubtype_r(msg);
@@ -329,21 +328,18 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
     if (io->read(io, hdr, sizeof(hdr)) != sizeof(hdr))
         return MRT_EIO;
 
-    uint32_t len;
-    memcpy(&len, &hdr[LENGTH_OFFSET], sizeof(len));
-    len = frombig32(len);
-
-    if (len < BASE_PACKET_LENGTH)
+    readmrtheader(msg, hdr);
+    if (msg->hdr.len < BASE_PACKET_LENGTH)
         return MRT_EBADHDR;
 
     msg->buf = msg->fastbuf;
-    if (unlikely(len > sizeof(msg->fastbuf)))
-        msg->buf = malloc(len);
+    if (unlikely(msg->hdr.len > sizeof(msg->fastbuf)))
+        msg->buf = malloc(msg->hdr.len);
     if (unlikely(!msg->buf))
         return MRT_ENOMEM;
 
     memcpy(msg->buf, hdr, sizeof(hdr));
-    size_t n = len - sizeof(hdr);
+    size_t n = msg->hdr.len - sizeof(hdr);
     if (io->read(io, &msg->buf[sizeof(hdr)], n) != n)
         return MRT_EIO;
 
@@ -357,10 +353,8 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
     msg->flags |= type;
 */
     msg->err = MRT_ENOERR;
-    msg->pktlen = len;
-    msg->bufsiz = len;
+    msg->bufsiz = msg->hdr.len;
 
-    readmrtheader(msg);
     return MRT_ENOERR;
 }
 
