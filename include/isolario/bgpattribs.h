@@ -122,60 +122,24 @@ enum {
 };
 
 enum {
-    ATTR_CODE_OFFSET            = 0,
-    ATTR_FLAGS_OFFSET           = ATTR_CODE_OFFSET + sizeof(uint8_t),
-    ATTR_LENGTH_OFFSET          = ATTR_FLAGS_OFFSET + sizeof(uint8_t),
-    ATTR_EXTENDED_LENGTH_OFFSET = ATTR_LENGTH_OFFSET + sizeof(uint8_t),
-
-    ATTR_HEADER_SIZE          = ATTR_LENGTH_OFFSET + sizeof(uint8_t),
-    ATTR_EXTENDED_HEADER_SIZE = ATTR_EXTENDED_LENGTH_OFFSET +
-                                sizeof(uint8_t),
+    ATTR_HEADER_SIZE          = 3 * sizeof(uint8_t),
+    ATTR_EXTENDED_HEADER_SIZE = 2 * sizeof(uint8_t) + sizeof(uint16_t),
 
     ATTR_LENGTH_MAX          = 0xff,
     ATTR_EXTENDED_LENGTH_MAX = 0xffff,
-    ATTR_SIZE_MAX            = ATTR_HEADER_SIZE + ATTR_LENGTH_MAX,
-    ATTR_EXTENDED_SIZE_MAX   = ATTR_EXTENDED_HEADER_SIZE +
-                               ATTR_EXTENDED_LENGTH_MAX,
 
     /// Origin attribute offset, relative to BGP attribute header size.
-    ORIGIN_LENGTH        = sizeof(uint8_t),
-    ORIGIN_SIZE          = ATTR_HEADER_SIZE + ORIGIN_LENGTH,
-    EXTENDED_ORIGIN_SIZE = ATTR_EXTENDED_HEADER_SIZE + ORIGIN_LENGTH,
+    ORIGIN_LENGTH           = sizeof(uint8_t),
+    ORIGINATOR_ID_LENGTH    = sizeof(uint32_t),
+    ATOMIC_AGGREGATE_LENGTH = 0,
+    NEXT_HOP_LENGTH         = sizeof(struct in_addr),
+    MULTI_EXIT_DISC_LENGTH  = sizeof(uint32_t),
+    LOCAL_PREF_LENGTH       = sizeof(uint32_t),
 
-    ORIGINATOR_ID_LENGTH        = sizeof(uint32_t),
-    ORIGINATOR_ID_SIZE          = ATTR_HEADER_SIZE + ORIGINATOR_ID_LENGTH,
-    EXTENDED_ORIGINATOR_ID_SIZE = ATTR_EXTENDED_HEADER_SIZE +
-                                  ORIGINATOR_ID_LENGTH,
+    AGGREGATOR_AS32_LENGTH = sizeof(uint32_t) + sizeof(struct in_addr),
+    AGGREGATOR_AS16_LENGTH = sizeof(uint16_t) + sizeof(struct in_addr),
 
-    ATOMIC_AGGREGATOR_SIZE          = ATTR_HEADER_SIZE,
-    EXTENDED_ATOMIC_AGGREGATOR_SIZE = ATTR_EXTENDED_HEADER_SIZE,
-
-    NEXT_HOP_LENGTH        = sizeof(struct in_addr),
-    NEXT_HOP_SIZE          = ATTR_HEADER_SIZE + NEXT_HOP_LENGTH,
-    NEXT_HOP_EXTENDED_SIZE = ATTR_EXTENDED_HEADER_SIZE + NEXT_HOP_LENGTH,
-
-    MULTI_EXIT_DISC_LENGTH        = sizeof(uint32_t),
-    MULTI_EXIT_DISC_SIZE          = ATTR_HEADER_SIZE + MULTI_EXIT_DISC_LENGTH,
-    EXTENDED_MULTI_EXIT_DISC_SIZE = ATTR_EXTENDED_HEADER_SIZE +
-                                    MULTI_EXIT_DISC_LENGTH,
-
-    LOCAL_PREF_LENGTH        = sizeof(uint32_t),
-    LOCAL_PREF_SIZE          = ATTR_HEADER_SIZE + LOCAL_PREF_LENGTH,
-    EXTENDED_LOCAL_PREF_SIZE = ATTR_EXTENDED_HEADER_SIZE + LOCAL_PREF_LENGTH,
-
-    AGGREGATOR_AS32_LENGTH        = sizeof(uint32_t) + sizeof(struct in_addr),
-    AGGREGATOR_AS16_LENGTH        = sizeof(uint16_t) + sizeof(struct in_addr),
-    AGGREGATOR_AS32_SIZE          = ATTR_HEADER_SIZE + AGGREGATOR_AS32_LENGTH,
-    AGGREGATOR_AS16_SIZE          = ATTR_HEADER_SIZE + AGGREGATOR_AS16_LENGTH,
-    EXTENDED_AGGREGATOR_AS32_SIZE = ATTR_EXTENDED_HEADER_SIZE +
-                                    AGGREGATOR_AS32_LENGTH,
-    EXTENDED_AGGREGATOR_AS16_SIZE = ATTR_EXTENDED_HEADER_SIZE +
-                                    AGGREGATOR_AS16_LENGTH,
-
-    AS4_AGGREGATOR_LENGTH        = sizeof(uint32_t) + sizeof(struct in_addr),
-    AS4_AGGREGATOR_SIZE          = ATTR_HEADER_SIZE + AS4_AGGREGATOR_LENGTH,
-    EXTENDED_AS4_AGGREGATOR_SIZE = ATTR_EXTENDED_HEADER_SIZE +
-                                   AS4_AGGREGATOR_LENGTH
+    AS4_AGGREGATOR_LENGTH  = sizeof(uint32_t) + sizeof(struct in_addr)
 };
 
 /**
@@ -319,128 +283,67 @@ typedef struct {
 
 static_assert(sizeof(large_community_t) == 12, "Unsupported platform");
 
-/// @brief Get attribute code from an attribute buffer.
-inline int bgpattrcode(const void *attr)
+typedef struct {
+    uint8_t code;
+    uint8_t flags;
+    union {
+        struct {
+            uint8_t len;
+            unsigned char data[1];
+        };
+        struct {
+            uint8_t exlen[2];
+            unsigned char exdata[1];
+        };
+    };
+} bgpattr_t;
+
+inline size_t getattrlenextended(const bgpattr_t *attr)
 {
-    const unsigned char *ptr = attr;
-    return ptr[ATTR_CODE_OFFSET];
+    assert(attr->flags & ATTR_EXTENDED_LENGTH);
+
+    uint16_t len;
+    memcpy(&len, attr->exlen, sizeof(len));
+    return frombig16(len);
 }
 
-/// @brief Get attribute flags from buffer.
-inline int bgpattrflags(const void *attr)
+inline void setattrlenextended(bgpattr_t *attr, size_t len)
 {
-    const unsigned char *ptr = attr;
-    return ptr[ATTR_FLAGS_OFFSET];
+    assert(len <= UINT16_MAX);
+    assert(attr->flags & ATTR_EXTENDED_LENGTH);
+
+    uint16_t n = tobig16(len);
+    memcpy(attr->exlen, &n, sizeof(n));
 }
 
-/**
- * @brief Is BGP attribute extended.
- *
- * Tests if a BGP update attribute has the \a ATTR_EXTENDED_LENGTH
- * flag set.
- *
- * Shorthand for:
- * @code{.c}
- *     (bgpattrflags(buf) & ATTR_EXTENDED_LENGTH) != 0;
- * @endcode
- *
- * @param [in] buf Buffer referencing a BGP update attribute, must *not* be
- *                 \a NULL; behavior is undefined if buffer references any
- *                 information other than a legitimate BGP attribute.
- *
- * @return \a true if \a ATTR_EXTENDED_LENGTH is set in attribute header,
- *         \a false otherwise.
- */
-inline int isbgpattrext(const void *attr)
+inline int getbgporigin(const bgpattr_t *attr)
 {
-    return (bgpattrflags(attr) & ATTR_EXTENDED_LENGTH) != 0;
+    assert(attr->code == ORIGIN_CODE);
+
+    return attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)];
 }
 
-/// @brief Get attribute header size, accounting for the \a ATTR_EXTENDED_LENGTH flag.
-inline size_t bgpattrhdrsize(const void *attr)
+inline bgpattr_t *setbgporigin(bgpattr_t *dst, int origin)
 {
-    return isbgpattrext(attr) ? ATTR_EXTENDED_HEADER_SIZE
-                              : ATTR_HEADER_SIZE;
+    assert(dst->code == ORIGIN_CODE);
+
+    dst->data[!!(dst->flags & ATTR_EXTENDED_LENGTH)] = origin;
+    return dst;
 }
 
-/// @brief Get the attribute length, accounting for the \a ATTR_EXTENDED_LENGTH flag.
-inline size_t bgpattrlen(const void *attr)
-{
-    const unsigned char *ptr = attr;
-    int flags = bgpattrflags(attr);
+enum {
+    DEFAULT_ORIGIN_FLAGS = ATTR_TRANSITIVE,
+    EXTENDED_ORIGIN_FLAGS = DEFAULT_ORIGIN_FLAGS | ATTR_EXTENDED_LENGTH,
 
-    size_t len = ptr[ATTR_LENGTH_OFFSET];
-    if (flags & ATTR_EXTENDED_LENGTH) {
-        len <<= 8;
-        len |= ptr[ATTR_EXTENDED_LENGTH_OFFSET];
-    }
-    return len;
-}
+    DEFAULT_AS_PATH_FLAGS = ATTR_TRANSITIVE,
+    EXTENDED_AS_PATH_FLAGS = DEFAULT_AS_PATH_FLAGS | ATTR_EXTENDED_LENGTH,
 
-inline int getbgporigin(const void *attr)
-{
-    assert(bgpattrcode(attr) == ORIGIN_CODE);
-    assert(bgpattrlen(attr) == ORIGIN_LENGTH);
+    DEFAULT_AS4_PATH_FLAGS = ATTR_TRANSITIVE,
+    EXTENDED_AS4_PATH_FLAGS = DEFAULT_AS4_PATH_FLAGS | ATTR_EXTENDED_LENGTH,
 
-    const unsigned char *ptr = attr;
-    return ptr[bgpattrhdrsize(attr)];
-}
-
-inline void *makebgporigin(void *attr, int flags, int origin)
-{
-    assert(origin != ORIGIN_BAD);
-
-    unsigned char *ptr = attr;
-
-    *ptr++ = ORIGIN_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;  // if you say so...
-
-    *ptr++ = ORIGIN_LENGTH;
-    *ptr   = origin;
-    return attr;
-}
-
-/**
- * @brief Convert a string to a BGP origin attribute.
- *
- * @return The \a buf argument, \a NULL on invalid string.
- */
-void *stobgporigin(void *attr, int flags, const char *s);
-
-inline void *makeaspath(void *attr, int flags)
-{
-    unsigned char *ptr = attr;
-
-    // AS path must be transitive
-    flags |= ATTR_TRANSITIVE;
-    flags &= ATTR_TRANSITIVE | ATTR_EXTENDED_LENGTH;
-
-    *ptr++ = AS_PATH_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;
-
-    *ptr = 0;
-    return attr;
-}
-
-inline void *makeas4path(void *attr, int flags)
-{
-    unsigned char *ptr = attr;
-
-    flags |= ATTR_TRANSITIVE;
-    flags &= ATTR_TRANSITIVE | ATTR_EXTENDED_LENGTH;
-
-    *ptr++ = AS4_PATH_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;
-
-    *ptr++ = 0;
-    return attr;
-}
+    DEFAULT_COMMUNITY_FLAGS = ATTR_TRANSITIVE | ATTR_OPTIONAL,
+    EXTENDED_COMMUNITY_FLAGS = DEFAULT_COMMUNITY_FLAGS | ATTR_EXTENDED_LENGTH
+};
 
 /**
  * @brief Put 16-bits wide AS segment into AS path attribute.
@@ -449,7 +352,7 @@ inline void *makeas4path(void *attr, int flags)
  *
  * @see putasseg32()
  */
-void *putasseg16(void *attr, int type, const uint16_t *seg, size_t count);
+bgpattr_t *putasseg16(bgpattr_t *dst, int type, const uint16_t *seg, size_t count);
 
 /**
  * @brief Put 32-bits wide AS segment into AS path attribute.
@@ -495,156 +398,93 @@ void *putasseg16(void *attr, int type, const uint16_t *seg, size_t count);
  *       any extended attribute, and \a ATTR_SIZE_MAX is always large enough to
  *       hold non-extended attributes.
  */
-void *putasseg32(void *attr, int type, const uint32_t *seg, size_t count);
+bgpattr_t *putasseg32(bgpattr_t *attr, int type, const uint32_t *seg, size_t count);
 
-/// @brief String to 16 bits AS Path attribute, buffer is \a n bytes wide.
-size_t stoaspath16(void *attr, size_t n, int flags, const char *s, char **eptr);
+// TODO size_t stoaspath(bgpattr_t *attr, size_t n, int code, int flags, size_t as_size, const char *s, char **eptr);
 
-/// @brief String to 32 bits AS Path.
-size_t stoaspath32(void *attr, size_t n, int flags, const char *s, char **eptr);
-
-inline uint32_t getoriginatorid(const void *attr)
+inline uint32_t getoriginatorid(const bgpattr_t *attr)
 {
-    assert(bgpattrcode(attr) == ORIGINATOR_ID_CODE);
-    assert(bgpattrlen(attr) == ORIGINATOR_ID_LENGTH);
-
-    const unsigned char *ptr = attr;
-    ptr += bgpattrhdrsize(attr);
+    assert(attr->code == ORIGINATOR_ID_CODE);
 
     uint32_t id;
-    memcpy(&id, ptr, sizeof(id));
+    memcpy(&id, &attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)], sizeof(id));
     return frombig32(id);
 }
 
-inline void *makeoriginatorid(void *attr, int flags, uint32_t id)
+inline bgpattr_t *setoriginatorid(bgpattr_t *attr, uint32_t id)
 {
-    unsigned char *ptr = attr;
-
-    *ptr++ = ORIGINATOR_ID_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;  // as you wish...
-
-    *ptr++ = ORIGINATOR_ID_LENGTH;
+    assert(attr->code == ORIGINATOR_ID_CODE);
 
     id = tobig32(id);
-    memcpy(ptr, &id, sizeof(id));
+    memcpy(&attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)], &id, sizeof(id));
     return attr;
 }
 
-inline void *makeatomicaggregate(void *attr, int flags)
+inline struct in_addr getnexthop(const bgpattr_t *attr)
 {
-    unsigned char *ptr = attr;
-
-    *ptr++ = ATOMIC_AGGREGATE_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;  // you're the boss
-
-    *ptr = 0;
-    return attr;
-}
-
-inline struct in_addr getnexthop(const void *attr)
-{
-    assert(bgpattrcode(attr) == NEXT_HOP_CODE);
-    assert(bgpattrlen(attr) == NEXT_HOP_LENGTH);
-
-    const unsigned char *ptr = attr;
-    ptr += bgpattrhdrsize(attr);
+    assert(attr->code == NEXT_HOP_CODE);
 
     struct in_addr in;
-    memcpy(&in, ptr, sizeof(in));
+    memcpy(&in, &attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)], sizeof(in));
     return in;
 }
 
-inline void *makenexthop(void *attr, int flags, struct in_addr in)
+inline bgpattr_t *setnexthop(bgpattr_t *attr, struct in_addr in)
 {
-    unsigned char *ptr = attr;
+    assert(attr->code == NEXT_HOP_CODE);
 
-    *ptr++ = NEXT_HOP_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;  // really...?
-
-    *ptr++ = NEXT_HOP_LENGTH;
-    memcpy(ptr, &in, sizeof(in));
+    memcpy(&attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)], &in, sizeof(in));
     return attr;
 }
 
-inline uint32_t getmultiexitdisc(const void *attr)
+inline uint32_t getmultiexitdisc(const bgpattr_t *attr)
 {
-    assert(bgpattrcode(attr) == MULTI_EXIT_DISC_CODE);
-    assert(bgpattrlen(attr) == MULTI_EXIT_DISC_LENGTH);
-
-    const unsigned char *ptr = attr;
-    ptr += bgpattrhdrsize(attr);
+    assert(attr->code == MULTI_EXIT_DISC_CODE);
 
     uint32_t disc;
-    memcpy(&disc, ptr, sizeof(disc));
+    memcpy(&disc, &attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)], sizeof(disc));
     return frombig32(disc);
 }
 
-inline void *makemultiexitdisc(void *attr, int flags, uint32_t disc)
+inline bgpattr_t *setmultiexitdisc(bgpattr_t *attr, uint32_t disc)
 {
-    unsigned char *ptr = attr;
-
-    *ptr++ = MULTI_EXIT_DISC_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;  // ok...
-
-    *ptr++ = MULTI_EXIT_DISC_LENGTH;
+    assert(attr->code == MULTI_EXIT_DISC_CODE);
 
     disc = tobig32(disc);
-    memcpy(ptr, &disc, sizeof(disc));
+    memcpy(&attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)], &disc, sizeof(disc));
     return attr;
 }
 
-inline uint32_t getlocalpref(const void *attr)
+inline uint32_t getlocalpref(const bgpattr_t *attr)
 {
-    assert(bgpattrcode(attr) == LOCAL_PREF_CODE);
-    assert(bgpattrlen(attr) == LOCAL_PREF_LENGTH);
-
-    const unsigned char *ptr = attr;
-    ptr += bgpattrhdrsize(attr);
+    assert(attr->code == LOCAL_PREF_CODE);
 
     uint32_t pref;
-    memcpy(&pref, attr, sizeof(pref));
+    memcpy(&pref, &attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)], sizeof(pref));
     return frombig32(pref);
 }
 
-inline void *makelocalpref(void *attr, int flags, uint32_t pref)
+inline bgpattr_t *setlocalpref(bgpattr_t *attr, uint32_t pref)
 {
-    unsigned char *ptr = attr;
-
-    *ptr++ = LOCAL_PREF_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;  // whatever...
-
-    *ptr++ = LOCAL_PREF_LENGTH;
+    assert(attr->code == LOCAL_PREF_CODE);
 
     pref = tobig32(pref);
-    memcpy(ptr, &pref, sizeof(pref));
+    memcpy(&attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)], &pref, sizeof(pref));
     return attr;
 }
 
-inline size_t aggregatorassize(const void *attr)
+inline uint32_t getaggregatoras(const bgpattr_t *attr)
 {
-    assert(bgpattrcode(attr) == AGGREGATOR_CODE);
-    if (bgpattrlen(attr) == AGGREGATOR_AS32_LENGTH)
-        return sizeof(uint32_t);
-    else
-        return sizeof(uint16_t);
-}
+    assert(attr->code == AGGREGATOR_CODE || attr->code == AS4_AGGREGATOR_CODE);
 
-inline uint32_t getaggregatoras(const void *attr)
-{
-    const unsigned char *ptr = attr;
+    const unsigned char *ptr = &attr->len;
+    size_t len = *ptr++;
+    if (attr->flags & ATTR_EXTENDED_LENGTH) {
+        len <<= 8;
+        len |= *ptr++;
+    }
 
-    ptr += bgpattrhdrsize(attr);
-    if (aggregatorassize(attr) == sizeof(uint32_t)) {
+    if (len == AGGREGATOR_AS32_LENGTH) {
         uint32_t as32;
         memcpy(&as32, ptr, sizeof(as32));
         return frombig32(as32);
@@ -655,30 +495,34 @@ inline uint32_t getaggregatoras(const void *attr)
     }
 }
 
-inline struct in_addr getaggregatoraddress(const void *attr)
+inline struct in_addr getaggregatoraddress(const bgpattr_t *attr)
 {
-    const unsigned char *ptr = attr;
-    ptr += bgpattrhdrsize(attr);
-    ptr += aggregatorassize(attr);
+    assert(attr->code == AGGREGATOR_CODE || attr->code == AS4_AGGREGATOR_CODE);
+
+    const unsigned char *ptr = &attr->len;
+    size_t len = *ptr++;
+    if (attr->flags & ATTR_EXTENDED_LENGTH) {
+        len <<= 8;
+        len |= *ptr++;
+    }
 
     struct in_addr in;
+
+    ptr += len;
+    ptr -= sizeof(in);
+
     memcpy(&in, ptr, sizeof(in));
     return in;
 }
 
-inline void *makeaggregator(void *attr, int flags, uint32_t as, size_t as_size, struct in_addr in)
+inline bgpattr_t *setaggregator(bgpattr_t *attr, uint32_t as, size_t as_size, struct in_addr in)
 {
+    assert(attr->code == AGGREGATOR_CODE || attr->code == AS4_AGGREGATOR_CODE);
+
     if (unlikely(as_size != sizeof(uint16_t) && as_size != sizeof(uint32_t)))
         return NULL;
 
-    unsigned char *ptr = attr;
-
-    *ptr++ = AGGREGATOR_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;  // as you command...
-
-    *ptr++ = as_size + sizeof(in);
+    unsigned char *ptr = &attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)];
     if (as_size == sizeof(uint32_t)) {
         uint32_t as32 = tobig32(as);
         memcpy(ptr, &as32, sizeof(as32));
@@ -693,65 +537,11 @@ inline void *makeaggregator(void *attr, int flags, uint32_t as, size_t as_size, 
     return attr;
 }
 
-inline void *makeas4aggregator(void *attr, int flags, uint32_t as, struct in_addr in)
-{
-    unsigned char *ptr = attr;
+bgpattr_t *putcommunities(bgpattr_t *attr, const community_t *comms, size_t count);
 
-    *ptr++ = AS4_AGGREGATOR_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;  // as you please...
+bgpattr_t *putexcommunities(bgpattr_t *attr, const ex_community_t *comms, size_t count);
 
-    *ptr++ = AS4_AGGREGATOR_LENGTH;
-
-    as = tobig32(as);
-    memcpy(ptr, &as, sizeof(as));
-    ptr += sizeof(as);
-    memcpy(ptr, &in, sizeof(in));
-    return attr;
-}
-
-inline uint32_t getas4aggregatoras(const void *attr)
-{
-    assert(bgpattrcode(attr) == AS4_AGGREGATOR_CODE);
-    assert(bgpattrlen(attr) == AS4_AGGREGATOR_LENGTH);
-
-    const unsigned char *ptr = attr;
-    ptr += bgpattrhdrsize(attr);
-
-    uint32_t as4;
-    memcpy(&as4, ptr, sizeof(as4));
-    return frombig32(as4);
-}
-
-inline struct in_addr getas4aggregatoraddress(const void *attr)
-{
-    assert(bgpattrcode(attr) == AS4_AGGREGATOR_CODE);
-    assert(bgpattrlen(attr) == AS4_AGGREGATOR_LENGTH);
-
-    const unsigned char *ptr = attr;
-    ptr += bgpattrhdrsize(attr) + sizeof(uint32_t);
-
-    struct in_addr in;
-    memcpy(&in, ptr, sizeof(in));
-    return in;
-}
-
-inline void *makecommunity(void *attr, int flags)
-{
-    unsigned char *ptr = attr;
-
-    flags |= ATTR_TRANSITIVE | ATTR_OPTIONAL;
-    flags &= ATTR_TRANSITIVE | ATTR_OPTIONAL | ATTR_EXTENDED_LENGTH;
-
-    *ptr++ = COMMUNITY_CODE;
-    *ptr++ = flags;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        *ptr++ = 0;
-
-    *ptr++ = 0;
-    return attr;
-}
+bgpattr_t *putlargecommunities(bgpattr_t *attr, const large_community_t *comms, size_t count);
 
 /// @brief Community to string.
 char *communitytos(community_t c);

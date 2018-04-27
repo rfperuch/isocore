@@ -45,84 +45,60 @@ extern uint32_t getv4addrglobal(ex_community_t ecomm);
 
 extern uint64_t getopaquevalue(ex_community_t ecomm);
 
-extern int bgpattrcode(const void *buf);
+extern size_t getattrlenextended(const bgpattr_t *attr);
 
-extern int bgpattrflags(const void *buf);
+extern void setattrlenextended(bgpattr_t *attr, size_t len);
 
-extern int isbgpattrext(const void *buf);
+extern int getbgporigin(const bgpattr_t *attr);
 
-extern size_t bgpattrhdrsize(const void *buf);
+extern bgpattr_t *setbgporigin(bgpattr_t *attr, int origin);
 
-extern size_t bgpattrlen(const void *buf);
+extern uint32_t getoriginatorid(const bgpattr_t *attr);
 
-extern int getbgporigin(const void *buf);
+extern struct in_addr getnexthop(const bgpattr_t *attr);
 
-extern void *makebgporigin(void *buf, int flags, int origin);
+extern uint32_t getmultiexitdisc(const bgpattr_t *attr);
 
-extern void *makeaspath(void *buf, int flags);
+extern uint32_t getlocalpref(const bgpattr_t *attr);
 
-extern void *makeas4path(void *buf, int flags);
-
-extern uint32_t getoriginatorid(const void *buf);
-
-extern void *makeoriginatorid(void *buf, int flags, uint32_t id);
-
-extern void *makeatomicaggregate(void *buf, int flags);
-
-extern struct in_addr getnexthop(const void *buf);
-
-extern void *makenexthop(void *buf, int flags, struct in_addr in);
-
-extern uint32_t getmultiexitdisc(const void *buf);
-
-extern void *makemultiexitdisc(void *buf, int flags, uint32_t disc);
-
-extern uint32_t getlocalpref(const void *buf);
-
-extern void *makelocalpref(void *buf, int flags, uint32_t pref);
-
-void *stobgporigin(void *buf, int flags, const char *s)
+int stobgporigin(const char *s)
 {
     if (strcasecmp(s, "i") == 0 || strcasecmp(s, "igp") == 0)
-        return makebgporigin(buf, flags, ORIGIN_IGP);
+        return ORIGIN_IGP;
     else if (strcasecmp(s, "e") == 0 || strcasecmp(s, "egp") == 0)
-        return makebgporigin(buf, flags, ORIGIN_EGP);
+        return ORIGIN_EGP;
     else if (strcmp(s, "?") == 0 || strcasecmp(s, "incomplete") == 0)
-        return makebgporigin(buf, flags, ORIGIN_INCOMPLETE);
+        return ORIGIN_INCOMPLETE;
     else
-        return NULL;
+        return ORIGIN_BAD;
 }
 
-
-void *putasseg32(void *buf, int seg_type, const uint32_t *seg, size_t count)
+bgpattr_t *putasseg32(bgpattr_t *attr, int seg_type, const uint32_t *seg, size_t count)
 {
-    assert(bgpattrcode(buf) == AS_PATH_CODE || bgpattrcode(buf) == AS4_PATH_CODE);
+    assert(attr->code == AS_PATH_CODE || attr->code == AS4_PATH_CODE);
 
-    unsigned char *ptr = buf;
-    int extended = isbgpattrext(buf);
+    int extended = attr->flags & ATTR_EXTENDED_LENGTH;
 
-    ptr += ATTR_LENGTH_OFFSET;
+    unsigned char *ptr = &attr->len;
 
-    unsigned char *lenptr = ptr;
-
-    size_t len = *ptr++;
-    size_t max = ATTR_LENGTH_MAX;
+    size_t len   = *ptr++;
+    size_t limit = ATTR_LENGTH_MAX;
     if (extended) {
         len <<= 8;
         len |= *ptr++;
 
-        max = ATTR_EXTENDED_LENGTH_MAX;
+        limit = ATTR_EXTENDED_LENGTH_MAX;
     }
 
     size_t size = count * sizeof(*seg);
 
     size += AS_SEGMENT_HEADER_SIZE;
-    if (unlikely(len + size > max))
+    if (unlikely(len + size > limit))
         return NULL;  // would overflow attribute length
     if (unlikely(count > AS_SEGMENT_COUNT_MAX))
         return NULL;  // would overflow segment size
 
-    ptr += len;
+    ptr   += len;
     *ptr++ = seg_type;  // segment type
     *ptr++ = count;     // AS count
     for (size_t i = 0; i < count; i++) {
@@ -133,43 +109,39 @@ void *putasseg32(void *buf, int seg_type, const uint32_t *seg, size_t count)
 
     // write updated length
     len += size;
+    ptr  = &attr->len;
     if (extended) {
-        *lenptr++ = (len >> 8);
+        *ptr++ = (len >> 8);
         len &= 0xff;
     }
-    *lenptr++ = len;
-    return buf;
+    *ptr++ = len;
+    return attr;
 }
 
-void *putasseg16(void *buf, int type, const uint16_t *seg, size_t count)
+bgpattr_t *putasseg16(bgpattr_t *attr, int type, const uint16_t *seg, size_t count)
 {
-    assert(bgpattrcode(buf) == AS_PATH_CODE);
+    assert(attr->code == AS_PATH_CODE);
 
-    unsigned char *ptr = buf;
-    int extended = isbgpattrext(buf);
+    unsigned char *ptr = &attr->len;
 
-    ptr += ATTR_LENGTH_OFFSET;
-
-    unsigned char *lenptr = ptr;
-
-    size_t len = *ptr++;
-    size_t max = ATTR_LENGTH_MAX;
+    int extended = attr->flags & ATTR_EXTENDED_LENGTH;
+    size_t len   = *ptr++;
+    size_t limit = ATTR_LENGTH_MAX;
     if (extended) {
         len <<= 8;
         len |= *ptr++;
 
-        max = ATTR_EXTENDED_LENGTH_MAX;
+        limit = ATTR_EXTENDED_LENGTH_MAX;
     }
 
     size_t size = count * sizeof(*seg);
-
     size += AS_SEGMENT_HEADER_SIZE;
-    if (unlikely(len + size > max))
+    if (unlikely(len + size > limit))
         return NULL;  // would overflow attribute length
     if (unlikely(count > AS_SEGMENT_COUNT_MAX))
         return NULL;  // would overflow segment size
 
-    ptr += len;
+    ptr   += len;
     *ptr++ = type;   // segment type
     *ptr++ = count;  // AS count
     for (size_t i = 0; i < count; i++) {
@@ -179,32 +151,37 @@ void *putasseg16(void *buf, int type, const uint16_t *seg, size_t count)
     }
 
     // write updated length
+    ptr  = &attr->len;
     len += size;
     if (extended) {
-        *lenptr++ = (len >> 8);
+        *ptr++ = (len >> 8);
         len &= 0xff;
     }
-    *lenptr++ = len;
-    return buf;
+    *ptr++ = len;
+    return attr;
 }
-
-static void appendsegment(void *buf, size_t *poff, size_t n, int type, const void *ases, size_t as_size, size_t count)
+/*
+static size_t appendsegment(unsigned char **pptr, unsigned char *end, int type, const void *ases, size_t as_size, size_t count)
 {
     if (count == 0)
-        return;
+        return 0;
 
-    size_t size = AS_SEGMENT_HEADER_SIZE + count * as_size;
-    size_t off = *poff;
+    unsigned char *ptr = *pptr;
 
-    if (off + size <= n) {
-        if (as_size == sizeof(uint32_t))
-            putasseg32(buf, type, ases, count);
-        else
-            putasseg16(buf, type, ases, count);
+    size_t size = count * as_size;
+    size_t total = AS_SEGMENT_HEADER_SIZE + size;
+    if (likely(ptr + total <= end)) {
+        *ptr++ = type;
+        *ptr++ = count;
+        memcpy(ptr, ases, size);
+
+        ptr += size;
+    } else {
+        ptr = end; // don't append anymore
     }
 
-    off += size;
-    *poff = off;
+    *pptr = ptr;
+    return total;
 }
 
 enum {
@@ -236,7 +213,7 @@ static long long parseas(const char *s, size_t as_size, char **eptr)
         return val;
 }
 
-static void parseasset(void *buf, size_t *poff, size_t n, size_t as_size, const char *s, char **eptr)
+static size_t parseasset(unsigned char **pptr, unsigned char *end, size_t as_size, const char *s, char **eptr)
 {
     union {
         uint32_t as32[AS_SEGMENT_COUNT_MAX];
@@ -244,8 +221,8 @@ static void parseasset(void *buf, size_t *poff, size_t n, size_t as_size, const 
     } segbuf;
 
     size_t count = 0;
-    size_t off = *poff;
-    bool commas = false;
+    size_t len   = 0;
+    bool commas  = false;
 
     char *epos;
     while (true) {
@@ -280,7 +257,7 @@ static void parseasset(void *buf, size_t *poff, size_t n, size_t as_size, const 
             goto out;
         }
 
-        if (count == AS_SEGMENT_COUNT_MAX) {
+        if (unlikely(count == AS_SEGMENT_COUNT_MAX)) {
             errno = ERANGE;
             goto out;
         }
@@ -301,18 +278,18 @@ static void parseasset(void *buf, size_t *poff, size_t n, size_t as_size, const 
 
     if (count == 0) {
         errno = EINVAL;
+        ptr   = end;
         goto out;
     }
 
     // output segment
-    appendsegment(buf, &off, n, AS_SEGMENT_SEQ, &segbuf, as_size, count);
+    len = appendsegment(pptr, end, AS_SEGMENT_SEQ, &segbuf, as_size, count);
 
 out:
-    *poff = off;
-    *eptr = (char *) s;
+    return len;
 }
 
-static void parseaspath(void *buf, size_t *poff, size_t n, const char *s, size_t as_size, char **eptr)
+static size_t parseaspath(unsigned char **pptr, unsigned char *end, const char *s, size_t as_size, char **eptr)
 {
     union {
         uint32_t as32[AS_SEGMENT_COUNT_MAX];
@@ -320,11 +297,10 @@ static void parseaspath(void *buf, size_t *poff, size_t n, const char *s, size_t
     } segbuf;
 
     size_t count = 0;
-    size_t off = *poff;
+    size_t len = 0;
 
     char *epos;
     while (true) {
-
         while (isspace(*s)) s++;
 
         if (*s == '\0')
@@ -335,14 +311,14 @@ static void parseaspath(void *buf, size_t *poff, size_t n, const char *s, size_t
             s++;
 
             // append SEQ segment so far, NOP if count == 0
-            appendsegment(buf, &off, n, AS_SEGMENT_SEQ, &segbuf, as_size, count);
+            len += appendsegment(pptr, end, AS_SEGMENT_SEQ, &segbuf, as_size, count);
             count = 0;
 
             // go on parsing the SET segment
-            parseasset(buf, &off, n, as_size, s, &epos);
+            len += parseasset(pptr, end, as_size, s, &epos);
         } else {
             // additional AS sequence segment entry
-            if (count == AS_SEGMENT_COUNT_MAX) {
+            if (unlikely(count == AS_SEGMENT_COUNT_MAX) {
                 errno = ERANGE;
                 goto out;
             }
@@ -363,14 +339,14 @@ static void parseaspath(void *buf, size_t *poff, size_t n, const char *s, size_t
     }
 
     // flush last sequence
-    appendsegment(buf, &off, n, AS_SEGMENT_SEQ, &segbuf, as_size, count);
+    len += appendsegment(pptr, end, AS_SEGMENT_SEQ, &segbuf, as_size, count);
 
 out:
     *eptr = (char *) s;
-    *poff = off;
+    return len;
 }
 
-size_t stoaspath32(void *buf, size_t n, int flags, const char *s, char **eptr)
+size_t stoaspath(bgpattr_t *attr, size_t n, int code, int flags, size_t as_size, const char *s, char **eptr)
 {
     char *dummy;
     size_t off = 0;
@@ -378,19 +354,23 @@ size_t stoaspath32(void *buf, size_t n, int flags, const char *s, char **eptr)
     if (!eptr)
         eptr = &dummy;
 
-    size_t hdrsize = ATTR_HEADER_SIZE;
-    if (flags & ATTR_EXTENDED_LENGTH)
-        hdrsize = ATTR_EXTENDED_HEADER_SIZE;
+    unsigned char *ptr = &attr->code;
+    unsigned char *end = ptr + n;
+    if (ptr < end)
+        *ptr++ = code;
+    if (ptr < end)
+        *ptr++ = flags;
+    if (ptr < end)
+        *ptr++ = 0;
+    if ((flags & ATTR_EXTENDED_LENGTH) != 0 && ptr < end)
+        *ptr++ = 0;
 
-    if (n >= hdrsize)
-        makeaspath(buf, flags);
-
-    off += hdrsize;
-    parseaspath(buf, &off, n, s, sizeof(uint32_t), eptr);
-    return off;
+    size_t len  = hdrsize;
+    len        += parseaspath(&ptr, end, s, sizeof(uint32_t), eptr);
+    return len;
 }
 
-size_t stoaspath16(void *buf, size_t n, int flags, const char *s, char **eptr)
+size_t stoaspath16(bgpattr_t *attr, size_t n, int flags, const char *s, char **eptr)
 {
     char *dummy;
     size_t off = 0;
@@ -410,7 +390,7 @@ size_t stoaspath16(void *buf, size_t n, int flags, const char *s, char **eptr)
     return off;
 }
 
-size_t stoas4path(void *buf, size_t n, int flags, const char *s, char **eptr)
+size_t stoas4path(bgpattr_t *attr, size_t n, int flags, const char *s, char **eptr)
 {
     char *dummy;
     size_t off = 0;
@@ -429,47 +409,55 @@ size_t stoas4path(void *buf, size_t n, int flags, const char *s, char **eptr)
     parseaspath(buf, &off, n, s, sizeof(uint32_t), eptr);
     return off;
 }
+*/
 
-extern void *makecommunity(void *attr, int flags);
-
-static void *appendcommunities(void *attr, const void *comms, size_t n)
+static bgpattr_t *appendcommunities(bgpattr_t *attr, const void *comms, size_t n)
 {
-    int flags = bgpattrflags(attr);
-    size_t len = bgpattrlen(attr);
+    unsigned char *ptr = &attr->len;
+    int extended       = attr->flags & ATTR_EXTENDED_LENGTH;
 
-    unsigned char *ptr = attr;
-    ptr += ATTR_LENGTH_OFFSET;
-    unsigned char *lenptr = ptr;
-
-    size_t len_max = ATTR_LENGTH_MAX;
-    if (flags & ATTR_EXTENDED_LENGTH) {
-        len_max = ATTR_EXTENDED_LENGTH_MAX;
-        ptr++;  // skip extended length
+    size_t limit = ATTR_LENGTH_MAX;
+    size_t len   = *ptr++;
+    if (extended) {
+        limit = ATTR_EXTENDED_LENGTH_MAX;
+        len <<= 8;
+        len |= *ptr++;
     }
-
-    ptr++;  // skip length
-
-    if (unlikely(len + n > len_max))
+    if (unlikely(len + n > limit))
         return NULL;
 
-    memcpy(ptr, comms, n);  // TODO byte-swap?
+    memcpy(ptr + len, comms, n);
     len += n;
-    if (flags & ATTR_EXTENDED_LENGTH) {
-        *lenptr++ = len >> 8;
-        len &= 0xff;
+
+    ptr = &attr->len;
+    if (extended) {
+        *ptr++  = len >> 8;
+        len    &= 0xff;
     }
 
-    *lenptr++ = len;
+    *ptr = len;
     return attr;
 }
 
-void *putcommunities(void *attr, const community_t *comms, size_t count)
+bgpattr_t *putcommunities(bgpattr_t *attr, const community_t *comms, size_t count)
 {
-    unsigned char *ptr = attr;
+    assert(attr->code == COMMUNITY_CODE);
 
-    ptr += bgpattrhdrsize(attr);
-    return attr;
+    return appendcommunities(attr, comms, count * sizeof(*comms));
+}
 
+bgpattr_t *putexcommunities(bgpattr_t *attr, const ex_community_t *comms, size_t count)
+{
+    assert(attr->code == EXTENDED_COMMUNITY_CODE);
+
+    return appendcommunities(attr, comms, count * sizeof(*comms));
+}
+
+bgpattr_t *putlargecommunities(bgpattr_t *attr, const large_community_t *comms, size_t count)
+{
+    assert(attr->code == LARGE_COMMUNITY_CODE);
+
+    return appendcommunities(attr, comms, count * sizeof(*comms));
 }
 
 static const struct {

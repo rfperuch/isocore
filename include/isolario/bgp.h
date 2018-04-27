@@ -43,6 +43,7 @@
 #define ISOLARIO_BGP_H_
 
 #include <arpa/inet.h>
+#include <isolario/bgpattribs.h>
 #include <isolario/netaddr.h>
 #include <isolario/io.h>  // also includes stddef.h
 #include <stdint.h>
@@ -67,12 +68,12 @@ enum {
 };
 
 /**
-* @defgroup BGP Border Gateway Procol packet creation
-*
-* @brief Basic functions to create and decode BGP packets.
-*
-* @{
-*/
+ * @defgroup BGP Border Gateway Procol packet creation
+ *
+ * @brief Basic functions to create and decode BGP packets.
+ *
+ * @{
+ */
 
 enum {
     BGP_BADTYPE = -1,
@@ -228,9 +229,9 @@ void *getbgpattribs(size_t *pn);
 
 int startbgpattribs(void);
 
-void *nextbgpattrib(size_t *pn);
+bgpattr_t *nextbgpattrib(void);
 
-int putbgpattrib(const void *attr, size_t n);
+int putbgpattrib(const bgpattr_t *attr);
 
 int endbgpattribs(void);
 
@@ -361,9 +362,9 @@ void *getbgpattribs_r(bgp_msg_t *msg, size_t *pn);
 
 int startbgpattribs_r(bgp_msg_t *msg);
 
-void *nextbgpattrib_r(bgp_msg_t *msg, size_t *pn);
+bgpattr_t *nextbgpattrib_r(bgp_msg_t *msg);
 
-int putbgpattrib_r(bgp_msg_t *msg, const void *attr, size_t n);
+int putbgpattrib_r(bgp_msg_t *msg, const bgpattr_t *attr);
 
 int endbgpattribs_r(bgp_msg_t *msg);
 
