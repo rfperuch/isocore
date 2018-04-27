@@ -376,6 +376,12 @@ int setmrtheader(const mrt_header_t *hdr)
     return setmrtheader_r(&curmsg, hdr);
 }
 
+int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr)
+{
+    (void) msg, (void) hdr;
+    return MRT_ENOERR; // FIXME
+}
+
 mrt_header_t *getmrtheader_r(mrt_msg_t *msg)
 {
     if (unlikely((msg->flags & F_RD) == 0))
