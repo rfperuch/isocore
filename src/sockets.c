@@ -87,11 +87,11 @@ int setmd5key(int sd, char *md5key)
     return setsockopt(sd, IPPROTO_TCP, TCP_MD5SIG, &md5sig, sizeof(md5sig));
 
 #else
-#error Please provide an implementation for that OS!
+#error Please provide an implementation for this OS!
 #endif
 }
 
-int sopen(const struct sockaddr *addr, socklen_t addrlen, const char *options, ...)
+int fsockopen(const struct sockaddr *addr, socklen_t addrlen, const char *mode, ...)
 {
     struct sockaddr *saddr = NULL;
     socklen_t saddrlen;
@@ -105,10 +105,10 @@ int sopen(const struct sockaddr *addr, socklen_t addrlen, const char *options, .
     int err;
 
     va_list va;
-    va_start(va, options);
+    va_start(va, mode);
 
-    while (*options != '\0') {
-        switch (*options++) {
+    while (*mode != '\0') {
+        switch (*mode++) {
         case '4':
             family = AF_INET;
             break;
@@ -122,11 +122,11 @@ int sopen(const struct sockaddr *addr, socklen_t addrlen, const char *options, .
             break;
 
         case 'b':
-            if (*options == '*') {
+            if (*mode == '*') {
                 backlog = va_arg(va, int);
             } else {
-                backlog = atoi(options);
-                do options++; while (isdigit(*options));
+                backlog = atoi(mode);
+                do mode++; while (isdigit(*mode));
             }
 
             break;
@@ -170,7 +170,7 @@ int sopen(const struct sockaddr *addr, socklen_t addrlen, const char *options, .
     if (fd < 0)
         return -1;
 
-    if (reuse && setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0)
+    if (reuse && setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
         goto error;
 
     if (flags && socketflags(fd, flags) < 0)

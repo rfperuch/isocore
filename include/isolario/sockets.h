@@ -34,15 +34,21 @@
 #include <string.h>
 #include <sys/socket.h>
 
-int socketflags(int fd, int flags);
+#define TCP_LISTENING_SOCKET "4l"
+#define TCP6_LISTENING_SOCKET "6l"
+#define TCP_NONBLOCK_LISTENING_SOCKET "4ln"
+#define TCP6_NONBLOCK_LISTENING_SOCKET "6ln"
+#define UNIX_LISTENING_SOCKET "ul"
+#define UNIX_NONBLOCK_LISTENING_SOCKET "uln"
 
-int setbacklog(int length);
+#define TCP_CONNECT_SOCKET "4c"
+#define TCP6_CONNECT_SOCKET "6c"
+#define TCP_NONBLOCK_CONNECT_SOCKET "4cn"
+#define TCP6_NONBLOCK_CONNECT_SOCKET "6cn"
+#define UNIX_CONNECT_SOCKET "uc"
+#define UNIX_NONBLOCK_CONNECT_SOCKET "ucn"
 
-int getbacklog(void);
-
-int listeningsocket(int family, const struct sockaddr *addr, socklen_t addrlen, int flags);
-
-int connectsocket(int family, const struct sockaddr *addr, socklen_t addrlen, int flags);
+int fsockopen(const struct sockaddr *addr, socklen_t addrlen, const char *mode, ...);
 
 inline int hashv4(const struct in_addr *addr)
 {
