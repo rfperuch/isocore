@@ -34,13 +34,13 @@
  * @brief Isolario MRT packet reading and writing routines.
  *
  * @note WORK IN PROGRESS!!
- * 
+ *
  */
+
 #ifndef ISOLARIO_MRT_H_
 #define ISOLARIO_MRT_H_
-#include <isolario/bgp.h>
+#include <isolario/bgp.h>  // also includes stdint.h
 #include <time.h>
-
 
 enum {
     MRT_NULL = 0,          // Deprecated
@@ -77,12 +77,14 @@ enum {
 };
 
 /**
-*   @brief BGP4_mp types
-* 
-* further detail at https://tools.ietf.org/html/rfc6396#section-4.2
-* fand for extensions https://tools.ietf.org/html/rfc8050#page-2
-*/
-/// [iana bgp4mp Subtype Codes](https://www.iana.org/assignments/mrt/mrt.xhtml#BGP4MP-codes)
+ *   @brief BGP4_mp types
+ *
+ * further detail at https://tools.ietf.org/html/rfc6396#section-4.2
+ * and for extensions https://tools.ietf.org/html/rfc8050#page-2
+ *
+ * @see [iana bgp4mp Subtype Codes](https://www.iana.org/assignments/mrt/mrt.xhtml#BGP4MP-codes)
+ *
+ */
 enum {
     BGP4MP_STATE_CHANGE = 0,               ///< RFC 6396
     BGP4MP_MESSAGE = 1,                    ///< RFC 6396
@@ -111,14 +113,13 @@ enum {
     BGP4MP_ESTABLISHED = 6
 };
 
-
 /**
  *
  * further detail at https://tools.ietf.org/html/rfc6396#section-4.3
+ *
+ * @see [iana table dumpv2 Subtype Codes](https://www.iana.org/assignments/mrt/mrt.xhtml#table-dump-v2-subtype-codes)
  */
-/// [iana table dumpv2 Subtype Codes](https://www.iana.org/assignments/mrt/mrt.xhtml#table-dump-v2-subtype-codes)
-enum 
-{
+enum {
     MRT_TABLE_DUMPV2_PEER_INDEX_TABLE = 1,               /// RFC6396
     MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST = 2,               /// RFC6396
     MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST = 3,             /// RFC6396
@@ -133,8 +134,6 @@ enum
     MRT_TABLE_DUMPV2_RIB_GENERIC_ADDPATH = 12            /// RFC8050
 };
 
-
-
 enum {
     //recoverable errors
     MRT_NOTPI = -1,
@@ -144,72 +143,70 @@ enum {
     MRT_EINVOP,          ///< Invalid operation (e.g. write while reading packet).
     MRT_ENOMEM,          ///< Out of memory.
     MRT_EBADHDR,         ///< Bad MRT packet header.
-    MRT_EBADTYPE,        ///< Bad MRT packet type.
+    MRT_EBADTYPE        ///< Bad MRT packet type.
 };
 
 inline const char *mrtstrerror(int err)
 {
     switch (err) {
-        case MRT_NOTPI:
-            return "Not Peer Index message";
-        case MRT_ENOERR:
-            return "Success";
-        case MRT_EIO:
-            return "I/O error";
-        case MRT_EINVOP:
-            return "Invalid operation";
-        case MRT_ENOMEM:
-            return "Out of memory";
-        case MRT_EBADHDR:
-            return "Bad MRT header";
-        case MRT_EBADTYPE:
-            return "Bad MRT packet type";
-        default:
-            return "Unknown error";
+    case MRT_NOTPI:
+        return "Not Peer Index message";
+    case MRT_ENOERR:
+        return "Success";
+    case MRT_EIO:
+        return "I/O error";
+    case MRT_EINVOP:
+        return "Invalid operation";
+    case MRT_ENOMEM:
+        return "Out of memory";
+    case MRT_EBADHDR:
+        return "Bad MRT header";
+    case MRT_EBADTYPE:
+        return "Bad MRT packet type";
+    default:
+        return "Unknown error";
     }
 }
 
 int mrterror(void);
 
-int mrtpierror(void);
-
 int setmrtread(const void *data, size_t n);
 
-int setmrtpiread(const void *data, size_t n);
+int setmrtreadfd(int fd);
+
+int setmrtreadfrom(io_rw_t *io);
 
 int mrtclose(void);
 
-int mrtpiclose(void);
-
 //header section
-struct timespec getmrttimestamp(void);
 
-struct timespec getmrtpitimestamp(void);
+typedef struct {
+    struct timespec stamp;
+    int type, subtype;
+    size_t len;
+} mrt_header_t;
 
-size_t getmrtlen(void);
+mrt_header_t *getmrtheader(void);
 
-size_t getmrtpilen(void);
-
-int getmrttype(void);
-
-int getmrtpitype(void);
-
-int getmrtsubtype(void);
-
-int getmrtpisubtype(void);
+int setmrtheader(const mrt_header_t *hdr);
 
 enum {
-    MRTBUFSIZ = 4096,
-    MRTGROWSTEP = 256,
-    MRTTMPBUFSIZ = 128  ///< Small additional buffer to use for out-of-order fields
+    MRTBUFSIZ = 4096
 };
 
 /// @brief Packet reader/writer global status structure.
-typedef struct {
+typedef struct mrt_msg_s {
     uint16_t flags;      ///< General status flags.
     int16_t err;         ///< Last error code.
     uint32_t pktlen;     ///< MRT packet length 
     uint32_t bufsiz;     ///< Packet buffer capacity
+
+    mrt_header_t hdr;
+    union {
+        struct mrt_msg_t *peer_index;
+        bgp_msg_t *bgp;
+    };
+
     unsigned char *buf;  ///< Packet buffer base.
     unsigned char fastbuf[MRTBUFSIZ];  ///< Fast buffer to avoid malloc()s.
 } mrt_msg_t;
@@ -226,13 +223,9 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io);
 
 //header
 
-struct timespec getmrttimestamp_r(mrt_msg_t *msg);
+mrt_header_t *getmrtheader_r(mrt_msg_t *msg);
 
-size_t getmrtlength_r(mrt_msg_t *msg);
-
-int getmrttype_r(mrt_msg_t *msg);
-
-int getmrtsubtype_r(mrt_msg_t *msg);
-
+int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr);
 
 #endif
+

@@ -33,11 +33,15 @@
 #include <isolario/endian.h>
 //#include <isolario/util.h>
 //#include <limits.h>
-//#include <stdbool.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 //#include <unistd.h>
 
+
+enum {
+    MRTGROWSTEP = 256
+};
 
 /// @brief Offsets for various MRT packet fields
 enum {
@@ -93,13 +97,12 @@ enum {
     BGP4MP_MESSAGE_PEER_IP = BGP4MP_MESSAGE_ADDRESS_FAMILY + sizeof(uint16_t),
     // min size calculated with static member compreding old/new state but ip length 0 (no sense pkg)
     BGP4MP_MESSAGE_CHANGE_MIN_LENGTH = BGP4MP_STATE_CHANGE_PEER_IP + sizeof(uint8_t) * 2 + sizeof(uint16_t) * 2,
-    
+
     // BGP4MP_MESSAGE_AS4
     // BGP4MP_STATE_CHANGE_AS4
     // BGP4MP_MESSAGE_LOCAL
     // BGP4MP_MESSAGE_AS4_LOCAL
 };
-
 
 enum {
     UNHANDLED = -1,
@@ -110,16 +113,16 @@ enum {
 static int mrtisext(int type)
 {
     switch (type) {
-        case MRT_BGP:          // Deprecated
-        case MRT_BGP4PLUS:     // Deprecated
-        case MRT_BGP4PLUS_01:  // Deprecated
-        case MRT_TABLE_DUMP:
-        case MRT_TABLE_DUMPV2:
-        case MRT_BGP4MP:
-            return NOTEXTENDED;
-        case MRT_BGP4MP_ET:
-            return EXTENDED;
-        default:
+    case MRT_BGP:          // Deprecated
+    case MRT_BGP4PLUS:     // Deprecated
+    case MRT_BGP4PLUS_01:  // Deprecated
+    case MRT_TABLE_DUMP:
+    case MRT_TABLE_DUMPV2:
+    case MRT_BGP4MP:
+        return NOTEXTENDED;
+    case MRT_BGP4MP_ET:
+        return EXTENDED;
+    default:
             /*
     NULL
     START
@@ -135,21 +138,21 @@ static int mrtisext(int type)
     OSPFV3
     OSPFV3_ET
 */
-            return UNHANDLED;
+        return UNHANDLED;
     }
 }
 
 static int mrtbgp(int type)
 {
     switch (type) {
-        case MRT_BGP:          // Deprecated
-        case MRT_BGP4PLUS:     // Deprecated
-        case MRT_BGP4PLUS_01:  // Deprecated
-        case MRT_BGP4MP:
-        case MRT_BGP4MP_ET:
-            return 0;
-        default:
-            return 1;
+    case MRT_BGP:          // Deprecated
+    case MRT_BGP4PLUS:     // Deprecated
+    case MRT_BGP4PLUS_01:  // Deprecated
+    case MRT_BGP4MP:
+    case MRT_BGP4MP_ET:
+        return 0;
+    default:
+        return 1;
     }
 }
 
@@ -160,13 +163,13 @@ static int mrtbgp(int type)
 static int mrtheaderlen(int type)
 {
     switch (mrtisext(type)) {
-        case EXTENDED:
-            return BASE_PACKET_LENGTH;
-        case NOTEXTENDED:
-            return BASE_PACKET_EXTENDED_LENGTH;
-        case UNHANDLED:
-        default:
-            return 0;
+    case EXTENDED:
+        return BASE_PACKET_LENGTH;
+    case NOTEXTENDED:
+        return BASE_PACKET_EXTENDED_LENGTH;
+    case UNHANDLED:
+    default:
+        return 0;
     }
 }
 
@@ -178,44 +181,29 @@ enum {
     F_RDWR = F_RD | F_WR,  ///< Shorthand for \a (F_RD | F_WR).
     F_EXT = 1 << 2,        ///< Commodity flag to not check type 1 Extended 0 not Extended
     F_AST = 1 << 3,        ///< Commodity flag to not check subtype 1 AS32 0 AS16
-    
 };
 
-static int mrtisas32(int type, int subtype) 
+static int mrtisas32(int type, int subtype)
 {
-    switch (type){
-        case MRT_BGP:          // Deprecated
-        case MRT_BGP4PLUS:     // Deprecated
-        case MRT_BGP4PLUS_01:  // Deprecated
-        case MRT_TABLE_DUMP:
-            return 0;   // AS16
-        case MRT_TABLE_DUMPV2:
-        default:    //depreacted or unhandled
-            return 0;   // AS32 or AS16 but not in the header
+    switch (type) {
+    case MRT_BGP:          // Deprecated
+    case MRT_BGP4PLUS:     // Deprecated
+    case MRT_BGP4PLUS_01:  // Deprecated
+    case MRT_TABLE_DUMP:
+        return false;   // AS16
+    case MRT_TABLE_DUMPV2:
+    default:    //depreacted or unhandled
+        return false;   // AS32 or AS16 but not in the header
 
-        case MRT_BGP4MP:
-        case MRT_BGP4MP_ET:
-            switch(subtype) {
-                case BGP4MP_STATE_CHANGE:
-                case BGP4MP_MESSAGE:
-                case BGP4MP_ENTRY:
-                case BGP4MP_SNAPSHOT:
-                case BGP4MP_MESSAGE_LOCAL:
-                case BGP4MP_MESSAGE_ADDPATH:
-                case BGP4MP_MESSAGE_LOCAL_ADDPATH:
-                    return 0; // AS16
-                case BGP4MP_MESSAGE_AS4:
-                case BGP4MP_STATE_CHANGE_AS4:
-                case BGP4MP_MESSAGE_AS4_LOCAL:
-                case BGP4MP_MESSAGE_AS4_ADDPATH:
-                case BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH:
-                    return F_AST; // AS32
-                default:
-                    return -1;   // shuld not appen!
-            }
+    case MRT_BGP4MP:
+    case MRT_BGP4MP_ET:
+        return subtype == BGP4MP_MESSAGE_AS4         ||
+               subtype == BGP4MP_STATE_CHANGE_AS4    ||
+               subtype == BGP4MP_MESSAGE_AS4_LOCAL   ||
+               subtype == BGP4MP_MESSAGE_AS4_ADDPATH ||
+               subtype == BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH;
     }
 }
-
 
 /// @brief Packet reader/writer instance
 static _Thread_local mrt_msg_t curmsg, curpimsg;
@@ -223,14 +211,25 @@ static _Thread_local mrt_msg_t curmsg, curpimsg;
 // extern version of inline function
 extern const char *mrtstrerror(int err);
 
+static size_t mrtoffsetof(mrt_msg_t *msg, size_t base_offset)
+{
+    // add 4 bytes if extended
+    return base_offset + ((!!(msg->flags & F_EXT)) << 2);
+}
+
+mrt_msg_t *getmrt(void)
+{
+    return &curmsg;
+}
+
+mrt_msg_t *getmrtpi(void)
+{
+    return &curpimsg;
+}
+
 int mrterror(void)
 {
     return mrterror_r(&curmsg);
-}
-
-int mrtpierror(void)
-{
-    return mrterror_r(&curpimsg);
 }
 
 int mrterror_r(mrt_msg_t *msg)
@@ -238,33 +237,38 @@ int mrterror_r(mrt_msg_t *msg)
     return msg->err;
 }
 
-static int checkpi(int err)
+static int ismrtpi(const mrt_header_t *hdr)
 {
-    if(err != MRT_ENOERR)
-        return err;
-    
-    int type = getmrtpitype();
-    type = frombig16(type);
-    if(type != MRT_TABLE_DUMPV2)
-        return MRT_NOTPI;
-
-    int subtype = getmrtpisubtype();
-    subtype = frombig16(subtype);
-    if(subtype != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE)
-        return MRT_NOTPI;
-
-    return MRT_ENOERR;
+    return hdr->type == MRT_TABLE_DUMPV2 && hdr->subtype == MRT_TABLE_DUMPV2_PEER_INDEX_TABLE;
 }
 
-//read section
+// read section
+
+static void readmrtheader(mrt_msg_t *msg)
+{
+    uint32_t time;
+    memcpy(&time, &msg->buf[TIMESTAMP_OFFSET], sizeof(time));
+    msg->hdr.stamp.tv_sec = frombig32(time);
+    msg->hdr.stamp.tv_nsec = 0;
+
+    uint16_t type, subtype;
+    memcpy(&type, &msg->buf[TYPE_OFFSET], sizeof(type));
+    memcpy(&subtype, &msg->buf[SUBTYPE_OFFSET], sizeof(subtype));
+    msg->hdr.type = frombig16(type);
+    msg->hdr.subtype = frombig16(subtype);
+
+    uint32_t len;
+    memcpy(&len, msg->buf, sizeof(len));
+    msg->hdr.len = frombig32(len);
+    if (msg->flags & F_EXT) {
+        memcpy(&time, &msg->buf[MICROSECOND_TIMESTAMP_OFFSET], sizeof(time));
+        msg->hdr.stamp.tv_nsec = frombig32(time) * 1000ull;
+    }
+}
+
 int setmrtread(const void *data, size_t n)
 {
     return setmrtread_r(&curmsg, data, n);
-}
-
-int setmrtpiread(const void *data, size_t n)
-{
-    return checkpi(setmrtread_r(&curpimsg, data, n));
 }
 
 int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
@@ -276,7 +280,7 @@ int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
     msg->buf = msg->fastbuf;
     if (unlikely(n > sizeof(msg->fastbuf)))
         msg->buf = malloc(n);
-    
+
     if (unlikely(!msg->buf))
         return MRT_ENOMEM;
 
@@ -285,24 +289,24 @@ int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
     msg->pktlen = n;
     msg->bufsiz = n;
     memcpy(msg->buf, data, n);
+
+    readmrtheader(msg);
+
+    /*
     int type = getmrttype_r(msg), subtype = getmrtsubtype_r(msg);
     msg->flags |= (mrtisext(type) == EXTENDED)?F_EXT:0;
     type = mrtisas32(type, subtype);
     if(unlikely(type == -1))
-        return MRT_EBADTYPE;    
-    msg->flags |= type;
+        return MRT_EBADTYPE;
 
+    msg->flags |= type;
+*/
     return MRT_ENOERR;
 }
 
 int setmrtreadfd(int fd)
 {
     return setmrtreadfd_r(&curmsg, fd);
-}
-
-int setmrtpireadfd(int fd)
-{
-    return checkpi(setmrtreadfd_r(&curpimsg, fd));
 }
 
 int setmrtreadfd_r(mrt_msg_t *msg, int fd)
@@ -314,11 +318,6 @@ int setmrtreadfd_r(mrt_msg_t *msg, int fd)
 int setmrtreadfrom(io_rw_t *io)
 {
     return setmrtreadfrom_r(&curmsg, io);
-}
-
-int setmrtpireadfrom(io_rw_t *io)
-{
-    return checkpi(setmrtreadfrom_r(&curmsg, io));
 }
 
 int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
@@ -349,110 +348,47 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
         return MRT_EIO;
 
     msg->flags = F_RD;
-    int type = getmrttype_r(msg), subtype = getmrtsubtype_r(msg);
+/*    int type = getmrttype_r(msg), subtype = getmrtsubtype_r(msg);
     msg->flags |= (mrtisext(type) == EXTENDED)?F_EXT:0;
     type = mrtisas32(type, subtype);
     if(unlikely(type == -1))
         return MRT_EBADTYPE;
 
     msg->flags |= type;
+*/
     msg->err = MRT_ENOERR;
     msg->pktlen = len;
     msg->bufsiz = len;
+
+    readmrtheader(msg);
     return MRT_ENOERR;
 }
 
-//header section 
-struct timespec getmrttimestamp(void) {
-    return getmrttimestamp_r(&curmsg);
-}
+// header section
 
-struct timespec getmrtpitimestamp(void) {
-    return getmrttimestamp_r(&curmsg);
-}
-
-struct timespec getmrttimestamp_r(mrt_msg_t *msg)
+mrt_header_t *getmrtheader(void)
 {
-    if (unlikely((msg->flags & F_RD) == 0))
-        msg->err = MRT_EINVOP;
-
-    struct timespec tm = {0 , 0};
-    if (unlikely(msg->err))
-        return tm;
-
-    uint32_t time;
-    memcpy(&time, msg->buf, sizeof(time));
-    tm.tv_sec = frombig32(time);
-    if((msg->flags & F_EXT) == 0) {
-        memcpy(&time, msg->buf + MICROSECOND_TIMESTAMP_OFFSET, sizeof(time));
-        tm.tv_nsec = frombig32(time) * 1000;
-    }
-
-    return tm;
+    return getmrtheader_r(&curmsg);
 }
 
-size_t getmrtlen(void) {
-    return getmrtlength_r(&curmsg);
+int setmrtheader(const mrt_header_t *hdr)
+{
+    return setmrtheader_r(&curmsg, hdr);
 }
 
-size_t getmrtpilen(void) {
-    return getmrtlength_r(&curpimsg);
-}
-
-size_t getmrtlength_r(mrt_msg_t *msg)
+mrt_header_t *getmrtheader_r(mrt_msg_t *msg)
 {
     if (unlikely((msg->flags & F_RD) == 0))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
-        return 0;
+        return NULL;
 
-    uint32_t len;
-    memcpy(&len, msg->buf, sizeof(len));
-    return frombig32(len);
+    return &msg->hdr;
 }
 
-int getmrttype(void)
+int mrtclose(void)
 {
-    return getmrttype_r(&curmsg);
-}
-
-int getmrtpitype(void)
-{
-    return getmrttype_r(&curpimsg);
-}
-
-int getmrttype_r(mrt_msg_t *msg)
-{
-    if (unlikely((msg->flags & F_RDWR) == 0))
-        return MRT_EBADTYPE;
-
-    return msg->buf[TYPE_OFFSET];
-}
-
-int getmrtsubtype(void)
-{
-    return getmrtsubtype_r(&curmsg);
-}
-
-int getmrtpisubtype(void)
-{
-    return getmrtsubtype_r(&curpimsg);
-}
-
-int getmrtsubtype_r(mrt_msg_t *msg)
-{
-    if (unlikely((msg->flags & F_RDWR) == 0))
-        return MRT_EBADTYPE;
-
-    return msg->buf[SUBTYPE_OFFSET];
-}
-
-int mrtclose(void) {
     return mrtclose_r(&curmsg);
-}
-
-int mrtpiclose(void) {
-    return mrtclose_r(&curpimsg);
 }
 
 int mrtclose_r(mrt_msg_t *msg)
@@ -467,3 +403,4 @@ int mrtclose_r(mrt_msg_t *msg)
     }
     return err;
 }
+

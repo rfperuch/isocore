@@ -156,6 +156,11 @@ static int checkanytype(bgp_msg_t *msg, int type, int flags)
     return msg->err;
 }
 
+bgp_msg_t *getbgp(void)
+{
+    return &curmsg;
+}
+
 int setbgpread(const void *data, size_t n)
 {
     return setbgpread_r(&curmsg, data, n);
@@ -566,8 +571,8 @@ static int bgpensure(bgp_msg_t *msg, size_t len)
     if (unlikely(len > msg->bufsiz)) {
         // FIXME if len > 0xffff then oversized BGP packet (4K for regular BGP)!
         len += BGPGROWSTEP;
-        if (unlikely(len > 0xffff))
-            len = 0xffff;
+        if (unlikely(len > UINT16_MAX))
+            len = UINT16_MAX;
 
         unsigned char *buf = msg->buf;
         if (buf == msg->fastbuf)
@@ -843,7 +848,7 @@ bgpattr_t *nextbgpattrib(void)
 bgpattr_t *nextbgpattrib_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_UPDATE, F_WR | F_PATTR))
-        return msg->err;
+        return NULL;
 
     bgpattr_t *attr = (bgpattr_t *) msg->uptr;
 

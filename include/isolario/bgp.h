@@ -310,6 +310,11 @@ typedef struct {
     unsigned char fastbuf[BGPBUFSIZ];  ///< @private Fast buffer to avoid malloc()s.
 } bgp_msg_t;
 
+/**
+ * @brief Retrieve a pointer to the thread local BGP message structure.
+ */
+bgp_msg_t *getbgp(void);
+
 int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n);
 
 int setbgpreadfd_r(bgp_msg_t *msg, int fd);
