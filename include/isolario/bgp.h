@@ -199,7 +199,7 @@ int startbgpcaps(void);
 void *nextbgpcap(size_t *pn);
 
 /** @brief Write a capability into a BGP open packet, length is in bytes, header included. */
-int putbgpcap(const void *data, size_t n);
+int putbgpcap(const void *data);
 
 int endbgpcaps(void);
 
@@ -345,7 +345,7 @@ int startbgpcaps_r(bgp_msg_t *msg);
 
 void *nextbgpcap_r(bgp_msg_t *msg, size_t *pn);
 
-int putbgpcap_r(bgp_msg_t *msg, const void *data, size_t n);
+int putbgpcap_r(bgp_msg_t *msg, const void *data);
 
 int endbgpcaps_r(bgp_msg_t *msg);
 

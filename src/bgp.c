@@ -295,7 +295,7 @@ size_t getbgplength_r(bgp_msg_t *msg)
         return 0;
 
     uint16_t len;
-    memcpy(&len, msg->buf, sizeof(len));
+    memcpy(&len, &msg->buf[LENGTH_OFFSET], sizeof(len));
     return frombig16(len);
 }
 
@@ -503,12 +503,12 @@ void *nextbgpcap_r(bgp_msg_t *msg, size_t *pn)
     return ptr;
 }
 
-int putbgpcap(const void *data, size_t n)
+int putbgpcap(const void *data)
 {
-    return putbgpcap_r(&curmsg, data, n);
+    return putbgpcap_r(&curmsg, data);
 }
 
-int putbgpcap_r(bgp_msg_t *msg, const void *data, size_t n)
+int putbgpcap_r(bgp_msg_t *msg, const void *data)
 {
     if (checktype(msg, BGP_OPEN, F_WR | F_PM))
         return msg->err;
@@ -525,6 +525,7 @@ int putbgpcap_r(bgp_msg_t *msg, const void *data, size_t n)
 
     static_assert(BGPBUFSIZ >= MIN_OPEN_LENGTH + 0xff, "code assumes putbgpcap() can't overflow BGPBUFSIZ");
 
+    size_t n = bgpcaplen(data) + CAPABILITY_HEADER_SIZE;
     // TODO actual check rather than assert()
     assert(n <= CAPABILITY_SIZE_MAX);
     memcpy(ptr, data, n);

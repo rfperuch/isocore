@@ -58,12 +58,12 @@ void testopencreate(void)
 
     startbgpcaps();
         makeasn32bit(buf, 0xffffffff);
-        putbgpcap(buf, ASN32BIT_SIZE);
+        putbgpcap(buf);
         makemultiprotocol(buf, AFI_IPV6, SAFI_UNICAST);
-        putbgpcap(buf, MULTIPROTOCOL_SIZE);
+        putbgpcap(buf);
         makegracefulrestart(buf, RESTART_FLAG, 1600);
         putgracefulrestarttuple(buf, AFI_IPV6, SAFI_UNICAST, FORWARDING_STATE);
-        putbgpcap(buf, GRACEFUL_RESTART_BASE_SIZE + sizeof(afi_safi_t));
+        putbgpcap(buf);
     endbgpcaps();
 
     // finish and obtain packet bytes
