@@ -437,7 +437,15 @@ int startpeerents_r(mrt_msg_t *msg)
         return msg->err;
 
     endpending(msg);
+}
 
+int endpeerents(void)
+{
+    return endpeerents_r(&curmsg);
+}
 
+int endpeerents_r(mrt_msg_t *msg)
+{
+    return msg->err; // TODO;
 }
 
