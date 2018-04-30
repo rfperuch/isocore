@@ -40,6 +40,7 @@
 #ifndef ISOLARIO_MRT_H_
 #define ISOLARIO_MRT_H_
 #include <isolario/bgp.h>  // also includes stdint.h
+#include <stdarg.h>
 #include <time.h>
 
 enum {
@@ -113,6 +114,16 @@ enum {
     BGP4MP_ESTABLISHED = 6
 };
 
+typedef struct {
+    afi_t afi;
+    size_t as_size;
+    uint32_t as;
+    union {
+        struct in_addr  in;
+        struct in6_addr in6;
+    };
+} peer_entry_t;
+
 /**
  *
  * further detail at https://tools.ietf.org/html/rfc6396#section-4.3
@@ -136,20 +147,21 @@ enum {
 
 enum {
     //recoverable errors
-    MRT_NOTPI = -1,
+    MRT_NOTPEERIDX = -1,
     //unrecoverable
-    MRT_ENOERR = 0,      ///< No error (success) guaranteed to be zero.
-    MRT_EIO,             ///< Input/Output error during packet read.
-    MRT_EINVOP,          ///< Invalid operation (e.g. write while reading packet).
-    MRT_ENOMEM,          ///< Out of memory.
-    MRT_EBADHDR,         ///< Bad MRT packet header.
-    MRT_EBADTYPE        ///< Bad MRT packet type.
+    MRT_ENOERR = 0,     ///< No error (success) guaranteed to be zero.
+    MRT_EIO,            ///< Input/Output error during packet read.
+    MRT_EINVOP,         ///< Invalid operation (e.g. write while reading packet).
+    MRT_ENOMEM,         ///< Out of memory.
+    MRT_EBADHDR,        ///< Bad MRT packet header.
+    MRT_EBADTYPE,       ///< Bad MRT packet type.
+    MRT_EBADPEERIDX     ///< Error encountered parsing associated Peer Index.
 };
 
 inline const char *mrtstrerror(int err)
 {
     switch (err) {
-    case MRT_NOTPI:
+    case MRT_NOTPEERIDX:
         return "Not Peer Index message";
     case MRT_ENOERR:
         return "Success";
@@ -163,6 +175,8 @@ inline const char *mrtstrerror(int err)
         return "Bad MRT header";
     case MRT_EBADTYPE:
         return "Bad MRT packet type";
+    case MRT_EBADPEERIDX:
+        return "Bad Peer Index message";
     default:
         return "Unknown error";
     }
@@ -188,7 +202,9 @@ typedef struct {
 
 mrt_header_t *getmrtheader(void);
 
-int setmrtheader(const mrt_header_t *hdr);
+int setmrtheaderv(const mrt_header_t *hdr, va_list va);
+
+int setmrtheader(const mrt_header_t *hdr, ...);
 
 enum {
     MRTBUFSIZ = 4096
@@ -201,6 +217,10 @@ typedef struct mrt_msg_s {
     uint32_t bufsiz;     ///< Packet buffer capacity
 
     mrt_header_t hdr;
+
+    peer_entry_t pe;      ///< Current peer entry
+    unsigned char *peptr; ///< Raw peer entry pointer in current packet
+
     union {
         struct mrt_msg_t *peer_index;
         bgp_msg_t *bgp;
@@ -224,7 +244,35 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io);
 
 mrt_header_t *getmrtheader_r(mrt_msg_t *msg);
 
-int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr);
+int setmrtheaderv_r(mrt_msg_t *msg, const mrt_header_t *hdr, va_list va);
+
+int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr, ...);
+
+// Peer Index
+
+int setpeerents(const void *buf, size_t n);
+
+int setpeerents_r(mrt_msg_t *msg, const void *buf, size_t n);
+
+void *getpeerents(size_t *pn);
+
+void *getpeerents_r(mrt_msg_t *msg, size_t *pn);
+
+int startpeerents(void);
+
+int startpeerents_r(mrt_msg_t *msg);
+
+peer_entry_t *nextpeerent(void);
+
+peer_entry_t *nextpeerent_r(mrt_msg_t *msg);
+
+int putpeerent(const peer_entry_t *pe);
+
+int putpeerent_r(mrt_msg_t *msg, const peer_entry_t *pe);
+
+int endpeerents(void);
+
+int endpeerents_r(mrt_msg_t *msg);
 
 #endif
 

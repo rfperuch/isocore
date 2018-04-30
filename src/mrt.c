@@ -28,6 +28,7 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+#include <assert.h>
 #include <isolario/mrt.h>
 #include <isolario/branch.h>
 #include <isolario/endian.h>
@@ -123,7 +124,7 @@ static int mrtisext(int type)
     case MRT_BGP4MP_ET:
         return EXTENDED;
     default:
-            /*
+/*
     NULL
     START
     DIE
@@ -156,23 +157,6 @@ static int mrtbgp(int type)
     }
 }
 
-/** \defgroup offsets_functions 
- *  @{
- */
-
-static int mrtheaderlen(int type)
-{
-    switch (mrtisext(type)) {
-    case EXTENDED:
-        return BASE_PACKET_LENGTH;
-    case NOTEXTENDED:
-        return BASE_PACKET_EXTENDED_LENGTH;
-    case UNHANDLED:
-    default:
-        return 0;
-    }
-}
-
 /// @brief Packet reader/writer status flags
 enum {
     F_DEFAULT = 0,
@@ -181,6 +165,7 @@ enum {
     F_RDWR = F_RD | F_WR,  ///< Shorthand for \a (F_RD | F_WR).
     F_EXT = 1 << 2,        ///< Commodity flag to not check type 1 Extended 0 not Extended
     F_AST = 1 << 3,        ///< Commodity flag to not check subtype 1 AS32 0 AS16
+    F_PE  = 1 << 4
 };
 
 static int mrtisas32(int type, int subtype)
@@ -264,6 +249,18 @@ static void readmrtheader(mrt_msg_t *msg, const unsigned char *hdr)
         memcpy(&time, &hdr[MICROSECOND_TIMESTAMP_OFFSET], sizeof(time));
         msg->hdr.stamp.tv_nsec = frombig32(time) * 1000ull;
     }
+}
+
+static int endpending(mrt_msg_t *msg)
+{
+    // small optimization for common case
+    if (likely((msg->flags & F_PE) == 0))
+        return msg->err;
+
+    // only one flag can be set
+
+    assert(msg->flags & F_PE);
+    return endpeerents_r(msg);
 }
 
 int setmrtread(const void *data, size_t n)
@@ -365,15 +362,36 @@ mrt_header_t *getmrtheader(void)
     return getmrtheader_r(&curmsg);
 }
 
-int setmrtheader(const mrt_header_t *hdr)
+int setmrtheader(const mrt_header_t *hdr, ...)
 {
-    return setmrtheader_r(&curmsg, hdr);
+    va_list va;
+
+    va_start(va, hdr);
+    int res = setmrtheaderv(hdr, va);
+    va_end(va);
+    return res;
 }
 
-int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr)
+int setmrtheaderv(const mrt_header_t *hdr, va_list va)
 {
-    (void) msg, (void) hdr;
-    return MRT_ENOERR; // FIXME
+    return setmrtheaderv_r(&curmsg, hdr, va);
+}
+
+int setmrtheaderv_r(mrt_msg_t *msg, const mrt_header_t *hdr, va_list va)
+{
+    (void) msg, (void) hdr, (void) va;
+    return MRT_ENOERR; // TODO
+
+}
+
+int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr, ...)
+{
+    va_list va;
+
+    va_start(va, hdr);
+    int res = setmrtheaderv_r(msg, hdr, va);
+    va_end(va);
+    return res;
 }
 
 mrt_header_t *getmrtheader_r(mrt_msg_t *msg)
@@ -402,5 +420,24 @@ int mrtclose_r(mrt_msg_t *msg)
         memset(msg, 0, sizeof(*msg));  // XXX: optimize
     }
     return err;
+}
+
+// Peer Index
+
+int startpeerents(void)
+{
+    return startpeerents_r(&curmsg);
+}
+
+int startpeerents_r(mrt_msg_t *msg)
+{
+    if (unlikely(!ismrtpi(&msg->hdr)))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return msg->err;
+
+    endpending(msg);
+
+
 }
 
