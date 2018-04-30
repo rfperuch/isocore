@@ -116,6 +116,12 @@ enum {
     GRACEFUL_RESTART_BASE_SIZE       = GRACEFUL_RESTART_BASE_LENGTH + CAPABILITY_HEADER_SIZE
 };
 
+typedef struct {
+    uint8_t code;
+    uint8_t len;
+    unsigned char data[CAPABILITY_LENGTH_MAX];
+} bgpcap_t;
+
 /// @brief Restart flags see: https://tools.ietf.org/html/rfc4724#section-3.
 enum {
     RESTART_FLAG = 1 << 3 ///< Most significant bit, Restart State (R).
@@ -134,136 +140,106 @@ typedef struct {
 
 static_assert(sizeof(afi_safi_t) ==  4, "Unsupported platform");
 
-/// @brief Extract capability code from raw capability buffer.
-inline int bgpcapcode(const void *buf)
+inline uint32_t getasn32bit(const bgpcap_t *cap)
 {
-    const unsigned char *ptr = buf;
-    return ptr[CAPABILITY_CODE_OFFSET];
-}
-
-/// @brief Extract capability length from raw capability buffer.
-inline size_t bgpcaplen(const void *buf)
-{
-    const unsigned char *ptr = buf;
-    return ptr[CAPABILITY_LENGTH_OFFSET];
-}
-
-inline uint32_t getasn32bit(const void *buf)
-{
-    assert(bgpcapcode(buf) == ASN32BIT_CODE);
-    assert(bgpcaplen(buf) == ASN32BIT_LENGTH);
+    assert(cap->code == ASN32BIT_CODE);
+    assert(cap->len  == ASN32BIT_LENGTH);
 
     uint32_t asn32bit;
-
-    const unsigned char *ptr = buf;
-    memcpy(&asn32bit, &ptr[CAPABILITY_HEADER_SIZE], sizeof(asn32bit));
+    memcpy(&asn32bit, &cap->data[CAPABILITY_HEADER_SIZE], sizeof(asn32bit));
     return frombig32(asn32bit);
 }
 
-inline void *makeasn32bit(void *buf, uint32_t as)
+inline bgpcap_t *setasn32bit(bgpcap_t *cap, uint32_t as)
 {
+    assert(cap->code == ASN32BIT_CODE);
+    assert(cap->len  == ASN32BIT_LENGTH);
+
     as = tobig32(as);
-
-    unsigned char *ptr = buf;
-    *ptr++ = ASN32BIT_CODE;
-    *ptr++ = ASN32BIT_LENGTH;
-    memcpy(ptr, &as, sizeof(as));
-
-    return buf;
+    memcpy(cap->data, &as, sizeof(as));
+    return cap;
 }
 
-inline void *makemultiprotocol(void *buf, afi_t afi, safi_t safi)
+inline bgpcap_t *setmultiprotocol(bgpcap_t *cap, afi_t afi, safi_t safi)
 {
-    uint16_t t = tobig16(afi);
+    assert(cap->code == MULTIPROTOCOL_CODE);
+    assert(cap->len  == MULTIPROTOCOL_LENGTH);
 
-    uint8_t *ptr = buf;
-    *ptr++ = MULTIPROTOCOL_CODE;
-    *ptr++ = MULTIPROTOCOL_LENGTH;
+    uint16_t t = tobig16(afi);
+    unsigned char *ptr = cap->data;
     memcpy(ptr, &t, sizeof(t));
     ptr += sizeof(t);
 
     *ptr++ = 0;  // reserved
     *ptr   = safi;
-    return buf;
+    return cap;
 }
 
-inline afi_safi_t getmultiprotocol(const void *buf)
+inline afi_safi_t getmultiprotocol(const bgpcap_t *cap)
 {
-    assert(bgpcapcode(buf) == MULTIPROTOCOL_CODE);
-    assert(bgpcaplen(buf) == MULTIPROTOCOL_LENGTH);
+    assert(cap->code == MULTIPROTOCOL_CODE);
+    assert(cap->len == MULTIPROTOCOL_LENGTH);
 
     afi_safi_t r;
     uint16_t t;
 
-    const unsigned char *ptr = buf;
-    ptr += CAPABILITY_HEADER_SIZE;
-    memcpy(&t, &ptr[MULTIPROTOCOL_AFI_OFFSET], sizeof(t));
+    memcpy(&t, &cap->data[MULTIPROTOCOL_AFI_OFFSET], sizeof(t));
 
-    r.afi = frombig16(t);
-    r.safi = ptr[MULTIPROTOCOL_SAFI_OFFSET];
+    r.afi   = frombig16(t);
+    r.safi  = cap->data[MULTIPROTOCOL_SAFI_OFFSET];
     r.flags = 0;
     return r;
 }
 
-inline void *makegracefulrestart(void *buf, int flags, int secs)
+inline bgpcap_t *setgracefulrestart(bgpcap_t *cap, int flags, int secs)
 {
+    assert(cap->code == GRACEFUL_RESTART_CODE);
+
     // RFC mandates that any other restart flag is reserved and zeroed
     flags &= RESTART_FLAG;
-
-    unsigned char *ptr = buf;
-    *ptr++ = GRACEFUL_RESTART_CODE;
-    *ptr++ = GRACEFUL_RESTART_BASE_LENGTH;
 
     uint16_t flagtime = ((flags & 0x000f) << 12) | (secs & 0x0fff);
     flagtime = tobig16(flagtime);
 
-    memcpy(ptr, &flagtime, sizeof(flagtime));
-    return buf;
+    memcpy(cap->data, &flagtime, sizeof(flagtime));
+    return cap;
 }
 
-inline void *putgracefulrestarttuple(void *buf, afi_t afi, safi_t safi, int flags)
+inline bgpcap_t *putgracefulrestarttuple(bgpcap_t *cap, afi_t afi, safi_t safi, int flags)
 {
-    assert(bgpcapcode(buf) == GRACEFUL_RESTART_CODE);
-
-    size_t len = bgpcaplen(buf);
+    assert(cap->code == GRACEFUL_RESTART_CODE);
 
     // RFC mandates that any other flag is reserved and zeroed out
     flags &= FORWARDING_STATE;
     afi_safi_t t = {
-        .afi = tobig16(afi),
-        .safi = safi,
+        .afi   = tobig16(afi),
+        .safi  = safi,
         .flags = flags
     };
 
-    assert(len + sizeof(t) <= CAPABILITY_LENGTH_MAX);
+    assert(cap->len + sizeof(t) <= CAPABILITY_LENGTH_MAX);
 
-    unsigned char *ptr = buf;
-    ptr++;                             // skip capability code
-    *ptr++ = len + sizeof(t);          // update length
-    memcpy(&ptr[len], &t, sizeof(t));  // append tuple
-    return buf;
+    memcpy(&cap->data[cap->len], &t, sizeof(t));  // append tuple
+    cap->len += sizeof(t);
+    return cap;
 }
 
-inline int getgracefulrestarttime(const void *buf)
+inline int getgracefulrestarttime(const bgpcap_t *cap)
 {
-    assert(bgpcapcode(buf) == GRACEFUL_RESTART_CODE);
+    assert(cap->code == GRACEFUL_RESTART_CODE);
 
     uint16_t flagtime;
-
-    const unsigned char *ptr = buf;
-    memcpy(&flagtime, &ptr[CAPABILITY_HEADER_SIZE], sizeof(flagtime));
+    memcpy(&flagtime, cap->data, sizeof(flagtime));
     flagtime = frombig16(flagtime);
     return flagtime & 0x0fff;
 }
 
-inline int getgracefulrestartflags(const void *buf)
+inline int getgracefulrestartflags(const bgpcap_t *cap)
 {
-    assert(bgpcapcode(buf) == GRACEFUL_RESTART_CODE);
+    assert(cap->code == GRACEFUL_RESTART_CODE);
 
     uint16_t flagtime;
-
-    const unsigned char *ptr = buf;
-    memcpy(&flagtime, &ptr[CAPABILITY_HEADER_SIZE], sizeof(flagtime));
+    memcpy(&flagtime, cap->data, sizeof(flagtime));
     flagtime = frombig16(flagtime);
 
     // XXX: signal non-zeroed flags as an error or mask them?
@@ -271,6 +247,6 @@ inline int getgracefulrestartflags(const void *buf)
 }
 
 /// @brief Get tuples from a graceful restart capability into a buffer
-size_t getgracefulrestarttuples(afi_safi_t *dst, size_t n, const void *buf);
+size_t getgracefulrestarttuples(afi_safi_t *dst, size_t n, const bgpcap_t *cap);
 
 #endif

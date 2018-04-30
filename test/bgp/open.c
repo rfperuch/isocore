@@ -40,6 +40,7 @@
 void testopencreate(void)
 {
     unsigned char buf[128];
+    bgpcap_t cap;
 
     // struct in_addr ip;
     // inet_pton(AF_INET, "127.0.0.1", &ip);
@@ -57,13 +58,19 @@ void testopencreate(void)
     setbgpopen(&op);
 
     startbgpcaps();
-        makeasn32bit(buf, 0xffffffff);
-        putbgpcap(buf);
-        makemultiprotocol(buf, AFI_IPV6, SAFI_UNICAST);
-        putbgpcap(buf);
-        makegracefulrestart(buf, RESTART_FLAG, 1600);
-        putgracefulrestarttuple(buf, AFI_IPV6, SAFI_UNICAST, FORWARDING_STATE);
-        putbgpcap(buf);
+        cap.code = ASN32BIT_CODE;
+        cap.len = ASN32BIT_LENGTH;
+        putbgpcap(setasn32bit(&cap, 0xffffffff));
+
+        cap.code = MULTIPROTOCOL_CODE;
+        cap.len = MULTIPROTOCOL_LENGTH;
+        putbgpcap(setmultiprotocol(&cap, AFI_IPV6, SAFI_UNICAST));
+
+        cap.code = GRACEFUL_RESTART_CODE;
+        cap.len  = GRACEFUL_RESTART_BASE_LENGTH;
+        setgracefulrestart(&cap, RESTART_FLAG, 1600);
+        putgracefulrestarttuple(&cap, AFI_IPV6, SAFI_UNICAST, FORWARDING_STATE);
+        putbgpcap(&cap);
     endbgpcaps();
 
     // finish and obtain packet bytes
@@ -71,6 +78,7 @@ void testopencreate(void)
     void *pkt = bgpfinish(&n);
 
     CU_ASSERT_PTR_NOT_NULL(pkt);
+    CU_ASSERT_FATAL(n < sizeof(buf));
 
     memcpy(buf, pkt, n);
 
@@ -90,25 +98,23 @@ void testopencreate(void)
     startbgpcaps();
 
     afi_safi_t tuples[1];
-    void *cap;
-    while ((cap = nextbgpcap(&n)) != NULL) {
-        CU_ASSERT_EQUAL_FATAL(n, bgpcaplen(cap) + CAPABILITY_HEADER_SIZE);
-
-        switch (bgpcapcode(cap)) {
+    bgpcap_t *pcap;
+    while ((pcap = nextbgpcap()) != NULL) {
+        switch (pcap->code) {
         case ASN32BIT_CODE:
-            CU_ASSERT_EQUAL(bgpcaplen(cap), ASN32BIT_LENGTH);
-            CU_ASSERT_EQUAL(getasn32bit(cap), 0xffffffff);
+            CU_ASSERT_EQUAL(pcap->len, ASN32BIT_LENGTH);
+            CU_ASSERT_EQUAL(getasn32bit(pcap), 0xffffffff);
             break;
         case MULTIPROTOCOL_CODE:
-            CU_ASSERT_EQUAL(bgpcaplen(cap), MULTIPROTOCOL_LENGTH);
-            CU_ASSERT_EQUAL(getmultiprotocol(cap).afi, AFI_IPV6);
-            CU_ASSERT_EQUAL(getmultiprotocol(cap).safi, SAFI_UNICAST);
-            CU_ASSERT_EQUAL(getmultiprotocol(cap).flags, 0);
+            CU_ASSERT_EQUAL(pcap->len, MULTIPROTOCOL_LENGTH);
+            CU_ASSERT_EQUAL(getmultiprotocol(pcap).afi, AFI_IPV6);
+            CU_ASSERT_EQUAL(getmultiprotocol(pcap).safi, SAFI_UNICAST);
+            CU_ASSERT_EQUAL(getmultiprotocol(pcap).flags, 0);
             break;
         case GRACEFUL_RESTART_CODE:
-            CU_ASSERT_EQUAL(bgpcaplen(cap), GRACEFUL_RESTART_BASE_LENGTH + sizeof(*tuples));
-            CU_ASSERT_EQUAL(getgracefulrestartflags(cap), RESTART_FLAG);
-            CU_ASSERT_EQUAL(getgracefulrestarttime(cap), 1600);
+            CU_ASSERT_EQUAL(pcap->len, GRACEFUL_RESTART_BASE_LENGTH + sizeof(*tuples));
+            CU_ASSERT_EQUAL(getgracefulrestartflags(pcap), RESTART_FLAG);
+            CU_ASSERT_EQUAL(getgracefulrestarttime(pcap), 1600);
 
             n = getgracefulrestarttuples(tuples, nelems(tuples), cap);
 
@@ -233,16 +239,17 @@ void testopenread(void)
     CU_ASSERT_EQUAL(memcmp(&(getbgpopen()->iden), &iden, sizeof(iden)), 0);
     
     startbgpcaps();
-    void *cap;
+    bgpcap_t *cap;
     size_t n;
-    while ((cap = nextbgpcap(&n)) != NULL) {
-        CU_ASSERT_EQUAL_FATAL(n, bgpcaplen(cap) + CAPABILITY_HEADER_SIZE);
-        switch (bgpcapcode(cap)) {
+    while ((cap = nextbgpcap()) != NULL) {
+        switch (cap->code) {
         case MULTIPROTOCOL_CODE:
-            CU_ASSERT_EQUAL(bgpcaplen(cap), MULTIPROTOCOL_LENGTH);
+            CU_ASSERT_EQUAL(cap->len, MULTIPROTOCOL_LENGTH);
             CU_ASSERT_EQUAL(getmultiprotocol(cap).afi, AFI_IPV4);
             CU_ASSERT_EQUAL(getmultiprotocol(cap).safi, SAFI_UNICAST);
             break;
+        default:
+            CU_FAIL_FATAL("unexpected capability");
         }
     }
     endbgpcaps();

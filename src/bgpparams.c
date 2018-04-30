@@ -32,37 +32,30 @@
 
 // extern declarations for inline functions in isolario/bgpparams.h
 
-extern int bgpcapcode(const void *buf);
+extern uint32_t getasn32bit(const bgpcap_t *cap);
 
-extern size_t bgpcaplen(const void *buf);
+extern bgpcap_t *setasn32bit(bgpcap_t *cap, uint32_t as);
 
-extern uint32_t getasn32bit(const void *buf);
+extern void *makemultiprotocol(bgpcap_t *buf, afi_t afi, safi_t safi);
 
-extern void *makeasn32bit(void *buf, uint32_t as);
+extern afi_safi_t getmultiprotocol(const bgpcap_t *cap);
 
-extern void *makemultiprotocol(void *buf, afi_t afi, safi_t safi);
+extern bgpcap_t *makegracefulrestart(bgpcap_t *cap, int flags, int secs);
 
-extern afi_safi_t getmultiprotocol(const void *buf);
+extern bgpcap_t *putgracefulrestarttuple(bgpcap_t *cap, afi_t afi, safi_t safi, int flags);
 
-extern void *makegracefulrestart(void *buf, int flags, int secs);
+extern int getgracefulrestarttime(const bgpcap_t *cap);
 
-extern void *putgracefulrestarttuple(void *buf, afi_t afi, safi_t safi, int flags);
+extern int getgracefulrestartflags(const bgpcap_t *cap);
 
-extern int getgracefulrestarttime(const void *buf);
-
-extern int getgracefulrestartflags(const void *buf);
-
-size_t getgracefulrestarttuples(afi_safi_t *dst, size_t n, const void *buf)
+size_t getgracefulrestarttuples(afi_safi_t *dst, size_t n, const bgpcap_t *cap)
 {
-    assert(bgpcapcode(buf) == GRACEFUL_RESTART_CODE);
+    assert(cap->code == GRACEFUL_RESTART_CODE);
 
-    const unsigned char *ptr = buf;
-    size_t off = CAPABILITY_HEADER_SIZE + GRACEFUL_RESTART_TUPLES_OFFSET;
-
-    const afi_safi_t *src = (const afi_safi_t *) (ptr + off);
+    const afi_safi_t *src = (const afi_safi_t *) (&cap->data[GRACEFUL_RESTART_TUPLES_OFFSET]);
 
     // XXX: signal non-zeroed flags as an error or mask them?
-    size_t size = bgpcaplen(buf) - GRACEFUL_RESTART_TUPLES_OFFSET;
+    size_t size = cap->len - GRACEFUL_RESTART_TUPLES_OFFSET;
     size /= sizeof(*src);
     if (n > size)
         n = size;
