@@ -36,11 +36,11 @@ extern uint32_t getasn32bit(const bgpcap_t *cap);
 
 extern bgpcap_t *setasn32bit(bgpcap_t *cap, uint32_t as);
 
-extern void *makemultiprotocol(bgpcap_t *buf, afi_t afi, safi_t safi);
+extern void *setmultiprotocol(bgpcap_t *buf, afi_t afi, safi_t safi);
 
 extern afi_safi_t getmultiprotocol(const bgpcap_t *cap);
 
-extern bgpcap_t *makegracefulrestart(bgpcap_t *cap, int flags, int secs);
+extern bgpcap_t *setgracefulrestart(bgpcap_t *cap, int flags, int secs);
 
 extern bgpcap_t *putgracefulrestarttuple(bgpcap_t *cap, afi_t afi, safi_t safi, int flags);
 
