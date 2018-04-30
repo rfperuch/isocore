@@ -385,8 +385,8 @@ int setbgpopen_r(bgp_msg_t *msg, const bgp_open_t *op)
     if (checktype(msg, BGP_OPEN, F_WR))
         return msg->err;
 
-    msg->buf[VERSION_OFFSET]   = op->version;
-    
+    msg->buf[VERSION_OFFSET] = op->version;
+
     uint16_t hold_time = tobig16(op->hold_time);
     memcpy(&msg->buf[HOLD_TIME_OFFSET], &hold_time, sizeof(hold_time));
 
