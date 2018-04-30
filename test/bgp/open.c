@@ -116,7 +116,7 @@ void testopencreate(void)
             CU_ASSERT_EQUAL(getgracefulrestartflags(pcap), RESTART_FLAG);
             CU_ASSERT_EQUAL(getgracefulrestarttime(pcap), 1600);
 
-            n = getgracefulrestarttuples(tuples, nelems(tuples), cap);
+            n = getgracefulrestarttuples(tuples, nelems(tuples), pcap);
 
             CU_ASSERT_EQUAL(n, nelems(tuples));
             CU_ASSERT_EQUAL(tuples->afi, AFI_IPV6);
@@ -240,7 +240,6 @@ void testopenread(void)
     
     startbgpcaps();
     bgpcap_t *cap;
-    size_t n;
     while ((cap = nextbgpcap()) != NULL) {
         switch (cap->code) {
         case MULTIPROTOCOL_CODE:

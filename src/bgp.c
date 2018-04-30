@@ -523,7 +523,7 @@ int putbgpcap_r(bgp_msg_t *msg, const bgpcap_t *cap)
     size_t n = CAPABILITY_HEADER_SIZE + cap->len;
     // TODO actual check rather than assert()
     assert(n <= CAPABILITY_SIZE_MAX);
-    memcpy(ptr, data, n);
+    memcpy(ptr, cap, n);
     ptr += n;
 
     msg->pktlen += n;

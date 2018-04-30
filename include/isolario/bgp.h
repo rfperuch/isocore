@@ -344,9 +344,9 @@ int setbgpparams_r(bgp_msg_t *msg, const void *params, size_t n);
 
 int startbgpcaps_r(bgp_msg_t *msg);
 
-void *nextbgpcap_r(bgp_msg_t *msg, size_t *pn);
+bgpcap_t *nextbgpcap_r(bgp_msg_t *msg);
 
-int putbgpcap_r(bgp_msg_t *msg, const void *data);
+int putbgpcap_r(bgp_msg_t *msg, const bgpcap_t *cap);
 
 int endbgpcaps_r(bgp_msg_t *msg);
 
