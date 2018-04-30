@@ -30,8 +30,6 @@
 
 #include <assert.h>
 #include <isolario/bgp.h>
-#include <isolario/bgpattribs.h>
-#include <isolario/bgpparams.h>
 #include <isolario/branch.h>
 #include <isolario/endian.h>
 #include <isolario/util.h>
@@ -450,12 +448,12 @@ int startbgpcaps_r(bgp_msg_t *msg)
     return BGP_ENOERR;
 }
 
-void *nextbgpcap(size_t *pn)
+bgpcap_t *nextbgpcap(void)
 {
-    return nextbgpcap_r(&curmsg, pn);
+    return nextbgpcap_r(&curmsg);
 }
 
-void *nextbgpcap_r(bgp_msg_t *msg, size_t *pn)
+bgpcap_t *nextbgpcap_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_OPEN, F_RD | F_PM))
         return NULL;
@@ -495,20 +493,17 @@ void *nextbgpcap_r(bgp_msg_t *msg, size_t *pn)
         return NULL;
     }
 
-    if (pn)
-        *pn = ptr[CAPABILITY_LENGTH_OFFSET] + CAPABILITY_HEADER_SIZE;
-
     // advance to next parameter
     msg->pptr = ptr + CAPABILITY_HEADER_SIZE + ptr[1];
-    return ptr;
+    return (bgpcap_t *) ptr;
 }
 
-int putbgpcap(const void *data)
+int putbgpcap(const bgpcap_t *cap)
 {
-    return putbgpcap_r(&curmsg, data);
+    return putbgpcap_r(&curmsg, cap);
 }
 
-int putbgpcap_r(bgp_msg_t *msg, const void *data)
+int putbgpcap_r(bgp_msg_t *msg, const bgpcap_t *cap)
 {
     if (checktype(msg, BGP_OPEN, F_WR | F_PM))
         return msg->err;
@@ -525,7 +520,7 @@ int putbgpcap_r(bgp_msg_t *msg, const void *data)
 
     static_assert(BGPBUFSIZ >= MIN_OPEN_LENGTH + 0xff, "code assumes putbgpcap() can't overflow BGPBUFSIZ");
 
-    size_t n = bgpcaplen(data) + CAPABILITY_HEADER_SIZE;
+    size_t n = CAPABILITY_HEADER_SIZE + cap->len;
     // TODO actual check rather than assert()
     assert(n <= CAPABILITY_SIZE_MAX);
     memcpy(ptr, data, n);

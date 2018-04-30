@@ -43,6 +43,7 @@
 #define ISOLARIO_BGP_H_
 
 #include <arpa/inet.h>
+#include <isolario/bgpparams.h>
 #include <isolario/bgpattribs.h>
 #include <isolario/netaddr.h>
 #include <isolario/io.h>  // also includes stddef.h
@@ -196,10 +197,10 @@ int setbgpparams(const void *params, size_t n);
 int startbgpcaps(void);
 
 /** @brief Read next BGP capability. */
-void *nextbgpcap(size_t *pn);
+bgpcap_t *nextbgpcap(void);
 
 /** @brief Write a capability into a BGP open packet, length is in bytes, header included. */
-int putbgpcap(const void *data);
+int putbgpcap(const bgpcap_t *cap);
 
 int endbgpcaps(void);
 
