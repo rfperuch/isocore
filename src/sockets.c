@@ -180,6 +180,9 @@ int fsockopen(const struct sockaddr *addr, socklen_t addrlen, const char *mode, 
         if (backlog < 1)
             backlog = DEFAULT_BACKLOG;
 
+        if (bind(fd, addr, addrlen) < 0)
+            goto error;
+
         if (listen(fd, backlog) < 0)
             goto error;
     } else {
