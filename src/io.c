@@ -67,6 +67,8 @@ int io_fclose(io_rw_t *io)
     return fclose(io->file);
 }
 
+extern void io_file_init(io_rw_t *io, FILE *file);
+
 // Unix fd =====================================================================
 
 size_t io_fdread(io_rw_t *io, void *dst, size_t n)
@@ -99,11 +101,13 @@ int io_fdclose(io_rw_t *io)
     return close(io->un.fd);
 }
 
+extern void io_fd_init(io_rw_t *io, int fd);
+
 // Dynamically allocated I/O types =============================================
 
 static void *io_getstate(io_rw_t *io)
 {
-    return &io->padding[0];
+    return &io->padding;
 }
 
 static size_t io_getsize(size_t size)

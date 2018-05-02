@@ -55,19 +55,26 @@ struct io_rw_s {
         // User-defined data (generic)
         void *ptr;
 
-        max_align_t padding[1]; /// @private
+        max_align_t padding; /// @private
     };
 };
+
+// stdio FILE abstaction
 
 size_t io_fread(io_rw_t *io, void *dst, size_t n);
 size_t io_fwrite(io_rw_t *io, const void *src, size_t n);
 int    io_ferror(io_rw_t *io);
 int    io_fclose(io_rw_t *io);
 
-size_t io_fdread(io_rw_t *io, void *dst, size_t n);
-size_t io_fdwrite(io_rw_t *io, const void *src, size_t n);
-int    io_fderror(io_rw_t *io);
-int    io_fdclose(io_rw_t *io);
+// convenience initialization for stdio FILE
+inline void io_file_init(io_rw_t *io, FILE *file)
+{
+    io->file  = file;
+    io->read  = io_fread;
+    io->write = io_fwrite;
+    io->error = io_ferror;
+    io->close = io_fclose;
+}
 
 #define IO_FILE_INIT(file) { \
     .file  = file,           \
@@ -77,6 +84,24 @@ int    io_fdclose(io_rw_t *io);
     .close = io_fclose       \
 }
 
+// POSIX fd abstraction
+
+size_t io_fdread(io_rw_t *io, void *dst, size_t n);
+size_t io_fdwrite(io_rw_t *io, const void *src, size_t n);
+int    io_fderror(io_rw_t *io);
+int    io_fdclose(io_rw_t *io);
+
+// convenience initialization for POSIX fd
+inline void io_fd_init(io_rw_t *io, int fd)
+{
+    io->un.fd  = fd;
+    io->un.err = 0;
+    io->read   = io_fdread;
+    io->write  = io_fdwrite;
+    io->error  = io_fderror;
+    io->close  = io_fdclose;
+}
+
 #define IO_FD_INIT(fd) {   \
     .un    = { .fd = fd }, \
     .read  = io_fdread,    \
@@ -84,6 +109,8 @@ int    io_fdclose(io_rw_t *io);
     .error = io_fderror,   \
     .close = io_fdclose    \
 }
+
+// compressed I/O (io_rw_t * structures are malloc()ed, but free()ed by their close() function)
 
 io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...);
 io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...);
