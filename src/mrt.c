@@ -243,7 +243,7 @@ static void readmrtheader(mrt_msg_t *msg, const unsigned char *hdr)
     msg->hdr.subtype = frombig16(subtype);
 
     uint32_t len;
-    memcpy(&len, hdr, sizeof(len));
+    memcpy(&len, &hdr[LENGTH_OFFSET], sizeof(len));
     msg->hdr.len = frombig32(len);
     if (msg->flags & F_EXT) {
         memcpy(&time, &hdr[MICROSECOND_TIMESTAMP_OFFSET], sizeof(time));
@@ -424,12 +424,92 @@ int mrtclose_r(mrt_msg_t *msg)
 
 // Peer Index
 
-int startpeerents(void)
+struct in_addr getpicollector(void)
 {
-    return startpeerents_r(&curmsg);
+    return getpicollector_r(&curmsg);
 }
 
-int startpeerents_r(mrt_msg_t *msg)
+struct in_addr getpicollector_r(mrt_msg_t *msg)
+{
+    struct in_addr addr = { 0 };
+    if (unlikely(!ismrtpi(&msg->hdr)))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return addr;
+
+    memcpy(&addr, &msg->buf[BASE_PACKET_LENGTH], sizeof(addr));
+    return addr;
+}
+
+size_t getpiviewname(char *buf, size_t n)
+{
+    return getpiviewname_r(&curmsg, buf, n);
+}
+
+size_t getpiviewname_r(mrt_msg_t *msg, char *buf, size_t n)
+{
+    if (unlikely(!ismrtpi(&msg->hdr)))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return 0;
+
+    unsigned char *ptr = &msg->buf[BASE_PACKET_LENGTH];
+    ptr += sizeof(uint32_t);
+
+    uint16_t len;
+    memcpy(&len, ptr, sizeof(len));
+    len = frombig16(len);
+    if (n > (size_t) len + 1)
+        n = (size_t) len + 1;
+
+    ptr += sizeof(len);
+    if (n > 0) {
+        memcpy(buf, ptr, n - 1);
+        buf[n - 1] = '\0';
+    }
+    return len;
+}
+
+void *getpeerents(size_t *pcount, size_t *pn)
+{
+    return getpeerents_r(&curmsg, pcount, pn);
+}
+
+void *getpeerents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
+{
+    if (unlikely(!ismrtpi(&msg->hdr)))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return NULL;
+
+    unsigned char *ptr = &msg->buf[BASE_PACKET_LENGTH];
+    ptr += sizeof(struct in_addr);  // collector id
+
+    // view name
+    uint16_t len;
+    memcpy(&len, ptr, sizeof(len));
+    ptr += sizeof(len);
+    ptr += frombig16(len);
+
+    // peer count
+    if (pcount) {
+        memcpy(&len, ptr, sizeof(len));
+        *pcount = frombig16(len);
+    }
+    ptr += sizeof(len);
+
+    if (pn)
+        *pn = msg->hdr.len - (ptr - msg->buf);
+
+    return ptr;
+}
+
+int startpeerents(size_t *pcount)
+{
+    return startpeerents_r(&curmsg, pcount);
+}
+
+int startpeerents_r(mrt_msg_t *msg, size_t *pcount)
 {
     if (unlikely(!ismrtpi(&msg->hdr)))
         msg->err = MRT_EINVOP;
@@ -437,6 +517,61 @@ int startpeerents_r(mrt_msg_t *msg)
         return msg->err;
 
     endpending(msg);
+
+    msg->peptr  = getpeerents_r(msg, pcount, NULL);
+    msg->flags |= F_PE;
+    return msg->err;
+}
+
+peer_entry_t *nextpeerent(void)
+{
+    return nextpeerent_r(&curmsg);
+}
+
+enum {
+    PT_IPV6 = 1 << 0,
+    PT_AS32 = 1 << 1
+};
+
+peer_entry_t *nextpeerent_r(mrt_msg_t *msg)
+{
+    if (unlikely((msg->flags & F_PE) == 0))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return NULL;
+
+    // NOTE: RFC 6396 "The Length field does not include the length of the MRT Common Header."
+    unsigned char *end = msg->buf + msg->hdr.len + BASE_PACKET_LENGTH;
+    if (msg->peptr == end)
+        return NULL;
+
+    uint8_t flags = *msg->peptr++;
+    memcpy(&msg->pe.id, msg->peptr, sizeof(msg->pe.id));
+    msg->peptr += sizeof(msg->pe.id);
+    if (flags & PT_IPV6) {
+        msg->pe.afi = AFI_IPV6;
+        memcpy(&msg->pe.in6, msg->peptr, sizeof(msg->pe.in6));
+        msg->peptr += sizeof(msg->pe.in6);
+    } else {
+        msg->pe.afi = AFI_IPV4;
+        memcpy(&msg->pe.in, msg->peptr, sizeof(msg->pe.in));
+        msg->peptr += sizeof(msg->pe.in);
+    }
+    if (flags & PT_AS32) {
+        uint32_t as;
+
+        msg->pe.as_size = sizeof(as);
+        memcpy(&as, msg->peptr, sizeof(as));
+        msg->pe.as = frombig32(as);
+    } else {
+        uint16_t as;
+
+        msg->pe.as_size = sizeof(as);
+        memcpy(&as, msg->peptr, sizeof(as));
+        msg->pe.as = frombig16(as);
+    }
+    msg->peptr += msg->pe.as_size;
+    return &msg->pe;
 }
 
 int endpeerents(void)
@@ -446,6 +581,12 @@ int endpeerents(void)
 
 int endpeerents_r(mrt_msg_t *msg)
 {
+    if (unlikely((msg->flags & F_PE) == 0))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return msg->err;
+
+    msg->flags &= ~F_PE;
     return msg->err; // TODO;
 }
 

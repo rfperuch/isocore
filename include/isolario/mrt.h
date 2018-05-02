@@ -118,6 +118,7 @@ typedef struct {
     afi_t afi;
     size_t as_size;
     uint32_t as;
+    struct in_addr id;
     union {
         struct in_addr  in;
         struct in6_addr in6;
@@ -230,6 +231,10 @@ typedef struct mrt_msg_s {
     unsigned char fastbuf[MRTBUFSIZ];  ///< Fast buffer to avoid malloc()s.
 } mrt_msg_t;
 
+mrt_msg_t *getmrt(void);
+
+mrt_msg_t *getmrtpi(void);
+
 int mrterror_r(mrt_msg_t *msg);
 
 int mrtclose_r(mrt_msg_t *msg);
@@ -250,17 +255,32 @@ int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr, ...);
 
 // Peer Index
 
+struct in_addr getpicollector(void);
+
+struct in_addr getpicollector_r(mrt_msg_t *msg);
+
+size_t getpiviewname(char *buf, size_t n);
+
+size_t getpiviewname_r(mrt_msg_t *msg, char *buf, size_t n);
+
 int setpeerents(const void *buf, size_t n);
 
 int setpeerents_r(mrt_msg_t *msg, const void *buf, size_t n);
 
-void *getpeerents(size_t *pn);
+void *getpeerents(size_t *pcount, size_t *pn);
 
-void *getpeerents_r(mrt_msg_t *msg, size_t *pn);
+/**
+ * @brief Reentrant variant of getpeerents().
+ *
+ * @param [in]  msg
+ * @param [out] pcount If not NULL, storage where peer entries count should be stored.
+ * @param [out] pn     If not NULL, storage where peer entries chunk size (in bytes) should be stored.
+ */
+void *getpeerents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn);
 
-int startpeerents(void);
+int startpeerents(size_t *pcount);
 
-int startpeerents_r(mrt_msg_t *msg);
+int startpeerents_r(mrt_msg_t *msg, size_t *pcount);
 
 peer_entry_t *nextpeerent(void);
 
