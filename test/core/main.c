@@ -83,6 +83,12 @@ int main(void)
     if (!CU_add_test(suite, "test abstract I/O with Zlib", testzio))
         goto error;
 
+    if (!CU_add_test(suite, "test abstract I/O with bz2", testbz2))
+        goto error;
+    
+    if (!CU_add_test(suite, "test bgp dump packet row ", testbgpdumppacketrow))
+        goto error;
+
     CU_basic_set_mode(CU_BRM_VERBOSE);
     CU_basic_run_tests();
     unsigned int num_failures = CU_get_number_of_failures();

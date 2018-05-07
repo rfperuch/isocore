@@ -59,4 +59,8 @@ void testpatgetfirstsubnets(void);
 
 void testzio(void);
 
+void testbz2(void);
+
+void testbgpdumppacketrow(void);
+
 #endif

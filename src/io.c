@@ -130,6 +130,9 @@ static size_t io_zread(io_rw_t *io, void *dst, size_t n)
 {
     io_zstate *z = io_getstate(io);
 
+    if (unlikely(z->err != Z_OK))
+        return 0;
+
     z_stream *str = &z->stream;
     str->next_out = dst;
     str->avail_out = n;
@@ -161,6 +164,10 @@ static size_t io_zread(io_rw_t *io, void *dst, size_t n)
 static size_t io_zwrite(io_rw_t *io, const void *src, size_t n)
 {
     io_zstate *z  = io_getstate(io);
+
+    if (unlikely(z->err != Z_OK))
+        return 0;
+
     z_stream *str = &z->stream;
 
     str->next_in  = (void *) src;
@@ -197,6 +204,9 @@ static int io_zerror(io_rw_t *io)
 static int io_zclose(io_rw_t *io)
 {
     io_zstate *z  = io_getstate(io);
+    if (unlikely(z->err != Z_OK))
+        return 0;
+
     z_stream *str = &z->stream;
 
     int err;
@@ -313,6 +323,9 @@ typedef struct {
 static size_t io_bz2read(io_rw_t *io, void *dst, size_t n)
 {
     io_bz2state *bz = io_getstate(io);
+    if (unlikely(bz->err != BZ_OK))
+        return 0;
+
     bz_stream *str  = &bz->stream;
 
     str->next_out  = dst;
@@ -347,6 +360,9 @@ static size_t io_bz2read(io_rw_t *io, void *dst, size_t n)
 static size_t io_bz2write(io_rw_t *io, const void *src, size_t n)
 {
     io_bz2state *bz = io_getstate(io);
+    if (unlikely(bz->err != BZ_OK))
+        return 0;
+
     bz_stream *str  = &bz->stream;
 
     str->next_in  = (char *) src;
@@ -382,6 +398,9 @@ static int io_bz2error(io_rw_t *io)
 static void io_bz2finish(io_bz2state *bz)
 {
     bz_stream *str = &bz->stream;
+
+    if (unlikely(bz->err != BZ_OK))
+        return;
 
     int err;
     do {
@@ -576,6 +595,7 @@ static LZ4F_errorCode_t io_lz4begincompress(io_lz4state *lz, const LZ4F_preferen
 static ssize_t io_lz4flush(io_lz4state *lz)
 {
     ssize_t size = lz->cbufsiz - lz->cbufavail;
+    
     ssize_t n = write(lz->fd, &lz->buf[lz->bufsiz], size);
     if (unlikely(n != size)) {
         lz->err = errno;
@@ -659,6 +679,9 @@ static size_t io_lz4read(io_rw_t *io, void *dst, size_t n)
 {
     io_lz4state *lz = io_getstate(io);
 
+    if (unlikely(LZ4F_isError(lz->err)))
+        return 0;
+
     unsigned char *ptr = dst;
     size_t avail       = n;
     while (avail > 0) {
@@ -681,6 +704,9 @@ static size_t io_lz4read(io_rw_t *io, void *dst, size_t n)
 static size_t io_lz4write(io_rw_t *io, const void *src, size_t n)
 {
     io_lz4state *lz = io_getstate(io);
+
+    if (unlikely(LZ4F_isError(lz->err)))
+        return 0;
 
     const unsigned char *ptr = src;
     size_t avail             = n;

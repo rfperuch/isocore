@@ -36,6 +36,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include "test.h"
 
@@ -62,5 +63,38 @@ void testzio(void)
     buf[len] = '\0';
     printf("%s\n", buf);
     io->close(io);
+
+    unlink("miao.Z");
 }
+
+void testbz2(void)
+{
+    const char *str = "the quick brown fox jumps over the lazy dog\n";
+
+    int fd = open("miao.bz2", O_CREAT | O_TRUNC | O_WRONLY, 0666);
+    if (fd == -1)
+        CU_FAIL_FATAL("cannot open miao.bz2");
+
+    io_rw_t *io = io_bz2open(fd, 0, "w");
+    io->write(io, str, strlen(str));
+    io->close(io);
+
+    fd = open("miao.bz2", O_RDONLY);
+    if (fd == -1)
+        CU_FAIL_FATAL("cannot open miao.bz2");
+
+    char buf[1024];
+    io = io_bz2open(fd, 0, "r");
+    size_t len = io->read(io, buf, sizeof(buf) - 1);
+
+    buf[len] = '\0';
+    printf("%s\n", buf);
+    
+
+    
+    io->close(io);
+
+    unlink("miao.bz2");
+}
+
 
