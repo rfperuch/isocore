@@ -1,4 +1,4 @@
-#include <isolario/io.h>
 #include <isolario/bgpattribs.h>
+#include <stdio.h>
 
-void *print_bgp(const void *pkt, io_rw_t *out, const char *fmt, ...);
+void *print_bgp(const void *pkt, const size_t pktlen, FILE *out, const char *fmt, ...);
