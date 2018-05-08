@@ -57,6 +57,8 @@ extern uint32_t getoriginatorid(const bgpattr_t *attr);
 
 extern struct in_addr getnexthop(const bgpattr_t *attr);
 
+extern bgpattr_t *setnexthop(bgpattr_t *attr, struct in_addr in);
+
 extern uint32_t getmultiexitdisc(const bgpattr_t *attr);
 
 extern uint32_t getlocalpref(const bgpattr_t *attr);
