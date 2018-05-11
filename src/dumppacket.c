@@ -8,10 +8,10 @@ enum {
 };
 
 typedef struct {
-    void (*print_hdr)(const void* pkt, FILE *out);
-    void (*print_wd)(const void* pkt, FILE *out);
-    void (*print_nlri)(const void* pkt, FILE *out);
-    void (*funcs[MAX_PRINTABLE_ATTR_CODE])(const void*, FILE *out);
+    void (*print_hdr)(bgp_msg_t* pkt, FILE *out);
+    void (*print_wd)(bgp_msg_t *pkt, FILE *out);
+    void (*print_nlri)(bgp_msg_t *pkt, FILE *out);
+    void (*funcs[MAX_PRINTABLE_ATTR_CODE])(bgp_msg_t *pkt, FILE *out);
 } bgp_formatter_t;
 
 /*
@@ -27,31 +27,39 @@ static void print_bgp_attrs(const bgp_formatter_t *formatter, const bgp_msg_t *p
 }
 
 // row formatting
-static void print_bgphdr_row(const bgp_msg_t *pkt, FILE *out)
+static void print_bgphdr_row(bgp_msg_t *pkt, FILE *out)
 {
     int type = getbgptype();
     size_t length = getbgplength();
-    fprintf(out, "%d|%d", type, length);
+    fprintf(out, "%d|%zu", type, length);
 }
 
-static void print_wd_row(const bgp_msg_t *pkt, FILE *out)
+static void print_wd_row(bgp_msg_t *pkt, FILE *out)
 {
 
 }
 
-static void print_attr_origin_row(const void *origin, FILE *out)
+static void print_attr_origin_row(bgp_msg_t *pkt, FILE *out)
 {
 
 }
 
-static void print_attr_aspath_row(const void *aspath, FILE *out)
+static void print_attr_aspath_row(bgp_msg_t *msg, FILE *out)
 {
 
 }
 
-static void print_nlri_row(const void *nlri, FILE *out)
+static void print_nlri_row(bgp_msg_t *pkt, FILE *out)
 {
+    netaddr_t *prefix;
+    startnlri_r(pkt);
+    while ((prefix = nextnlri_r(pkt)) != NULL) {
+                if (prefix == NULL)
+            break;
 
+        fprintf(out, "%s", naddrtos(prefix, NADDR_CIDR));
+    }
+    endnlri_r(pkt);
 }
 
 static void setup_bgp_formatter_row(bgp_formatter_t *bgp_formatter)
@@ -63,7 +71,7 @@ static void setup_bgp_formatter_row(bgp_formatter_t *bgp_formatter)
     bgp_formatter->print_nlri = print_nlri_row;
 }
 
-void *print_bgp_r(const bgp_msg_t *pkt, FILE *out, const char *fmt, ...)
+void print_bgp_r(const bgp_msg_t *pkt, FILE *out, const char *fmt, ...)
 {
     bgp_formatter_t bgp_formatter;
   

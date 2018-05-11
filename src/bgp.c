@@ -101,7 +101,7 @@ static _Thread_local bgp_msg_t curmsg;
 
 static const uint8_t bgp_minlengths[] = {
     [BGP_OPEN]          = MIN_OPEN_LENGTH,
-    [BGP_UPDATE]        = BASE_PACKET_LENGTH,
+    [BGP_UPDATE]        = MIN_UPDATE_LENGTH,
     [BGP_NOTIFICATION]  = MIN_NOTIFICATION_LENGTH,
     [BGP_KEEPALIVE]     = BASE_PACKET_LENGTH,
     [BGP_ROUTE_REFRESH] = ROUTE_REFRESH_LENGTH,
@@ -327,6 +327,9 @@ void *bgpfinish_r(bgp_msg_t *msg, size_t *pn)
     memcpy(&msg->buf[LENGTH_OFFSET], &len, sizeof(len));
     if (likely(pn))
         *pn = n;
+
+    msg->flags &= ~F_WR;
+    msg->flags |= F_RD; //allow reading from this message in the future
 
     return msg->buf;
 }
@@ -633,13 +636,14 @@ int startwithdrawn_r(bgp_msg_t *msg)
     unsigned char *ptr = getwithdrawn_r(msg, &n);
     if (msg->flags & F_WR) {
 
-        if (!bgppreserve(msg, ptr + n))
+        if (bgppreserve(msg, ptr + n) != BGP_ENOERR)
             return msg->err;
 
         msg->pktlen -= n;
     }
 
     msg->uptr   = ptr;
+    msg->ustart = ptr;
     msg->flags |= F_WITHDRN;
     return BGP_ENOERR;
 }
@@ -715,14 +719,28 @@ netaddr_t *nextwithdrawn_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_RD | F_WITHDRN))
         return NULL;
 
-    // FIXME (also bound check the prefix)
+    uint16_t wlen;
+    memcpy(&wlen, msg->ustart - sizeof(wlen), sizeof(wlen));
+    wlen = frombig16(wlen);
+
+    unsigned char *end = msg->ustart + wlen;
+    
+    if (msg->uptr == end) {
+        msg->err = BGP_EBADWDRWN;
+        return NULL;
+    }
+
     memset(&msg->pfxbuf, 0, sizeof(msg->pfxbuf));
 
     size_t bitlen = *msg->uptr++;
+    size_t n = naddrsize(bitlen);
+    if (msg->uptr + n > end) {
+        msg->err = BGP_EBADWDRWN;
+        return NULL;
+    }
     makenaddr(&msg->pfxbuf, msg->uptr, bitlen);
-    // END
 
-    msg->uptr += naddrsize(bitlen);
+    msg->uptr += n;
     return &msg->pfxbuf;
 }
 
@@ -756,7 +774,11 @@ int endwithdrawn_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_RDWR | F_WITHDRN))
         return msg->err;
 
-    bgprestore(msg);
+    if (msg->flags & F_WR) {
+        bgprestore(msg);
+        uint16_t len = tobig16(msg->uptr - msg->ustart);
+        memcpy(msg->ustart - sizeof(len), &len, sizeof(len));
+    }
 
     msg->flags &= ~F_WITHDRN;
     return BGP_ENOERR;
@@ -802,13 +824,14 @@ int startbgpattribs_r(bgp_msg_t *msg)
     unsigned char *ptr = getbgpattribs_r(msg, &n);
     if (msg->flags & F_WR) {
 
-        if (!bgppreserve(msg, ptr + n))
+        if (bgppreserve(msg, ptr + n) != BGP_ENOERR)
             return msg->err;
 
         msg->pktlen -= n;
     }
 
     msg->uptr   = ptr;
+    msg->ustart = ptr;
     msg->flags |= F_PATTR;
     return BGP_ENOERR;
 }
@@ -831,8 +854,10 @@ int putbgpattrib_r(bgp_msg_t *msg, const bgpattr_t *attr)
         len |= attr->exlen[1];  // len was exlen[0]
     }
 
-    memcpy(msg->uptr, attr, hdrsize + len);
-    msg->uptr += hdrsize + len;
+    len += hdrsize;
+    memcpy(msg->uptr, attr, len);
+    msg->uptr += len;
+    msg->pktlen += len;
     return BGP_ENOERR;
 }
 
@@ -846,17 +871,39 @@ bgpattr_t *nextbgpattrib_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_WR | F_PATTR))
         return NULL;
 
+    uint16_t attrlen;
+    memcpy(&attrlen, msg->ustart - sizeof(attrlen), sizeof(attrlen));
+    attrlen = frombig16(attrlen);
+
+    const unsigned char *end = msg->ustart + attrlen;
+    if (msg->uptr == end)
+        return NULL;
+    
+    if (unlikely(msg->uptr + ATTR_HEADER_SIZE > end)) {
+        msg->err = BGP_EBADATTR;
+        return NULL;
+    }
+
     bgpattr_t *attr = (bgpattr_t *) msg->uptr;
 
     size_t hdrsize = ATTR_HEADER_SIZE;
     size_t len = attr->len;
+
     if (attr->flags & ATTR_EXTENDED_LENGTH) {
+        if (unlikely(msg->uptr + ATTR_EXTENDED_HEADER_SIZE > end)) {
+            msg->err = BGP_EBADATTR;
+            return NULL;
+        }
         hdrsize = ATTR_EXTENDED_HEADER_SIZE;
         len <<= 8;
         len |= attr->exlen[1];  // len was exlen[0]
     }
 
     msg->uptr += hdrsize;
+    if (unlikely(msg->uptr + len > end)) {
+        msg->err = BGP_EBADATTR;
+        return NULL;
+    }
     msg->uptr += len;
     return attr;
 }
@@ -871,8 +918,11 @@ int endbgpattribs_r(bgp_msg_t *msg)
     if (checkanytype(msg, BGP_UPDATE, F_RDWR | F_PATTR))
         return msg->err;
 
-    if (msg->flags & F_WR)
+    if (msg->flags & F_WR) { 
         bgprestore(msg);
+        uint16_t len = tobig16(msg->uptr - msg->ustart);
+        memcpy(msg->ustart - sizeof(len), &len, sizeof(len));
+    }
 
     msg->flags &= ~F_PATTR;
     return BGP_ENOERR;
@@ -892,13 +942,9 @@ void *getnlri_r(bgp_msg_t *msg, size_t *pn)
     unsigned char *ptr = getbgpattribs_r(msg, &pattrs_length);
     ptr += pattrs_length;
 
-    uint16_t len;
-    if (likely(pn)) {
-        memcpy(&len, ptr, sizeof(len));
-        *pn = frombig16(len);
-    }
+    if (likely(pn))
+        *pn = msg->buf + msg->pktlen - ptr;
 
-    ptr += sizeof(len);
     return ptr;
 }
 
@@ -942,6 +988,7 @@ int startnlri_r(bgp_msg_t *msg)
         msg->pktlen -= n;
 
     msg->uptr   = ptr;
+    //msg->ustart = ptr; this is not necessary because nlri field does not have a summary length field
     msg->flags |= F_NLRI;
     return BGP_ENOERR;
 }
@@ -956,14 +1003,22 @@ netaddr_t *nextnlri_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_RD | F_NLRI))
         return NULL;
 
-    // FIXME (also bound check the prefix)
+    if (msg->uptr == msg->buf + msg->pktlen)
+        return NULL;
+
     memset(&msg->pfxbuf, 0, sizeof(msg->pfxbuf));
 
     size_t bitlen = *msg->uptr++;
-    makenaddr(&msg->pfxbuf, msg->uptr, bitlen);
-    // END
+    size_t n = naddrsize(bitlen);
 
-    msg->uptr += naddrsize(bitlen);
+    if (unlikely(msg->uptr + n > msg->buf + msg->pktlen)) {
+        msg->err = BGP_EBADNLRI;
+        return NULL;
+    }
+
+    makenaddr(&msg->pfxbuf, msg->uptr, bitlen);
+
+    msg->uptr += n;
     return &msg->pfxbuf;
 }
 
@@ -978,12 +1033,13 @@ int putnlri_r(bgp_msg_t *msg, const netaddr_t *p)
         return msg->err;
 
     size_t len = naddrsize(p->bitlen);
-    if (!bgpensure(msg, len))
+    if (!bgpensure(msg, len + 1))
         return msg->err;
 
+    *msg->uptr++ = p->bitlen;
     memcpy(msg->uptr, p->bytes, len);
     msg->uptr   += len;
-    msg->pktlen += len;
+    msg->pktlen += len + 1;
     return BGP_ENOERR;
 }
 

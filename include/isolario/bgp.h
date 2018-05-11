@@ -95,9 +95,9 @@ enum {
     BGP_EBADHDR,       ///< Bad BGP packet header.
     BGP_EBADTYPE,      ///< Unrecognized BGP packet type.
     BGP_EBADPARAMLEN,  ///< Open message has invalid parameters field length.
-    BGP_EBADWDRWNLEN,  ///< Update message has invalid Withdrawn field length.
-    BGP_EBADATTRSLEN,  ///< Update message has invalid Path Attributes field length.
-    BGP_EBADNLRILEN    ///< Update message has invalid NLRI field length.
+    BGP_EBADWDRWN,  ///< Update message has invalid Withdrawn field.
+    BGP_EBADATTR,  ///< Update message has invalid Path Attributes field.
+    BGP_EBADNLRI    ///< Update message has invalid NLRI field.
 };
 
 inline const char *bgpstrerror(int err)
@@ -117,12 +117,12 @@ inline const char *bgpstrerror(int err)
         return "Bad BGP packet type";
     case BGP_EBADPARAMLEN:
         return "Oversized or inconsistent BGP open parameters length";
-    case BGP_EBADWDRWNLEN:
+    case BGP_EBADWDRWN:
         return "Oversized or inconsistent BGP update Withdrawn length";
-    case BGP_EBADATTRSLEN:
-        return "Oversized or inconsistent BGP update Path Attributes length";
-    case BGP_EBADNLRILEN:
-        return "Oversized or inconsistent BGP update NLRI length";
+    case BGP_EBADATTR:
+        return "Oversized or inconsistent BGP update Path Attributes field";
+    case BGP_EBADNLRI:
+        return "Oversized or inconsistent BGP update NLRI field";
     default:
         return "Unknown error";
     }
@@ -298,6 +298,7 @@ typedef struct {
         /// @private BGP update specific fields
         struct {
             unsigned char *presbuf;  ///< @private Preserved fields buffer, for out of order field writing.
+            unsigned char *ustart;   ///< @private Current update message field starting pointer
             unsigned char *uptr;     ///< @private Current update message field pointer.
 
             /// @private following fields are mutually exclusive, so reuse storage
