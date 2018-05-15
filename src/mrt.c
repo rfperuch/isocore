@@ -32,7 +32,7 @@
 #include <isolario/mrt.h>
 #include <isolario/branch.h>
 #include <isolario/endian.h>
-//#include <isolario/util.h>
+#include <isolario/util.h>
 //#include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -105,90 +105,43 @@ enum {
     // BGP4MP_MESSAGE_AS4_LOCAL
 };
 
-enum {
-    UNHANDLED = -1,
-    NOTEXTENDED = 0,
-    EXTENDED = 1,
-};
-
-static int mrtisext(int type)
-{
-    switch (type) {
-    case MRT_BGP:          // Deprecated
-    case MRT_BGP4PLUS:     // Deprecated
-    case MRT_BGP4PLUS_01:  // Deprecated
-    case MRT_TABLE_DUMP:
-    case MRT_TABLE_DUMPV2:
-    case MRT_BGP4MP:
-        return NOTEXTENDED;
-    case MRT_BGP4MP_ET:
-        return EXTENDED;
-    default:
-/*
-    NULL
-    START
-    DIE
-    I_AM_DEAD
-    PEER_DOWN
-    RIP
-    IDRP
-    RIPNG
-    OSPFV2
-    ISIS
-    ISIS_ET
-    OSPFV3
-    OSPFV3_ET
-*/
-        return UNHANDLED;
-    }
-}
-
-static int mrtbgp(int type)
-{
-    switch (type) {
-    case MRT_BGP:          // Deprecated
-    case MRT_BGP4PLUS:     // Deprecated
-    case MRT_BGP4PLUS_01:  // Deprecated
-    case MRT_BGP4MP:
-    case MRT_BGP4MP_ET:
-        return 0;
-    default:
-        return 1;
-    }
-}
-
 /// @brief Packet reader/writer status flags
 enum {
-    F_DEFAULT = 0,
-    F_RD = 1 << 0,         ///< Packet opened for read
-    F_WR = 1 << 1,         ///< Packet opened for write
-    F_RDWR = F_RD | F_WR,  ///< Shorthand for \a (F_RD | F_WR).
-    F_EXT = 1 << 2,        ///< Commodity flag to not check type 1 Extended 0 not Extended
-    F_AST = 1 << 3,        ///< Commodity flag to not check subtype 1 AS32 0 AS16
-    F_PE  = 1 << 4
+    MAX_MRT_SUBTYPE = MRT_TABLE_DUMPV2_RIB_GENERIC_ADDPATH,
+
+    F_VALID   = 1 << 0,
+    F_AS32    = 1 << 1,
+    F_NEED_PI = 1 << 2,
+    F_IS_PI   = 1 << 3,
+    F_IS_EXT  = 1 << 4,
+    F_IS_BGP  = 1 << 5,
+
+    F_RD   = 1 << 8,         ///< Packet opened for read
+    F_WR   = 1 << (8 + 1),   ///< Packet opened for write
+    F_RDWR = F_RD | F_WR,    ///< Shorthand for \a (F_RD | F_WR).
+    F_PE   = 1 << (8 + 2),
+    F_RE   = 1 << (8 + 3)
 };
 
-static int mrtisas32(int type, int subtype)
-{
-    switch (type) {
-    case MRT_BGP:          // Deprecated
-    case MRT_BGP4PLUS:     // Deprecated
-    case MRT_BGP4PLUS_01:  // Deprecated
-    case MRT_TABLE_DUMP:
-        return false;   // AS16
-    case MRT_TABLE_DUMPV2:
-    default:    //depreacted or unhandled
-        return false;   // AS32 or AS16 but not in the header
+#define SHIFT(idx) ((idx) - MRT_TABLE_DUMP)
 
-    case MRT_BGP4MP:
-    case MRT_BGP4MP_ET:
-        return subtype == BGP4MP_MESSAGE_AS4         ||
-               subtype == BGP4MP_STATE_CHANGE_AS4    ||
-               subtype == BGP4MP_MESSAGE_AS4_LOCAL   ||
-               subtype == BGP4MP_MESSAGE_AS4_ADDPATH ||
-               subtype == BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH;
-    }
-}
+static const uint8_t masktab[][MAX_MRT_SUBTYPE + 1] = {
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]   = F_VALID | F_IS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC]        = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST]   = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST] = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST]   = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST] = F_VALID | F_NEED_PI,
+
+    [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE]              = F_VALID | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4]               = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE_AS4]          = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL]             = F_VALID | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL]         = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_ADDPATH]       = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL_ADDPATH]     = F_VALID | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_AS32 | F_IS_BGP
+};
 
 /// @brief Packet reader/writer instance
 static _Thread_local mrt_msg_t curmsg, curpimsg;
@@ -196,10 +149,9 @@ static _Thread_local mrt_msg_t curmsg, curpimsg;
 // extern version of inline function
 extern const char *mrtstrerror(int err);
 
-static size_t mrtoffsetof(mrt_msg_t *msg, size_t base_offset)
+static int mrtflags(mrt_header_t *hdr)
 {
-    // add 4 bytes if extended
-    return base_offset + ((!!(msg->flags & F_EXT)) << 2);
+    return masktab[SHIFT(hdr->type)][hdr->subtype];
 }
 
 mrt_msg_t *getmrt(void)
@@ -222,14 +174,9 @@ int mrterror_r(mrt_msg_t *msg)
     return msg->err;
 }
 
-static int ismrtpi(const mrt_header_t *hdr)
-{
-    return hdr->type == MRT_TABLE_DUMPV2 && hdr->subtype == MRT_TABLE_DUMPV2_PEER_INDEX_TABLE;
-}
-
 // read section
 
-static void readmrtheader(mrt_msg_t *msg, const unsigned char *hdr)
+static int readmrtheader(mrt_msg_t *msg, const unsigned char *hdr)
 {
     uint32_t time;
     memcpy(&time, &hdr[TIMESTAMP_OFFSET], sizeof(time));
@@ -245,27 +192,72 @@ static void readmrtheader(mrt_msg_t *msg, const unsigned char *hdr)
     uint32_t len;
     memcpy(&len, &hdr[LENGTH_OFFSET], sizeof(len));
     msg->hdr.len = frombig32(len);
-    if (msg->flags & F_EXT) {
+    int flags = mrtflags(&msg->hdr);
+    if (unlikely((flags & F_VALID) == 0))
+        return MRT_EBADHDR;
+
+    if (flags & F_IS_EXT) {
         memcpy(&time, &hdr[MICROSECOND_TIMESTAMP_OFFSET], sizeof(time));
         msg->hdr.stamp.tv_nsec = frombig32(time) * 1000ull;
     }
+
+    msg->flags = flags;
+    return MRT_ENOERR;
 }
 
 static int endpending(mrt_msg_t *msg)
 {
     // small optimization for common case
-    if (likely((msg->flags & F_PE) == 0))
+    if (likely((msg->flags & (F_PE | F_RE)) == 0))
         return msg->err;
 
     // only one flag can be set
+    if (msg->flags & F_RE)
+        return endribents_r(msg);
 
     assert(msg->flags & F_PE);
     return endpeerents_r(msg);
 }
 
+static int setuppitable(mrt_msg_t *msg, mrt_msg_t *pi)
+{
+    // FIXME: this invalidates pi's peer entry iterator, it would be wise not doing this...
+    msg->peer_index = pi;
+    if (likely(pi->pitab))
+        return MRT_ENOERR;
+
+    size_t n = startpeerents_r(pi, &n);
+
+    pi->pitab = pi->fastpitab;
+    if (unlikely(n > nelems(msg->fastpitab))) {
+        pi->pitab = malloc(n * sizeof(*pi->pitab));
+        if (unlikely(!pi->pitab))
+            return MRT_ENOMEM;
+    }
+    for (size_t i = 0; i < n; i++) {
+        msg->pitab[i] = (msg->peptr - msg->buf) - BASE_PACKET_LENGTH;
+        nextpeerent_r(pi);
+    }
+
+    endpeerents_r(pi);
+    return MRT_ENOERR;
+}
+
+int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi)
+{
+    if (likely((msg->flags & F_NEED_PI) && (msg->flags & F_IS_PI)))
+        return setuppitable(msg, pi);
+
+    return MRT_EINVOP;
+}
+
 int setmrtread(const void *data, size_t n)
 {
-    return setmrtread_r(&curmsg, data, n);
+    int res = setmrtread_r(&curmsg, data, n);
+    if (likely(res == MRT_ENOERR && curpimsg.flags != 0))
+        setuppitable(&curmsg, &curpimsg);
+
+    return res;
 }
 
 int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
@@ -274,35 +266,28 @@ int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
     if (msg->flags & F_RDWR)
         mrtclose_r(msg);
 
+    int res = readmrtheader(msg, data);
+    if (unlikely(res != MRT_ENOERR))
+        return res;
+
     msg->buf = msg->fastbuf;
     if (unlikely(n > sizeof(msg->fastbuf)))
         msg->buf = malloc(n);
-
     if (unlikely(!msg->buf))
         return MRT_ENOMEM;
 
-    msg->flags = F_RD;
-    msg->err = MRT_ENOERR;
-    msg->bufsiz = n;
+    msg->flags      |= F_RD;
+    msg->err         = MRT_ENOERR;
+    msg->bufsiz      = n;
+    msg->peer_index  = NULL;
     memcpy(msg->buf, data, n);
-
-    readmrtheader(msg, msg->buf);
-
-    /*
-    int type = getmrttype_r(msg), subtype = getmrtsubtype_r(msg);
-    msg->flags |= (mrtisext(type) == EXTENDED)?F_EXT:0;
-    type = mrtisas32(type, subtype);
-    if(unlikely(type == -1))
-        return MRT_EBADTYPE;
-
-    msg->flags |= type;
-*/
     return MRT_ENOERR;
 }
 
 int setmrtreadfd(int fd)
 {
-    return setmrtreadfd_r(&curmsg, fd);
+    io_rw_t io = IO_FD_INIT(fd);
+    return setmrtreadfrom(&io);
 }
 
 int setmrtreadfd_r(mrt_msg_t *msg, int fd)
@@ -313,7 +298,14 @@ int setmrtreadfd_r(mrt_msg_t *msg, int fd)
 
 int setmrtreadfrom(io_rw_t *io)
 {
-    return setmrtreadfrom_r(&curmsg, io);
+    int res = setmrtreadfrom_r(&curmsg, io);
+    if (unlikely(res != MRT_ENOERR))
+        return res;
+
+    if ((curmsg.flags & F_NEED_PI) && (curpimsg.flags & F_RD))
+        curmsg.peer_index = &curpimsg;
+
+    return res;
 }
 
 int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
@@ -330,25 +322,17 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
         return MRT_EBADHDR;
 
     msg->buf = msg->fastbuf;
-    if (unlikely(msg->hdr.len > sizeof(msg->fastbuf)))
-        msg->buf = malloc(msg->hdr.len);
+    size_t n = msg->hdr.len + sizeof(hdr);
+    if (unlikely(n > sizeof(msg->fastbuf)))
+        msg->buf = malloc(n);
     if (unlikely(!msg->buf))
         return MRT_ENOMEM;
 
     memcpy(msg->buf, hdr, sizeof(hdr));
-    size_t n = msg->hdr.len - sizeof(hdr);
-    if (io->read(io, &msg->buf[sizeof(hdr)], n) != n)
+    if (io->read(io, &msg->buf[sizeof(hdr)], msg->hdr.len) != msg->hdr.len)
         return MRT_EIO;
 
-    msg->flags = F_RD;
-/*    int type = getmrttype_r(msg), subtype = getmrtsubtype_r(msg);
-    msg->flags |= (mrtisext(type) == EXTENDED)?F_EXT:0;
-    type = mrtisas32(type, subtype);
-    if(unlikely(type == -1))
-        return MRT_EBADTYPE;
-
-    msg->flags |= type;
-*/
+    msg->flags |= F_RD;
     msg->err = MRT_ENOERR;
     msg->bufsiz = msg->hdr.len;
 
@@ -409,6 +393,11 @@ int mrtclose(void)
     return mrtclose_r(&curmsg);
 }
 
+int mrtclosepi(void)
+{
+    return mrtclose_r(&curpimsg);
+}
+
 int mrtclose_r(mrt_msg_t *msg)
 {
     int err = MRT_ENOERR;
@@ -432,7 +421,9 @@ struct in_addr getpicollector(void)
 struct in_addr getpicollector_r(mrt_msg_t *msg)
 {
     struct in_addr addr = { 0 };
-    if (unlikely(!ismrtpi(&msg->hdr)))
+
+    int flags = mrtflags(&msg->hdr);
+    if (unlikely((flags & F_IS_PI) == 0))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return addr;
@@ -448,7 +439,8 @@ size_t getpiviewname(char *buf, size_t n)
 
 size_t getpiviewname_r(mrt_msg_t *msg, char *buf, size_t n)
 {
-    if (unlikely(!ismrtpi(&msg->hdr)))
+    int flags = mrtflags(&msg->hdr);
+    if (unlikely((flags & F_IS_PI) == 0))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return 0;
@@ -477,7 +469,8 @@ void *getpeerents(size_t *pcount, size_t *pn)
 
 void *getpeerents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
 {
-    if (unlikely(!ismrtpi(&msg->hdr)))
+    int flags = mrtflags(&msg->hdr);
+    if (unlikely((flags & F_IS_PI) == 0))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return NULL;
@@ -511,7 +504,8 @@ int startpeerents(size_t *pcount)
 
 int startpeerents_r(mrt_msg_t *msg, size_t *pcount)
 {
-    if (unlikely(!ismrtpi(&msg->hdr)))
+    int flags = mrtflags(&msg->hdr);
+    if (unlikely((flags & F_IS_PI) == 0))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return msg->err;
@@ -588,5 +582,200 @@ int endpeerents_r(mrt_msg_t *msg)
 
     msg->flags &= ~F_PE;
     return msg->err; // TODO;
+}
+
+// RIB entries
+
+int setribpi(void)
+{
+    if (unlikely((curmsg.flags & F_IS_PI) == 0))
+        return MRT_NOTPEERIDX;
+
+    memcpy(&curpimsg, &curmsg, sizeof(curmsg));
+    curmsg.flags = 0;
+    return MRT_ENOERR;
+}
+
+void *getribents(size_t *pcount, size_t *pn)
+{
+    return getribents_r(&curmsg, pcount, pn);
+}
+
+void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
+{
+    if (unlikely(!msg->peer_index))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return NULL;
+
+    unsigned char *ptr = &msg->buf[BASE_PACKET_LENGTH];
+
+    uint32_t seqno;
+    memcpy(&seqno, ptr, sizeof(seqno));
+    seqno = frombig32(seqno);
+    ptr += sizeof(seqno);
+
+    uint16_t afi;
+    uint8_t safi;
+    switch (msg->hdr.subtype) {
+    case MRT_TABLE_DUMPV2_RIB_GENERIC:
+        memcpy(&afi, ptr, sizeof(afi));
+        afi  = frombig16(afi);
+        ptr += sizeof(afi);
+        safi = *ptr++;
+        break;
+    case MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST:
+        afi  = AFI_IPV4;
+        safi = SAFI_UNICAST;
+        break;
+    case MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST:
+        afi  = AFI_IPV4;
+        safi = SAFI_MULTICAST;
+        break;
+    case MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST:
+        afi  = AFI_IPV6;
+        safi = SAFI_UNICAST;
+        break;
+    case MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST:
+        afi  = AFI_IPV6;
+        safi = SAFI_MULTICAST;
+        break;
+    default:
+        goto unsup;
+    }
+    if (unlikely(safi != SAFI_UNICAST && safi != SAFI_MULTICAST))
+        goto unsup;
+
+    sa_family_t fam;
+    switch (afi) {
+    case AFI_IPV4:
+        fam = AF_INET;
+        break;
+    case AFI_IPV6:
+        fam = AF_INET6;
+        break;
+    default:
+        goto unsup;
+    }
+
+    size_t bitlen = *ptr++;
+    msg->ribhdr.seqno = seqno;
+    msg->ribhdr.afi   = afi;
+    msg->ribhdr.safi  = safi;
+
+    memset(&msg->ribhdr.nlri, 0, sizeof(msg->ribhdr.nlri));
+    msg->ribhdr.nlri.family = fam;
+    msg->ribhdr.nlri.bitlen = bitlen;
+
+    size_t n = naddrsize(bitlen);
+    memcpy(msg->ribhdr.nlri.bytes, ptr, n);
+    ptr += n;
+
+    uint16_t count;
+    if (pcount) {
+        memcpy(&count, ptr, sizeof(count));
+        *pcount = frombig16(count);
+    }
+    ptr += sizeof(count);
+
+    if (pn)
+        *pn = msg->hdr.len + BASE_PACKET_LENGTH - (ptr - msg->buf);
+
+    return ptr;
+
+unsup:
+    msg->err = MRT_ERIBNOTSUP;
+    return NULL;
+}
+
+int setribents(const void *buf, size_t n)
+{
+    return setribents_r(&curmsg, buf, n);
+}
+
+int setribents_r(mrt_msg_t *msg, const void *buf, size_t n)
+{
+    if (unlikely(!msg->peer_index))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return msg->err;
+
+    // TODO implement
+    return MRT_ENOERR;
+}
+
+rib_header_t *startribents(size_t *pcount)
+{
+    return startribents_r(&curmsg, pcount);
+}
+
+rib_header_t *startribents_r(mrt_msg_t *msg, size_t *pcount)
+{
+    if (unlikely(!msg->peer_index))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return NULL;
+
+    endpending(msg);
+
+    msg->reptr  = getribents_r(msg, pcount, NULL);
+    msg->flags |= F_RE;
+    return &msg->ribhdr;
+}
+
+rib_entry_t *nextribent(void)
+{
+    return nextribent_r(&curmsg);
+}
+
+rib_entry_t *nextribent_r(mrt_msg_t *msg)
+{
+    if (unlikely(!msg->peer_index))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return NULL;
+
+    unsigned char *end = msg->buf + BASE_PACKET_LENGTH + msg->hdr.len;
+    if (msg->reptr == end)
+        return NULL;
+
+    uint16_t idx;
+    memcpy(&idx, msg->reptr, sizeof(idx));
+    idx = frombig16(idx);
+    msg->reptr += sizeof(idx);
+
+    uint32_t originated;
+    memcpy(&originated, msg->reptr, sizeof(originated));
+    originated = frombig32(originated);
+    msg->reptr += sizeof(originated);
+
+    uint16_t attr_len;
+    memcpy(&attr_len, msg->reptr, sizeof(attr_len));
+    attr_len = frombig16(attr_len);
+    msg->reptr += sizeof(attr_len);
+
+    msg->ribent.peer_idx    = idx;
+    msg->ribent.originated  = (time_t) originated;
+    msg->ribent.attr_length = attr_len;
+    msg->ribent.attrs       = (bgpattr_t *) msg->reptr;
+
+    msg->reptr += attr_len;
+    return &msg->ribent;
+}
+
+int endribents(void)
+{
+    return endribents_r(&curmsg);
+}
+
+int endribents_r(mrt_msg_t *msg)
+{
+    if (unlikely((msg->flags & F_RE) == 0))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return msg->err;
+
+    msg->flags |= F_RE;
+    return MRT_ENOERR;
 }
 

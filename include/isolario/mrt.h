@@ -39,6 +39,7 @@
 
 #ifndef ISOLARIO_MRT_H_
 #define ISOLARIO_MRT_H_
+
 #include <isolario/bgp.h>  // also includes stdint.h
 #include <stdarg.h>
 #include <time.h>
@@ -125,6 +126,21 @@ typedef struct {
     };
 } peer_entry_t;
 
+typedef struct {
+    uint32_t seqno;
+    afi_t afi;
+    safi_t safi;
+    netaddr_t nlri;
+} rib_header_t;
+
+typedef struct {
+    uint16_t peer_idx;
+    uint16_t attr_length;  // in bytes
+    time_t originated;
+    peer_entry_t *peer;
+    bgpattr_t *attrs;
+} rib_entry_t;
+
 /**
  *
  * further detail at https://tools.ietf.org/html/rfc6396#section-4.3
@@ -156,7 +172,10 @@ enum {
     MRT_ENOMEM,         ///< Out of memory.
     MRT_EBADHDR,        ///< Bad MRT packet header.
     MRT_EBADTYPE,       ///< Bad MRT packet type.
-    MRT_EBADPEERIDX     ///< Error encountered parsing associated Peer Index.
+    MRT_EBADPEERIDX,    ///< Error encountered parsing associated Peer Index.
+    MRT_ERIBNOTSUP      ///< Unsupported RIB entry encountered, according to RFC6396:
+                        ///  "An implementation that does not recognize particular AFI and SAFI
+                        ///   values SHOULD discard the remainder of the MRT record."
 };
 
 inline const char *mrtstrerror(int err)
@@ -178,6 +197,8 @@ inline const char *mrtstrerror(int err)
         return "Bad MRT packet type";
     case MRT_EBADPEERIDX:
         return "Bad Peer Index message";
+    case MRT_ERIBNOTSUP:
+        return "Unsupported RIB entry";
     default:
         return "Unknown error";
     }
@@ -192,6 +213,8 @@ int setmrtreadfd(int fd);
 int setmrtreadfrom(io_rw_t *io);
 
 int mrtclose(void);
+
+int mrtclosepi(void);
 
 //header section
 
@@ -208,7 +231,8 @@ int setmrtheaderv(const mrt_header_t *hdr, va_list va);
 int setmrtheader(const mrt_header_t *hdr, ...);
 
 enum {
-    MRTBUFSIZ = 4096
+    MRTBUFSIZ       = 4096,
+    MRTPRESRVBUFSIZ = 512
 };
 
 /// @brief Packet reader/writer global status structure.
@@ -217,23 +241,37 @@ typedef struct mrt_msg_s {
     int16_t err;         ///< Last error code.
     uint32_t bufsiz;     ///< Packet buffer capacity
 
+    struct mrt_msg_s *peer_index;
+
     mrt_header_t hdr;
-
-    peer_entry_t pe;      ///< Current peer entry
-    unsigned char *peptr; ///< Raw peer entry pointer in current packet
-
     union {
-        struct mrt_msg_t *peer_index;
+        struct {
+            peer_entry_t pe;      ///< Current peer entry
+            unsigned char *peptr; ///< Raw peer entry pointer in current packet
+        };
+        struct {
+            rib_header_t ribhdr;
+            rib_entry_t ribent;
+            unsigned char *reptr; ///< Raw RIB entry pointer in current packet
+        };
+
         bgp_msg_t *bgp;
     };
 
     unsigned char *buf;  ///< Packet buffer base.
+    uint32_t *pitab;
     unsigned char fastbuf[MRTBUFSIZ];  ///< Fast buffer to avoid malloc()s.
+    union {
+        uint32_t fastpitab[MRTPRESRVBUFSIZ / sizeof(uint32_t)];
+        unsigned char prsvbuf[MRTPRESRVBUFSIZ];
+    };
 } mrt_msg_t;
 
 mrt_msg_t *getmrt(void);
 
 mrt_msg_t *getmrtpi(void);
+
+int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi);
 
 int mrterror_r(mrt_msg_t *msg);
 
@@ -293,6 +331,43 @@ int putpeerent_r(mrt_msg_t *msg, const peer_entry_t *pe);
 int endpeerents(void);
 
 int endpeerents_r(mrt_msg_t *msg);
+
+// RIB subtypes
+
+int setribpi(void);
+
+int setribpi_r(mrt_msg_t *msg);
+
+int setribents(const void *buf, size_t n);
+
+int setribents_r(mrt_msg_t *msg, const void *buf, size_t n);
+
+void *getribents(size_t *pcount, size_t *pn);
+
+/**
+ * @brief Reentrant variant of getribents().
+ *
+ * @param [in]  msg
+ * @param [out] pcount If not NULL, storage where RIB entries count should be stored.
+ * @param [out] pn     If not NULL, storage where RIB entries chunk size (in bytes) should be stored.
+ */
+void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn);
+
+rib_header_t *startribents(size_t *pcount);
+
+rib_header_t *startribents_r(mrt_msg_t *msg, size_t *pcount);
+
+rib_entry_t *nextribent(void);
+
+rib_entry_t *nextribent_r(mrt_msg_t *msg);
+
+int putribent(const rib_entry_t *pe, uint16_t idx, time_t seconds, const bgpattr_t *attrs, size_t attrs_size);
+
+int putribent_r(mrt_msg_t *msg, const rib_entry_t *pe, uint16_t idx, time_t seconds, const bgpattr_t *attrs, size_t attrs_size);
+
+int endribents(void);
+
+int endribents_r(mrt_msg_t *msg);
 
 #endif
 
