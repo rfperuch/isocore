@@ -32,9 +32,10 @@ isocore = library('isocore',
         'src/bgp.c',
         'src/bgpattribs.c',
         'src/bgpparams.c',
-        'src/dumppacket.c',
         'src/cache.c',
+	'src/dumppacket.c',
         'src/endian.c',
+	'src/filterpacket.c',
         'src/hexdump.c',
         'src/io.c',
         'src/log.c',
@@ -97,6 +98,18 @@ core_test = executable('core_test',
 )
 test('core', core_test)
 
+filter_test = executable('filter_test',
+    sources : [
+        'test/filter/main.c',
+        'test/filter/mrt_filter_t.c'
+    ],
+    dependencies : [
+        isocore_dep,
+        cunit_dep
+    ],
+    include_directories : testincdir
+)
+
 core_bench = executable('core_bench',
     sources : [
         'bench/core/main.c',
@@ -109,7 +122,6 @@ core_bench = executable('core_bench',
     include_directories : benchincdir
 )
 benchmark('core', core_bench)
-
 
 bgp_bench = executable('bgp_bench',
     sources : [
