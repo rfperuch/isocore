@@ -29,16 +29,15 @@
 //
 
 #include <assert.h>
-#include <isolario/mrt.h>
 #include <isolario/branch.h>
 #include <isolario/endian.h>
+#include <isolario/mrt.h>
 #include <isolario/util.h>
 //#include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 //#include <unistd.h>
-
 
 enum {
     MRTGROWSTEP = 256
@@ -109,39 +108,38 @@ enum {
 enum {
     MAX_MRT_SUBTYPE = MRT_TABLE_DUMPV2_RIB_GENERIC_ADDPATH,
 
-    F_VALID   = 1 << 0,
-    F_AS32    = 1 << 1,
+    F_VALID = 1 << 0,
+    F_AS32 = 1 << 1,
     F_NEED_PI = 1 << 2,
-    F_IS_PI   = 1 << 3,
-    F_IS_EXT  = 1 << 4,
-    F_IS_BGP  = 1 << 5,
+    F_IS_PI = 1 << 3,
+    F_IS_EXT = 1 << 4,
+    F_IS_BGP = 1 << 5,
 
-    F_RD   = 1 << 8,         ///< Packet opened for read
-    F_WR   = 1 << (8 + 1),   ///< Packet opened for write
-    F_RDWR = F_RD | F_WR,    ///< Shorthand for \a (F_RD | F_WR).
-    F_PE   = 1 << (8 + 2),
-    F_RE   = 1 << (8 + 3)
+    F_RD = 1 << 8,         ///< Packet opened for read
+    F_WR = 1 << (8 + 1),   ///< Packet opened for write
+    F_RDWR = F_RD | F_WR,  ///< Shorthand for \a (F_RD | F_WR).
+    F_PE = 1 << (8 + 2),
+    F_RE = 1 << (8 + 3)
 };
 
-#define SHIFT(idx) ((idx) - MRT_TABLE_DUMP)
+#define SHIFT(idx) ((idx)-MRT_TABLE_DUMP)
 
 static const uint8_t masktab[][MAX_MRT_SUBTYPE + 1] = {
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]   = F_VALID | F_IS_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC]        = F_VALID | F_NEED_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST]   = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE] = F_VALID | F_IS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC] = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST] = F_VALID | F_NEED_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST] = F_VALID | F_NEED_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST]   = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST] = F_VALID | F_NEED_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST] = F_VALID | F_NEED_PI,
 
-    [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE]              = F_VALID | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4]               = F_VALID | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE_AS4]          = F_VALID | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL]             = F_VALID | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL]         = F_VALID | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_ADDPATH]       = F_VALID | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL_ADDPATH]     = F_VALID | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_AS32 | F_IS_BGP
-};
+    [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE] = F_VALID | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4] = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE_AS4] = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL] = F_VALID | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL] = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_ADDPATH] = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL_ADDPATH] = F_VALID | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_AS32 | F_IS_BGP};
 
 /// @brief Packet reader/writer instance
 static _Thread_local mrt_msg_t curmsg, curpimsg;
@@ -245,7 +243,7 @@ static int setuppitable(mrt_msg_t *msg, mrt_msg_t *pi)
 
 int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi)
 {
-    if (likely((msg->flags & F_NEED_PI) && (msg->flags & F_IS_PI)))
+    if (likely((msg->flags & F_NEED_PI) && (pi->flags & F_IS_PI)))
         return setuppitable(msg, pi);
 
     return MRT_EINVOP;
@@ -276,10 +274,10 @@ int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
     if (unlikely(!msg->buf))
         return MRT_ENOMEM;
 
-    msg->flags      |= F_RD;
-    msg->err         = MRT_ENOERR;
-    msg->bufsiz      = n;
-    msg->peer_index  = NULL;
+    msg->flags |= F_RD;
+    msg->err = MRT_ENOERR;
+    msg->bufsiz = n;
+    msg->peer_index = NULL;
     memcpy(msg->buf, data, n);
     return MRT_ENOERR;
 }
@@ -363,9 +361,8 @@ int setmrtheaderv(const mrt_header_t *hdr, va_list va)
 
 int setmrtheaderv_r(mrt_msg_t *msg, const mrt_header_t *hdr, va_list va)
 {
-    (void) msg, (void) hdr, (void) va;
-    return MRT_ENOERR; // TODO
-
+    (void)msg, (void)hdr, (void)va;
+    return MRT_ENOERR;  // TODO
 }
 
 int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr, ...)
@@ -420,7 +417,7 @@ struct in_addr getpicollector(void)
 
 struct in_addr getpicollector_r(mrt_msg_t *msg)
 {
-    struct in_addr addr = { 0 };
+    struct in_addr addr = {0};
 
     int flags = mrtflags(&msg->hdr);
     if (unlikely((flags & F_IS_PI) == 0))
@@ -451,8 +448,8 @@ size_t getpiviewname_r(mrt_msg_t *msg, char *buf, size_t n)
     uint16_t len;
     memcpy(&len, ptr, sizeof(len));
     len = frombig16(len);
-    if (n > (size_t) len + 1)
-        n = (size_t) len + 1;
+    if (n > (size_t)len + 1)
+        n = (size_t)len + 1;
 
     ptr += sizeof(len);
     if (n > 0) {
@@ -512,7 +509,7 @@ int startpeerents_r(mrt_msg_t *msg, size_t *pcount)
 
     endpending(msg);
 
-    msg->peptr  = getpeerents_r(msg, pcount, NULL);
+    msg->peptr = getpeerents_r(msg, pcount, NULL);
     msg->flags |= F_PE;
     return msg->err;
 }
@@ -581,7 +578,7 @@ int endpeerents_r(mrt_msg_t *msg)
         return msg->err;
 
     msg->flags &= ~F_PE;
-    return msg->err; // TODO;
+    return msg->err;  // TODO;
 }
 
 // RIB entries
@@ -618,50 +615,50 @@ void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
     uint16_t afi;
     uint8_t safi;
     switch (msg->hdr.subtype) {
-    case MRT_TABLE_DUMPV2_RIB_GENERIC:
-        memcpy(&afi, ptr, sizeof(afi));
-        afi  = frombig16(afi);
-        ptr += sizeof(afi);
-        safi = *ptr++;
-        break;
-    case MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST:
-        afi  = AFI_IPV4;
-        safi = SAFI_UNICAST;
-        break;
-    case MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST:
-        afi  = AFI_IPV4;
-        safi = SAFI_MULTICAST;
-        break;
-    case MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST:
-        afi  = AFI_IPV6;
-        safi = SAFI_UNICAST;
-        break;
-    case MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST:
-        afi  = AFI_IPV6;
-        safi = SAFI_MULTICAST;
-        break;
-    default:
-        goto unsup;
+        case MRT_TABLE_DUMPV2_RIB_GENERIC:
+            memcpy(&afi, ptr, sizeof(afi));
+            afi = frombig16(afi);
+            ptr += sizeof(afi);
+            safi = *ptr++;
+            break;
+        case MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST:
+            afi = AFI_IPV4;
+            safi = SAFI_UNICAST;
+            break;
+        case MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST:
+            afi = AFI_IPV4;
+            safi = SAFI_MULTICAST;
+            break;
+        case MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST:
+            afi = AFI_IPV6;
+            safi = SAFI_UNICAST;
+            break;
+        case MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST:
+            afi = AFI_IPV6;
+            safi = SAFI_MULTICAST;
+            break;
+        default:
+            goto unsup;
     }
     if (unlikely(safi != SAFI_UNICAST && safi != SAFI_MULTICAST))
         goto unsup;
 
     sa_family_t fam;
     switch (afi) {
-    case AFI_IPV4:
-        fam = AF_INET;
-        break;
-    case AFI_IPV6:
-        fam = AF_INET6;
-        break;
-    default:
-        goto unsup;
+        case AFI_IPV4:
+            fam = AF_INET;
+            break;
+        case AFI_IPV6:
+            fam = AF_INET6;
+            break;
+        default:
+            goto unsup;
     }
 
     size_t bitlen = *ptr++;
     msg->ribhdr.seqno = seqno;
-    msg->ribhdr.afi   = afi;
-    msg->ribhdr.safi  = safi;
+    msg->ribhdr.afi = afi;
+    msg->ribhdr.safi = safi;
 
     memset(&msg->ribhdr.nlri, 0, sizeof(msg->ribhdr.nlri));
     msg->ribhdr.nlri.family = fam;
@@ -718,7 +715,7 @@ rib_header_t *startribents_r(mrt_msg_t *msg, size_t *pcount)
 
     endpending(msg);
 
-    msg->reptr  = getribents_r(msg, pcount, NULL);
+    msg->reptr = getribents_r(msg, pcount, NULL);
     msg->flags |= F_RE;
     return &msg->ribhdr;
 }
@@ -754,10 +751,10 @@ rib_entry_t *nextribent_r(mrt_msg_t *msg)
     attr_len = frombig16(attr_len);
     msg->reptr += sizeof(attr_len);
 
-    msg->ribent.peer_idx    = idx;
-    msg->ribent.originated  = (time_t) originated;
+    msg->ribent.peer_idx = idx;
+    msg->ribent.originated = (time_t)originated;
     msg->ribent.attr_length = attr_len;
-    msg->ribent.attrs       = (bgpattr_t *) msg->reptr;
+    msg->ribent.attrs = (bgpattr_t *)msg->reptr;
 
     msg->reptr += attr_len;
     return &msg->ribent;
@@ -778,4 +775,3 @@ int endribents_r(mrt_msg_t *msg)
     msg->flags |= F_RE;
     return MRT_ENOERR;
 }
-

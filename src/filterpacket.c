@@ -43,13 +43,6 @@
 #include <strings.h>
 
 enum {
-    EPRIO_NONE,
-    EPRIO_REL,    // relational
-    EPRIO_BOOL,   // boolean
-    EPRIO_CALL    // function call
-};
-
-enum {
     K_GROW_STEP = 32,
     STACK_GROW_STEP = 128,
     CODE_GROW_STEP = 128,
@@ -462,9 +455,18 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
     bytecode_t   *cp = vm->code;
     bytecode_t   *end = cp + vm->codesiz;
     stack_cell_t *cell;
-    int opcode, arg;
+    int opcode, arg, next_opcode;
     while (cp < end) {
         opcode = *cp++;
+
+        next_opcode = likely(cp < end) ? *cp : BAD_OPCODE;
+        arg = opcode >> 8;
+        if (unlikely((next_opcode & 0xff) == FOPC_EXARG)) {
+            arg <<= 8;
+            arg |= (next_opcode >> 8);
+            cp++;
+        }
+
         switch (opcode & 0xff) {
         case FOPC_NOP:
             break;
