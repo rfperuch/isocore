@@ -724,11 +724,8 @@ netaddr_t *nextwithdrawn_r(bgp_msg_t *msg)
     wlen = frombig16(wlen);
 
     unsigned char *end = msg->ustart + wlen;
-    
-    if (msg->uptr == end) {
-        msg->err = BGP_EBADWDRWN;
+    if (msg->uptr == end)
         return NULL;
-    }
 
     memset(&msg->pfxbuf, 0, sizeof(msg->pfxbuf));
 
@@ -755,9 +752,10 @@ int putwithdrawn_r(bgp_msg_t *msg, const netaddr_t *p)
         return msg->err;
 
     size_t len = naddrsize(p->bitlen);
-    if (unlikely(!bgpensure(msg, len)))
+    if (unlikely(!bgpensure(msg, len + 1)))
         return msg->err;
 
+    *msg->uptr++ = p->bitlen;
     memcpy(msg->uptr, p->bytes, len);
     msg->uptr   += len;
     msg->pktlen += len;
@@ -771,7 +769,7 @@ int endwithdrawn(void)
 
 int endwithdrawn_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RDWR | F_WITHDRN))
+    if (checktype(msg, BGP_UPDATE, F_WITHDRN))
         return msg->err;
 
     if (msg->flags & F_WR) {
@@ -915,7 +913,7 @@ int endbgpattribs(void)
 
 int endbgpattribs_r(bgp_msg_t *msg)
 {
-    if (checkanytype(msg, BGP_UPDATE, F_RDWR | F_PATTR))
+    if (checktype(msg, BGP_UPDATE, F_PATTR))
         return msg->err;
 
     if (msg->flags & F_WR) { 
@@ -1050,7 +1048,7 @@ int endnlri(void)
 
 int endnlri_r(bgp_msg_t *msg)
 {
-    if (checkanytype(msg, BGP_UPDATE, F_RDWR | F_NLRI))
+    if (checktype(msg, BGP_UPDATE, F_NLRI))
         return msg->err;
 
     msg->flags &= ~F_NLRI;
