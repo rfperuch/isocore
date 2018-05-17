@@ -94,13 +94,17 @@ inline bytecode_t pack_filter_op(int opcode, int arg)
     return ((arg << 8) & 0xff00) | (opcode & 0xff);
 }
 
+typedef struct filter_vm_s filter_vm_t;
+
+typedef void (*filter_func_t)(filter_vm_t *vm);
+
 typedef struct filter_vm_s {
     bgp_msg_t *bgp;
     mrt_msg_t *mrt;
     patricia_trie_t *curtrie, *curtrie6;
     stack_cell_t *sp, *kp;  // stack and constant segment pointers
     patricia_trie_t *tries;
-    void (*funcs[FILTER_FUNCS_COUNT])(struct filter_vm_s *vm);
+    filter_func_t funcs[FILTER_FUNCS_COUNT];
 
     // private state
     unsigned short si;    // stack index
@@ -116,6 +120,7 @@ typedef struct filter_vm_s {
     patricia_trie_t triebuf[2];
     bytecode_t *code;
     jmp_buf except;
+    int error;
 } filter_vm_t;
 
 typedef struct {
@@ -123,6 +128,20 @@ typedef struct {
     void *pkt_data;
     size_t datasiz;
 } match_result_t;
+
+enum {
+    VM_OUT_OF_MEMORY    = -1,
+    VM_STACK_OVERFLOW   = -2,
+    VM_STACK_UNDERFLOW  = -3,
+    VM_FUNC_UNDEFINED   = -4,
+    VM_K_UNDEFINED      = -5,
+    VM_TRIE_MISMATCH    = -6,
+    VM_TRIE_UNDEFINED   = -7,
+    VM_PACKET_MISMATCH  = -8,
+    VM_BAD_PACKET       = -9,
+    VM_ILLEGAL_OPCODE   = -10,
+    VM_SURPRISING_BYTES = -11
+};
 
 void filter_init(filter_vm_t *vm);
 

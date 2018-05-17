@@ -45,14 +45,16 @@ inline void vm_clearstack(filter_vm_t *vm)
     vm->si = 0;
 }
 
-inline noreturn void vm_abort(filter_vm_t *vm)
+inline noreturn void vm_abort(filter_vm_t *vm, int error)
 {
+    vm->error = error;
     longjmp(vm->except, -1);
 }
 
 inline stack_cell_t *vm_pop(filter_vm_t *vm)
 {
-    assert(vm->si > 0);
+    if (unlikely(vm->si == 0))
+        vm_abort(vm, VM_STACK_UNDERFLOW);
 
     return &vm->sp[--vm->si];
 }

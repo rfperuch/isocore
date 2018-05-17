@@ -57,7 +57,7 @@ extern bytecode_t pack_filter_op(int opcode, int arg);
 void filter_destroy(filter_vm_t *vm)
 {
     for (unsigned int i = 0; i < vm->ntries; i++)
-        patdestroy(&vm->triebuf[i]);
+        patdestroy(&vm->tries[i]);
 
     if (vm->tries != vm->triebuf)
         free(vm->tries);
@@ -87,7 +87,7 @@ void vm_growstack(filter_vm_t *vm)
     unsigned short stacksiz = vm->stacksiz + STACK_GROW_STEP;
     stk = realloc(stk, stacksiz * sizeof(*stk));
     if (unlikely(!stk))
-        vm_abort(vm);
+        vm_abort(vm, VM_STACK_OVERFLOW);
 
     vm->sp       = stk;
     vm->stacksiz = stacksiz;
@@ -136,7 +136,7 @@ static void vm_growtrie(filter_vm_t *vm)
 
 extern void vm_clearstack(filter_vm_t *vm);
 
-extern noreturn void vm_abort(filter_vm_t *vm);
+extern noreturn void vm_abort(filter_vm_t *vm, int error);
 
 /// @brief Emit one bytecode operation
 static void vm_emit(filter_vm_t *vm, bytecode_t opcode)
@@ -178,7 +178,7 @@ static void withdrawn_left(filter_vm_t *vm)
 {
     bgp_msg_t *msg = vm->bgp;
     if (unlikely(!msg))
-        vm_abort(vm);
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     netaddr_t *addr;
     startwithdrawn_r(msg);
@@ -186,21 +186,61 @@ static void withdrawn_left(filter_vm_t *vm)
         vm_pushaddr(vm, addr);
 
     if (unlikely(endwithdrawn_r(msg) != BGP_ENOERR))
-        vm_abort(vm);
+        vm_abort(vm, VM_BAD_PACKET);
 }
 
 static void nlri_right(filter_vm_t *vm)
 {
     bgp_msg_t *msg = vm->bgp;
     if (unlikely(!msg))
-        vm_abort(vm);
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     netaddr_t *addr;
     startnlri_r(msg);
     while ((addr = nextnlri_r(msg)) != NULL)
         vm_pushaddr(vm, addr);
 
-    endnlri_r(msg);
+    if (unlikely(endnlri_r(msg) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+static void vm_emit_indexed(filter_vm_t *vm, int opcode, int idx)
+{
+    vm_emit(vm, pack_filter_op(opcode, idx & 0xff));
+    if (idx > 0xff)
+        vm_emit(vm, pack_filter_op(FOPC_EXARG, idx >> 8));
+}
+
+/// @brief Handes "$constant" and "$[constant]" tokens
+static int parse_registry(const char *tok, va_list va)
+{
+    const char *ptr = tok + 1;
+    if (*ptr == '[')
+        ptr++;
+
+    if (!isdigit(*ptr))
+        parsingerr("%s: illegal non-numeric register constant", tok);
+
+    int idx = atoi(ptr);
+    do ptr++; while (isdigit(*ptr));
+
+    if (tok[1] == '[') {
+        if (*ptr != ']')
+            parsingerr("%s: illegal register constant, mismatched brackets", tok);
+
+        va_list vc;
+        va_copy(vc, va);
+        for (int i = 0; i < idx; i++)
+            va_arg(vc, int);
+
+        idx = va_arg(vc, int);
+        va_end(vc);
+    }
+
+    if (unlikely(idx > K_MAX))
+        parsingerr("%s: constant register index %d is out of range", tok, idx);
+
+    return idx;
 }
 
 static int parse_constant(filter_vm_t *vm, const char *tok, va_list va)
@@ -208,32 +248,8 @@ static int parse_constant(filter_vm_t *vm, const char *tok, va_list va)
     int idx;
 
     if (tok[0] == '$') {
-        const char *ptr = tok + 1;
-        if (*ptr == '[')
-            ptr++;
-
-        if (!isdigit(*ptr))
-            parsingerr("%s: illegal non-numeric register constant", tok);
-
-        idx = atoi(ptr);
-        do ptr++; while (isdigit(*ptr));
-
-        if (tok[1] == '[') {
-            if (*ptr != ']')
-                parsingerr("%s: illegal register constant, mismatched brackets", tok);
-
-            va_list vc;
-            va_copy(vc, va);
-            for (int i = 0; i < idx; i++)
-                va_arg(vc, int);
-
-            idx = va_arg(vc, int);
-            va_end(vc);
-        }
-
-        if (unlikely(idx > K_MAX))
-            parsingerr("%s: constant register index %d is out of range", tok, idx);
-
+        // constant registry
+        idx = parse_registry(tok, va);
     } else {
         // IPv4 or IPv6 address
         idx = vm_newk(vm);
@@ -275,9 +291,8 @@ static void compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
             // preload values in tries
             int v4 = vm_newtrie(vm, AF_INET);
             int v6 = vm_newtrie(vm, AF_INET6);
-
-            vm_emit(vm, pack_filter_op(FOPC_SETTRIE,  v4));
-            vm_emit(vm, pack_filter_op(FOPC_SETTRIE6, v6));
+            vm_emit_indexed(vm, FOPC_SETTRIE, v4);
+            vm_emit_indexed(vm, FOPC_SETTRIE6, v6);
         }
         while (true) {
             tok = expecttoken(f, NULL);
@@ -285,10 +300,7 @@ static void compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
                 break;
 
             int idx = parse_constant(vm, tok, va);
-            vm_emit(vm, pack_filter_op(FOPC_LOADK, idx & 0xff));
-            if (idx > 0xff)
-                vm_emit(vm, pack_filter_op(FOPC_EXARG, idx >> 8));
-
+            vm_emit_indexed(vm, FOPC_LOADK, idx);
             if (kind == RIGHT_TERM)
                 vm_emit(vm, FOPC_STORE);
         }
@@ -296,15 +308,14 @@ static void compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
          // assume constant (actually single element array)
          if (kind == RIGHT_TERM) {
             // enable temporary tries
-            vm_emit(vm, pack_filter_op(FOPC_SETTRIE,  0));
-            vm_emit(vm, pack_filter_op(FOPC_SETTRIE6, 1));
+            int v4 = vm_newtrie(vm, AF_INET);
+            int v6 = vm_newtrie(vm, AF_INET6);
+            vm_emit_indexed(vm, FOPC_SETTRIE, v4);
+            vm_emit_indexed(vm, FOPC_SETTRIE6, v6);
         }
 
         int idx = parse_constant(vm, tok, va);
-        vm_emit(vm, pack_filter_op(FOPC_LOADK, idx & 0xff));
-        if (idx > 0xff)
-            vm_emit(vm, pack_filter_op(FOPC_EXARG, idx >> 8));
-
+        vm_emit_indexed(vm, FOPC_LOADK, idx);
         if (kind == RIGHT_TERM)
             vm_emit(vm, FOPC_STORE);
     }
@@ -314,9 +325,9 @@ static void compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
 
 static int compile_expr(FILE *f, filter_vm_t *vm, va_list va)
 {
-    char *tok = expecttoken(f, NULL);
-
     while (true) {
+        char *tok = expecttoken(f, NULL);
+
         if (strcasecmp(tok, "NOT") == 0) {
             compile_expr(f, vm, va);
 
@@ -326,7 +337,9 @@ static int compile_expr(FILE *f, filter_vm_t *vm, va_list va)
             expecttoken(f, ")");
         } else if (strcasecmp(tok, "CALL") == 0) {
             tok = expecttoken(f, NULL);
-            // TODO parse function call
+
+            int idx = parse_registry(tok, va);
+            vm_emit_indexed(vm, FOPC_CALL, idx);
         } else {
             // TERM OP TERM
             ungettoken(tok);
@@ -358,6 +371,7 @@ static int compile_expr(FILE *f, filter_vm_t *vm, va_list va)
             vm_emit(vm, FOPC_CPASS);
         } else {
             // FIXME
+            ungettoken(tok);
             break;
         }
     }
@@ -455,16 +469,17 @@ static void exec_store(filter_vm_t *vm)
     switch (addr->family) {
     case AF_INET:
         if (!patinsertn(vm->curtrie, addr, NULL))
-            vm_abort(vm);
+            vm_abort(vm, VM_OUT_OF_MEMORY);
 
         break;
     case AF_INET6:
         if (!patinsertn(vm->curtrie6, addr, NULL))
-            vm_abort(vm);
+            vm_abort(vm, VM_OUT_OF_MEMORY);
 
         break;
     default:
-        vm_abort(vm); // should never happen
+        vm_abort(vm, VM_SURPRISING_BYTES); // should never happen
+        break;
     }
 }
 
@@ -489,7 +504,8 @@ static void exec_in(filter_vm_t *vm)
             }
             break;
         default:
-            vm_abort(vm);  // should never happen
+            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+            break;
         }
     }
 
@@ -499,7 +515,7 @@ static void exec_in(filter_vm_t *vm)
 static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nresults)
 {
     if (setjmp(vm->except) != 0)
-        return -1;
+        return vm->error;
 
     bytecode_t   *cp = vm->code;
     bytecode_t   *end = cp + vm->codesiz;
@@ -507,16 +523,19 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
     int opcode, arg, next_opcode;
 
     vm_clearstack(vm);
+    vm->error = 0;
     while (cp < end) {
         opcode = *cp++;
 
-        next_opcode = likely(cp < end) ? *cp : BAD_OPCODE;
-        arg = opcode >> 8;
-        if (unlikely((next_opcode & 0xff) == FOPC_EXARG)) {
-            arg <<= 8;
-            arg |= (next_opcode >> 8);
-            cp++;
-        }
+        do {
+            next_opcode = likely(cp < end) ? *cp : BAD_OPCODE;
+            arg = opcode >> 8;
+            if (unlikely((next_opcode & 0xff) == FOPC_EXARG)) {
+                arg <<= 8;
+                arg |= (next_opcode >> 8);
+                cp++;
+            }
+        } while (unlikely((next_opcode & 0xff) == FOPC_EXARG));
 
         switch (opcode & 0xff) {
         case FOPC_NOP:
@@ -526,7 +545,7 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
             break;
         case FOPC_LOADK:
             if (unlikely(arg >= vm->ksiz))
-                vm_abort(vm);
+                vm_abort(vm, VM_K_UNDEFINED);
 
             vm_push(vm, &vm->kp[arg]);
             break;
@@ -550,28 +569,42 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
 
             break;
         case FOPC_CALL:
+            if (unlikely(arg >= FILTER_FUNCS_COUNT))
+                vm_abort(vm, VM_FUNC_UNDEFINED);
+            if (unlikely(!vm->funcs[arg]))
+                vm_abort(vm, VM_FUNC_UNDEFINED);
+
             vm->funcs[arg](vm);
             break;
         case FOPC_IN:
             exec_in(vm);
             break;
         case FOPC_SETTRIE:
+            if (unlikely(arg >= vm->ntries))
+                vm_abort(vm, VM_TRIE_UNDEFINED);
+
             vm->curtrie = &vm->tries[arg];
+            if (unlikely(vm->curtrie->family != AF_INET))
+                vm_abort(vm, VM_TRIE_MISMATCH);
+
             break;
         case FOPC_SETTRIE6:
+            if (unlikely(arg >= vm->ntries))
+                vm_abort(vm, VM_TRIE_UNDEFINED);
+
             vm->curtrie6 = &vm->tries[arg];
+            if (unlikely(vm->curtrie6->family != AF_INET6))
+                vm_abort(vm, VM_TRIE_MISMATCH);
+
             break;
         default:
-            __builtin_unreachable();
+            vm_abort(vm, VM_ILLEGAL_OPCODE);
+            break;
         }
     }
 
-    if (vm->si > 0) {
-        cell = vm_pop(vm);
-        return cell->value != 0;
-    }
-
-    return true;
+    cell = vm_pop(vm);
+    return cell->value != 0;
 }
 
 int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm, match_result_t *results, size_t *nresults)
