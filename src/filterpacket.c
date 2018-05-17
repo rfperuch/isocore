@@ -43,9 +43,9 @@
 #include <strings.h>
 
 enum {
-    K_GROW_STEP = 32,
-    STACK_GROW_STEP = 128,
-    CODE_GROW_STEP = 128,
+    K_GROW_STEP        = 32,
+    STACK_GROW_STEP    = 128,
+    CODE_GROW_STEP     = 128,
     PATRICIA_GROW_STEP = 2
 };
 
@@ -59,89 +59,19 @@ void filter_destroy(filter_vm_t *vm)
     for (unsigned int i = 0; i < vm->ntries; i++)
         patdestroy(&vm->triebuf[i]);
 
-    free(vm->tries);
+    if (vm->tries != vm->triebuf)
+        free(vm->tries);
+    if (vm->kp != vm->kbuf)
+        free(vm->kp);
+    if (vm->sp != vm->stackbuf)
+        free(vm->sp);
+
+    free(vm->code);
 }
 
 // static filter_regidx_t compile_expr(FILE *f, filter_vm_t *vm);
 
-static patricia_trie_t *new_trie(filter_vm_t *vm, sa_family_t afi)
-{
-    if (vm->ntries == vm->maxtries) {
-        unsigned short ntries = vm->maxtries + PATRICIA_GROW_STEP;
-
-        patricia_trie_t *buf = realloc(vm->triebuf, ntries * sizeof(*buf));
-        if (unlikely(!buf))
-            return NULL;
-
-        vm->triebuf  = buf;
-        vm->maxtries = ntries;
-    }
-
-    patricia_trie_t *trie = &vm->tries[vm->ntries++];
-
-    patinit(trie, afi);
-    return trie;
-}
-
 enum { LEFT_TERM, RIGHT_TERM };
-
-/*
-static void compile_term(FILE *f, filter_vm_t *vm, va_list va)
-{
-    } else if (strcmp(tok, "[") == 0) {
-        // explicit array value
-        r = filter->nregs++;
-
-        filter_reg_t *reg = &filter->regs[r];
-        reg->base = filter->ncells;
-        reg->len  = 0;
-        while (true) {
-            tok = expecttoken(f, NULL);
-            if (strcmp(tok, "]") == 0)
-                break;
-
-            netaddr_t addr;
-            if (stonaddr(&addr, tok) != 0)
-                parsingerr("%s: invalid address");
-
-            arraycell_t *cell = new_cell(filter);
-            if (unlikely(!cell))
-                parsingerr("out of memory");
-
-            cell->prefix = addr;
-            reg->len++;
-        }
-    } else if (tok[0] == '$') {
-        // register parameter
-        const char *ptr = tok + 1;
-
-        if (isdigit(*ptr)) {
-            // inline register in code
-            r = atoi(ptr);
-            do ptr++; while (isdigit(*ptr));
-
-        } else if (*ptr == '[' && isdigit(ptr[1])) {
-            // fetch from va_list
-            ptr++;
-            int idx = atoi(ptr);
-            do ptr++; while (isdigit(*ptr));
-
-            if (*ptr++ != ']')
-                parsingerr("syntax error in va_list register: '%s'", tok);
-
-            va_list vc;
-            va_copy(vc, va);
-            for (int i = 0; i < idx; i++)
-                va_arg(vc, int);
-
-            r = va_arg(vc, int); // get argument
-            va_end(vc);
-        }
-
-        if (unlikely(*ptr != '\0' || r == REG_IDX_NONE))
-            parsingerr("ill formed register parameter: '%s'", tok);
-        if (unlikely(r > REGS_RESERVED))  // can't be less than 0, since isdigit(tok[1])
-            parsingerr("register '%d' is out of bounds", (int) r); */
 
 //
 // EXPR := NOT EXPR | TERM OP TERM | CALL FN | ( EXPR ) | EXPR AND EXPR | EXPR OR EXPR
@@ -189,6 +119,21 @@ static void vm_growk(filter_vm_t *vm)
     vm->maxk = ksiz;
 }
 
+static void vm_growtrie(filter_vm_t *vm)
+{
+    patricia_trie_t *tries = NULL;
+    if (vm->tries != vm->triebuf)
+        tries = vm->tries;
+
+    unsigned short ntries = vm->maxtries + PATRICIA_GROW_STEP;
+    tries = realloc(tries, ntries * sizeof(*tries));
+    if (unlikely(!tries))
+        parsingerr("out of memory");
+
+    vm->tries    = tries;
+    vm->maxtries = ntries;
+}
+
 extern void vm_clearstack(filter_vm_t *vm);
 
 extern noreturn void vm_abort(filter_vm_t *vm);
@@ -209,6 +154,16 @@ static int vm_newk(filter_vm_t *vm)
         vm_growk(vm);
 
     return vm->ksiz++;
+}
+
+static int vm_newtrie(filter_vm_t *vm, sa_family_t family)
+{
+    if (unlikely(vm->ntries == vm->maxtries))
+        vm_growtrie(vm);
+
+    int idx = vm->ntries++;
+    patinit(&vm->tries[idx], family);
+    return idx;
 }
 
 extern stack_cell_t *vm_pop(filter_vm_t *vm);
@@ -248,6 +203,47 @@ static void nlri_right(filter_vm_t *vm)
     endnlri_r(msg);
 }
 
+static int parse_constant(filter_vm_t *vm, const char *tok, va_list va)
+{
+    int idx;
+
+    if (tok[0] == '$') {
+        const char *ptr = tok + 1;
+        if (*ptr == '[')
+            ptr++;
+
+        if (!isdigit(*ptr))
+            parsingerr("%s: illegal non-numeric register constant", tok);
+
+        idx = atoi(ptr);
+        do ptr++; while (isdigit(*ptr));
+
+        if (tok[1] == '[') {
+            if (*ptr != ']')
+                parsingerr("%s: illegal register constant, mismatched brackets", tok);
+
+            va_list vc;
+            va_copy(vc, va);
+            for (int i = 0; i < idx; i++)
+                va_arg(vc, int);
+
+            idx = va_arg(vc, int);
+            va_end(vc);
+        }
+
+        if (unlikely(idx > K_MAX))
+            parsingerr("%s: constant register index %d is out of range", tok, idx);
+
+    } else {
+        // IPv4 or IPv6 address
+        idx = vm_newk(vm);
+        if (stonaddr(&vm->kp[idx].addr, tok) != 0)
+            parsingerr("invalid constant value '%s'", tok);
+    }
+
+    return idx;
+}
+
 static void compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
 {
     char *tok = expecttoken(f, NULL);
@@ -257,36 +253,63 @@ static void compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
         if (strcasecmp(field, "withdrawn") == 0) {
             bytecode_t opcode;
             if (kind == LEFT_TERM)
-                opcode = pack_filter_op(FOPC_CALLC, ACC_WITHDRAWN_LEFT);
+                opcode = pack_filter_op(FOPC_CALL, ACC_WITHDRAWN_LEFT);
             else
-                opcode = pack_filter_op(FOPC_CALLC, ACC_WITHDRAWN_RIGHT);
+                opcode = pack_filter_op(FOPC_CALL, ACC_WITHDRAWN_RIGHT);
 
             vm_emit(vm, opcode);
         } else if (strcasecmp(field, "nlri") == 0) {
             bytecode_t opcode;
             if (kind == LEFT_TERM)
-                opcode = pack_filter_op(FOPC_CALLC, ACC_NLRI_LEFT);
+                opcode = pack_filter_op(FOPC_CALL, ACC_NLRI_LEFT);
             else
-                opcode = pack_filter_op(FOPC_CALLC, ACC_NLRI_RIGHT);
+                opcode = pack_filter_op(FOPC_CALL, ACC_NLRI_RIGHT);
 
             vm_emit(vm, opcode);
         } else {
             parsingerr("unknown packet accessor '%s'", field);
         }
-    } else if (tok[0] == '$') {
-        // well known constant
     } else if (strcmp(tok, "[") == 0) {
-        // array
-    } else {
-        // IPv4 or IPv6 address
-        int idx = vm_newk(vm);
-        if (stonaddr(&vm->kp[idx].addr, tok) != 0)
-            parsingerr("invalid constant value '%s'", tok);
+        // array/patricia
+        if (kind == RIGHT_TERM) {
+            // preload values in tries
+            int v4 = vm_newtrie(vm, AF_INET);
+            int v6 = vm_newtrie(vm, AF_INET6);
 
+            vm_emit(vm, pack_filter_op(FOPC_SETTRIE,  v4));
+            vm_emit(vm, pack_filter_op(FOPC_SETTRIE6, v6));
+        }
+        while (true) {
+            tok = expecttoken(f, NULL);
+            if (strcmp(tok, "]") == 0)
+                break;
+
+            int idx = parse_constant(vm, tok, va);
+            vm_emit(vm, pack_filter_op(FOPC_LOADK, idx & 0xff));
+            if (idx > 0xff)
+                vm_emit(vm, pack_filter_op(FOPC_EXARG, idx >> 8));
+
+            if (kind == RIGHT_TERM)
+                vm_emit(vm, FOPC_STORE);
+        }
+    } else {
+         // assume constant (actually single element array)
+         if (kind == RIGHT_TERM) {
+            // enable temporary tries
+            vm_emit(vm, pack_filter_op(FOPC_SETTRIE,  0));
+            vm_emit(vm, pack_filter_op(FOPC_SETTRIE6, 1));
+        }
+
+        int idx = parse_constant(vm, tok, va);
         vm_emit(vm, pack_filter_op(FOPC_LOADK, idx & 0xff));
         if (idx > 0xff)
             vm_emit(vm, pack_filter_op(FOPC_EXARG, idx >> 8));
+
+        if (kind == RIGHT_TERM)
+            vm_emit(vm, FOPC_STORE);
     }
+
+    // XXX: would be nice to reuse code both for single constants and array...
 }
 
 static int compile_expr(FILE *f, filter_vm_t *vm, va_list va)
@@ -345,13 +368,19 @@ static int compile_expr(FILE *f, filter_vm_t *vm, va_list va)
 void filter_init(filter_vm_t *vm)
 {
     memset(vm, 0, sizeof(*vm));
-    vm->sp = vm->stackbuf;
-    vm->kp = vm->kbuf;
+    vm->sp    = vm->stackbuf;
+    vm->kp    = vm->kbuf;
+    vm->tries = vm->triebuf;
     vm->stacksiz = nelems(vm->stackbuf);
     vm->ksiz     = K_MAX + 1;  // reserved for user custom variables
     vm->maxk     = nelems(vm->kbuf);
+    vm->ntries   = 2;  // 2 temporary tries
+    vm->maxtries = nelems(vm->triebuf);
     vm->funcs[ACC_WITHDRAWN_LEFT] = withdrawn_left;
     vm->funcs[ACC_NLRI_RIGHT] = nlri_right;
+
+    patinit(&vm->tries[0], AF_INET);
+    patinit(&vm->tries[1], AF_INET6);
 }
 
 void filter_clear_error(void)
@@ -419,7 +448,27 @@ int filter_compile(filter_vm_t *vm, const char *program, ...)
     return res;
 }
 
-static void calc_in(filter_vm_t *vm)
+static void exec_store(filter_vm_t *vm)
+{
+    stack_cell_t *cell = vm_pop(vm);
+    netaddr_t *addr    = &cell->addr;
+    switch (addr->family) {
+    case AF_INET:
+        if (!patinsertn(vm->curtrie, addr, NULL))
+            vm_abort(vm);
+
+        break;
+    case AF_INET6:
+        if (!patinsertn(vm->curtrie6, addr, NULL))
+            vm_abort(vm);
+
+        break;
+    default:
+        vm_abort(vm); // should never happen
+    }
+}
+
+static void exec_in(filter_vm_t *vm)
 {
     while (vm->si > 0) {
         stack_cell_t *cell = vm_pop(vm);
@@ -456,6 +505,8 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
     bytecode_t   *end = cp + vm->codesiz;
     stack_cell_t *cell;
     int opcode, arg, next_opcode;
+
+    vm_clearstack(vm);
     while (cp < end) {
         opcode = *cp++;
 
@@ -471,15 +522,16 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
         case FOPC_NOP:
             break;
         case FOPC_LOAD:
-            arg = opcode >> 8;
             vm_pushvalue(vm, arg);
             break;
         case FOPC_LOADK:
-            arg = opcode >> 8;
             if (unlikely(arg >= vm->ksiz))
                 vm_abort(vm);
 
             vm_push(vm, &vm->kp[arg]);
+            break;
+        case FOPC_STORE:
+            exec_store(vm);
             break;
         case FOPC_NOT:
             cell = vm_pop(vm);
@@ -497,19 +549,29 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
                 return false;
 
             break;
-        case FOPC_CALLC:
-            arg = opcode >> 8;
+        case FOPC_CALL:
             vm->funcs[arg](vm);
             break;
         case FOPC_IN:
-            calc_in(vm);
+            exec_in(vm);
+            break;
+        case FOPC_SETTRIE:
+            vm->curtrie = &vm->tries[arg];
+            break;
+        case FOPC_SETTRIE6:
+            vm->curtrie6 = &vm->tries[arg];
             break;
         default:
             __builtin_unreachable();
         }
     }
 
-    return true; // FIXME filter->regs[result].value;
+    if (vm->si > 0) {
+        cell = vm_pop(vm);
+        return cell->value != 0;
+    }
+
+    return true;
 }
 
 int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm, match_result_t *results, size_t *nresults)

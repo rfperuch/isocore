@@ -1,5 +1,6 @@
 #include "test.h"
 
+#include <CUnit/CUnit.h>
 #include <isolario/filterpacket.h>
 #include <isolario/mrt.h>
 #include <isolario/bgp.h>
@@ -14,15 +15,17 @@ void testmrtfilter(void)
         printf("compilation failed: %s\n", filter_last_error());
 
     netaddr_t addr;
-    stonaddr(&addr, "127.0.0.1/20");
+    stonaddr(&addr, "127.0.0.1/22");
 
     setbgpwrite(BGP_UPDATE);
     startwithdrawn();
     putwithdrawn(&addr);
     endwithdrawn();
-    bgpfinish(NULL);
+    if (!bgpfinish(NULL))
+        CU_FAIL_FATAL("BGP packet creation failed!");
 
-    bgp_filter(&vm, NULL, 0);
+    int result = mrt_filter(&vm, NULL, 0);
+    printf("result: %d\n", result);
     filter_destroy(&vm);
 }
 

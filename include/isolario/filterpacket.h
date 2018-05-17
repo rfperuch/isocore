@@ -44,29 +44,30 @@
 enum {
     BAD_OPCODE = -1,
 
-    FOPC_NOP,
-    FOPC_LOAD,   // direct value load
-    FOPC_LOADK,  // load from constants environment
-    FOPC_EXARG,
-    FOPC_NOT,
-    FOPC_CPASS,
-    FOPC_CFAIL,
-    FOPC_IN,
+    FOPC_NOP,    ///< NOP: does nothing
+    FOPC_LOAD,   ///< PUSH: direct value load
+    FOPC_LOADK,  ///< PUSH: load from constants environment
+    FOPC_EXARG,  ///< NOP: extends previous operation's argument range
+    FOPC_STORE,  ///< POP: store address into current trie (v4 or v6 depends on address)
+    FOPC_NOT,    ///< POP-PUSH: pops stack topmost value and negates it
+    FOPC_CPASS,  ///< POP: pops topmost stack element and terminates with PASS if value is true.
+    FOPC_CFAIL,  ///< POP: pops topmost stack element and terminates with FAIL if value is false.
+    FOPC_IN,     ///< POPA-PUSH: pops the entire stack and performs a IN operation, pushes the result.
     FOPC_ALL,
     FOPC_SUBNET,
-    FOPC_CALLC, // call C function
-    FOPC_CALLB, // call bytecode array
+    FOPC_CALL, // call function
     FOPC_SETTRIE,
-    FOPC_SETTRIE6
+    FOPC_SETTRIE6,
+    FOPC_CLRTRIE,
+    FOPC_CLRTRIE6
 };
 
 enum {
-    K_MAX = 64,  // maximum user-defined filter constants
+    K_MAX = 32,  // maximum user-defined filter constants
 
-    KBUFSIZ = 128,
+    KBUFSIZ = 64,
     STACKBUFSIZ = 256
 };
-
 
 enum {
     FILTER_FUNCS_MAX = 16,
@@ -99,6 +100,9 @@ typedef struct filter_vm_s {
     patricia_trie_t *curtrie, *curtrie6;
     stack_cell_t *sp, *kp;  // stack and constant segment pointers
     patricia_trie_t *tries;
+    void (*funcs[FILTER_FUNCS_COUNT])(struct filter_vm_s *vm);
+
+    // private state
     unsigned short si;    // stack index
     unsigned short ntries;
     unsigned short maxtries;
@@ -109,8 +113,7 @@ typedef struct filter_vm_s {
     unsigned short maxk;
     stack_cell_t stackbuf[STACKBUFSIZ];
     stack_cell_t kbuf[KBUFSIZ];
-    void (*funcs[FILTER_FUNCS_COUNT])(struct filter_vm_s *vm);
-    patricia_trie_t *triebuf;
+    patricia_trie_t triebuf[2];
     bytecode_t *code;
     jmp_buf except;
 } filter_vm_t;
