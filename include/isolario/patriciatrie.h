@@ -45,6 +45,31 @@ typedef struct {
 
 void patinit(patricia_trie_t* pt, afi_t family);
 
+/**
+ * @brief Clear a Patricia Trie *without* freeing its memory.
+ *
+ * This is essentially a faster way to remove every node in the trie, while
+ * preserving the allocated memory for further use.
+ *
+ * @param [in] pt Patricia Trie to be cleared, must not be \a NULL.
+ *
+ * @note Calling this function invalidates any node in the Patricia Trie,
+ *       the user is responsible to perform any memory management to free()
+ *       node resources stored in the \a payload field of each node, whenever
+ *       necessary.
+ */
+void patclear(patricia_trie_t *pt);
+
+/**
+ * @brief Destroy a Patricia Trie, free()ing any allocated memory.
+ *
+ * @param [in] pt Patricia Trie to be free()d, must not be \a NULL.
+ *
+ * @note This function *does not* free() any memory contained in the
+ *       \a payload field of each node, the user of the Patricia Trie is
+ *       responsible for any memory management of such field, more importantly
+ *       such memory management *must* be done before calling this function 
+ */
 void patdestroy(patricia_trie_t* pt);
 
 trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *inserted);

@@ -112,6 +112,18 @@ void patinit(patricia_trie_t *pt, afi_t family)
     pt->freenodes = NULL;
 }
 
+void patclear(patricia_trie_t *pt)
+{
+    pt->head = NULL;
+    pt->nprefs = 0;
+    pt->freenodes = NULL;
+
+    for (nodepage_t *p = pt->pages; p; p = p->next) {
+        for (size_t i = 0; i < nelems(p->block); i++)
+            putfreenode(pt, &p->block[i]);
+    }
+}
+
 void patdestroy(patricia_trie_t *pt)
 {
     nodepage_t *ptr = pt->pages;
