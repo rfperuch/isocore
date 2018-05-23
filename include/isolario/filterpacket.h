@@ -42,40 +42,26 @@
 #include <isolario/patriciatrie.h>
 
 enum {
-    BAD_OPCODE = -1,
-
-    FOPC_NOP,    ///< NOP: does nothing
-    FOPC_LOAD,   ///< PUSH: direct value load
-    FOPC_LOADK,  ///< PUSH: load from constants environment
-    FOPC_EXARG,  ///< NOP: extends previous operation's argument range
-    FOPC_STORE,  ///< POP: store address into current trie (v4 or v6 depends on address)
-    FOPC_NOT,    ///< POP-PUSH: pops stack topmost value and negates it
-    FOPC_CPASS,  ///< POP: pops topmost stack element and terminates with PASS if value is true.
-    FOPC_CFAIL,  ///< POP: pops topmost stack element and terminates with FAIL if value is false.
-    FOPC_IN,     ///< POPA-PUSH: pops the entire stack and performs a IN operation, pushes the result.
-    FOPC_ALL,
-    FOPC_SUBNET,
-    FOPC_CALL, // call function
-    FOPC_SETTRIE,
-    FOPC_SETTRIE6,
-    FOPC_CLRTRIE,
-    FOPC_CLRTRIE6
-};
-
-enum {
     K_MAX = 32,  // maximum user-defined filter constants
 
     KBUFSIZ = 64,
-    STACKBUFSIZ = 256
+    STACKBUFSIZ = 256,
+
+    BLKSTACKSIZ = 32
 };
 
 enum {
-    FILTER_FUNCS_MAX = 16,
+    VM_TMPTRIE,
+    VM_TMPTRIE6
+};
 
-    ACC_WITHDRAWN_LEFT, ACC_WITHDRAWN_RIGHT,
-    ACC_NLRI_LEFT, ACC_NLRI_RIGHT,
+enum {
+    VM_FUNCS_MAX = 16,
 
-    FILTER_FUNCS_COUNT
+    VM_WITHDRAWN_INSERT_FN, VM_WITHDRAWN_ACCUMULATE_FN,
+    VM_NLRI_INSERT_FN, VM_NLRI_ACCUMULATE_FN,
+
+    VM_FUNCS_COUNT
 };
 
 typedef union {
@@ -89,14 +75,13 @@ typedef union {
 
 typedef uint16_t bytecode_t;
 
-inline bytecode_t pack_filter_op(int opcode, int arg)
-{
-    return ((arg << 8) & 0xff00) | (opcode & 0xff);
-}
-
 typedef struct filter_vm_s filter_vm_t;
 
 typedef void (*filter_func_t)(filter_vm_t *vm);
+
+enum {
+    VM_SHORTCIRCUIT_FORCE_FLAG = 1 << 0
+};
 
 typedef struct filter_vm_s {
     bgp_msg_t *bgp;
@@ -104,9 +89,11 @@ typedef struct filter_vm_s {
     patricia_trie_t *curtrie, *curtrie6;
     stack_cell_t *sp, *kp;  // stack and constant segment pointers
     patricia_trie_t *tries;
-    filter_func_t funcs[FILTER_FUNCS_COUNT];
+    filter_func_t funcs[VM_FUNCS_COUNT];
+    unsigned short flags;
 
     // private state
+    unsigned short pc;
     unsigned short si;    // stack index
     unsigned short ntries;
     unsigned short maxtries;
@@ -115,6 +102,8 @@ typedef struct filter_vm_s {
     unsigned short maxcode;
     unsigned short ksiz;
     unsigned short maxk;
+    unsigned short curblk;
+    unsigned short blkstack[BLKSTACKSIZ];
     stack_cell_t stackbuf[STACKBUFSIZ];
     stack_cell_t kbuf[KBUFSIZ];
     patricia_trie_t triebuf[2];
@@ -140,8 +129,49 @@ enum {
     VM_PACKET_MISMATCH  = -8,
     VM_BAD_PACKET       = -9,
     VM_ILLEGAL_OPCODE   = -10,
-    VM_SURPRISING_BYTES = -11
+    VM_BAD_BLOCK        = -11,
+    VM_BLOCKS_OVERFLOW  = -12,
+    VM_SURPRISING_BYTES = -13
 };
+
+inline char *filter_strerror(int err)
+{
+    if (err > 0)
+        return "Pass";
+    if (err == 0)
+        return "Fail";
+
+    switch (err) {
+    case VM_OUT_OF_MEMORY:
+        return "Out of memory";
+    case VM_STACK_OVERFLOW:
+        return "Stack overflow";
+    case VM_STACK_UNDERFLOW:
+        return "Stack underflow";
+    case VM_FUNC_UNDEFINED:
+        return "Reference to undefined function";
+    case VM_K_UNDEFINED:
+        return "Reference to undefined constant";
+    case VM_TRIE_MISMATCH:
+        return "Trie/Prefix family mismatch";
+    case VM_TRIE_UNDEFINED:
+        return "Reference to undefined trie";
+    case VM_PACKET_MISMATCH:
+        return "Mismatched packet type for this filter";
+    case VM_BAD_PACKET:
+        return "Packet corruption detected";
+    case VM_ILLEGAL_OPCODE:
+        return "Illegal instruction";
+    case VM_BAD_BLOCK:
+        return "BLK instruction targets out of bounds code";
+    case VM_BLOCKS_OVERFLOW:
+        return "Blocks overflow, too many nested blocks";
+    case VM_SURPRISING_BYTES:
+        return "Sorry, I cannot make sense of these bytes";
+    default:
+        return "<Unknown error>";
+    }
+}
 
 void filter_init(filter_vm_t *vm);
 
@@ -149,6 +179,8 @@ void filter_clear_error(void);
 
 /// @brief Obtain last compilation error message.
 const char *filter_last_error(void);
+
+void filter_dump(FILE *f, filter_vm_t *vm);
 
 int filter_compilefv(FILE *f, filter_vm_t *vm, va_list va);
 

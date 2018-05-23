@@ -38,7 +38,52 @@
 #include <stdnoreturn.h>
 #include <string.h>
 
+enum {
+    BAD_OPCODE = -1,
+
+    FOPC_NOP,      ///< NOP: does nothing
+    FOPC_BLK,      ///< NONE: push a new block in expressions stack.
+    FOPC_LOAD,     ///< PUSH: direct value load
+    FOPC_LOADK,    ///< PUSH: load from constants environment
+    FOPC_EXARG,    ///< NOP: extends previous operation's argument range
+    FOPC_STORE,    ///< POP: store address into current trie (v4 or v6 depends on address)
+    FOPC_DISCARD,  ///< POP: remove address from current trie (v4 or v6 depends on address)
+    FOPC_NOT,      ///< POP-PUSH: pops stack topmost value and negates it
+    FOPC_CPASS,    ///< POP: pops topmost stack element and terminates with PASS if value is true.
+    FOPC_CFAIL,    ///< POP: pops topmost stack element and terminates with FAIL if value is false.
+    FOPC_EXACT,    ///< POPA-PUSH: pops the entire stack and verifies that all addresses are exactly in the tries, pushes the result.
+    FOPC_ANY,      ///< POPA-PUSH: pops the entire stack and verifies that at least one address is exactly in the tries, pushes the result.
+    FOPC_SUBNET,
+    FOPC_CALL,     ///< ???: call a function
+    FOPC_SETTRIE,
+    FOPC_SETTRIE6,
+    FOPC_CLRTRIE,
+    FOPC_CLRTRIE6,
+
+    OPCODES_COUNT
+};
+
 void vm_growstack(filter_vm_t *vm);
+
+inline bytecode_t vm_makeop(int opcode, int arg)
+{
+    return ((arg << 8) & 0xff00) | (opcode & 0xff);
+}
+
+inline int vm_getopcode(bytecode_t code)
+{
+    return code & 0xff;
+}
+
+inline int vm_getarg(bytecode_t code)
+{
+    return code >> 8;
+}
+
+inline int vm_extendarg(int arg, int exarg)
+{
+    return ((exarg << 8) | arg) & 0x7fffffff;
+}
 
 inline void vm_clearstack(filter_vm_t *vm)
 {
@@ -49,6 +94,14 @@ inline noreturn void vm_abort(filter_vm_t *vm, int error)
 {
     vm->error = error;
     longjmp(vm->except, -1);
+}
+
+inline stack_cell_t *vm_peek(filter_vm_t *vm)
+{
+    if (unlikely(vm->si == 0))
+        vm_abort(vm, VM_STACK_UNDERFLOW);
+
+    return &vm->sp[vm->si - 1];
 }
 
 inline stack_cell_t *vm_pop(filter_vm_t *vm)
@@ -84,6 +137,89 @@ inline void vm_pushvalue(filter_vm_t *vm, int value)
 
     vm->sp[vm->si++].value = value;
 }
+
+inline void vm_exec_loadk(filter_vm_t *vm, int kidx)
+{
+    if (unlikely(kidx >= vm->ksiz))
+        vm_abort(vm, VM_K_UNDEFINED);
+
+    vm_push(vm, &vm->kp[kidx]);
+}
+
+inline void vm_exec_store(filter_vm_t *vm)
+{
+    stack_cell_t *cell = vm_pop(vm);
+    netaddr_t *addr    = &cell->addr;
+    switch (addr->family) {
+    case AF_INET:
+        if (!patinsertn(vm->curtrie, addr, NULL))
+            vm_abort(vm, VM_OUT_OF_MEMORY);
+
+        break;
+    case AF_INET6:
+        if (!patinsertn(vm->curtrie6, addr, NULL))
+            vm_abort(vm, VM_OUT_OF_MEMORY);
+
+        break;
+    default:
+        vm_abort(vm, VM_SURPRISING_BYTES); // should never happen
+        break;
+    }
+}
+
+inline void vm_exec_discard(filter_vm_t *vm)
+{
+    stack_cell_t *cell = vm_pop(vm);
+    netaddr_t *addr    = &cell->addr;
+    switch (addr->family) {
+    case AF_INET:
+        patremoven(vm->curtrie, addr);
+        break;
+    case AF_INET6:
+        patremoven(vm->curtrie6, addr);
+        break;
+    default:
+        vm_abort(vm, VM_SURPRISING_BYTES); // should never happen
+    }
+}
+
+inline void vm_exec_clrtrie(filter_vm_t *vm)
+{
+    patclear(vm->curtrie);
+}
+
+inline void vm_exec_clrtrie6(filter_vm_t *vm)
+{
+    patclear(vm->curtrie6);
+}
+
+inline void vm_exec_settrie(filter_vm_t *vm, int trie)
+{
+    if (unlikely(trie >= vm->ntries))
+        vm_abort(vm, VM_TRIE_UNDEFINED);
+
+    vm->curtrie = &vm->tries[trie];
+    if (unlikely(vm->curtrie->family != AF_INET))
+        vm_abort(vm, VM_TRIE_MISMATCH);
+}
+
+inline void vm_exec_settrie6(filter_vm_t *vm, int trie6)
+{
+    if (unlikely(trie6 >= vm->ntries))
+        vm_abort(vm, VM_TRIE_UNDEFINED);
+
+    vm->curtrie6 = &vm->tries[trie6];
+    if (unlikely(vm->curtrie6->family != AF_INET6))
+        vm_abort(vm, VM_TRIE_MISMATCH);
+}
+
+void vm_exec_withdrawn_accumulate(filter_vm_t *vm);
+void vm_exec_withdrawn_insert(filter_vm_t *vm);
+
+void vm_exec_nlri_accumulate(filter_vm_t *vm);
+void vm_exec_nlri_insert(filter_vm_t *vm);
+
+void vm_exec_exact(filter_vm_t *vm);
 
 #endif
 

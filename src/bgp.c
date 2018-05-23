@@ -614,8 +614,9 @@ static int bgppreserve(bgp_msg_t *msg, const unsigned char *from)
 static void bgprestore(bgp_msg_t *msg)
 {
     unsigned char *end = &msg->buf[msg->pktlen];
+    size_t n = end - msg->uptr;
 
-    memcpy(msg->uptr, msg->presbuf, end - msg->uptr);
+    memcpy(msg->uptr, msg->presbuf, n);
     if (msg->presbuf != msg->fastpresbuf)
         free(msg->presbuf);
 }
@@ -758,7 +759,7 @@ int putwithdrawn_r(bgp_msg_t *msg, const netaddr_t *p)
     *msg->uptr++ = p->bitlen;
     memcpy(msg->uptr, p->bytes, len);
     msg->uptr   += len;
-    msg->pktlen += len;
+    msg->pktlen += len + 1;
     return BGP_ENOERR;
 }
 

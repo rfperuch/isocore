@@ -52,7 +52,7 @@ enum {
 static _Thread_local char err_msg[64] = "";
 static _Thread_local jmp_buf err_jmp;
 
-extern bytecode_t pack_filter_op(int opcode, int arg);
+extern char *filter_strerror(int err);
 
 void filter_destroy(filter_vm_t *vm)
 {
@@ -115,6 +115,9 @@ static void vm_growk(filter_vm_t *vm)
     if (unlikely(!k))
         parsingerr("out of memory");
 
+    if (vm->kp == vm->kbuf)
+        memcpy(k, vm->kp, sizeof(vm->kbuf));
+
     vm->kp   = k;
     vm->maxk = ksiz;
 }
@@ -130,9 +133,20 @@ static void vm_growtrie(filter_vm_t *vm)
     if (unlikely(!tries))
         parsingerr("out of memory");
 
+    if (vm->tries == vm->triebuf)
+        memcpy(tries, vm->tries, sizeof(vm->triebuf));
+
     vm->tries    = tries;
     vm->maxtries = ntries;
 }
+
+extern bytecode_t vm_makeop(int opcode, int arg);
+
+extern int vm_getopcode(bytecode_t code);
+
+extern int vm_getarg(bytecode_t code);
+
+extern int vm_extendarg(int arg, int exarg);
 
 extern void vm_clearstack(filter_vm_t *vm);
 
@@ -166,6 +180,8 @@ static int vm_newtrie(filter_vm_t *vm, sa_family_t family)
     return idx;
 }
 
+extern stack_cell_t *vm_peek(filter_vm_t *vm);
+
 extern stack_cell_t *vm_pop(filter_vm_t *vm);
 
 extern void vm_push(filter_vm_t *vm, const stack_cell_t *cell);
@@ -174,7 +190,21 @@ extern void vm_pushaddr(filter_vm_t *vm, const netaddr_t *addr);
 
 extern void vm_pushvalue(filter_vm_t *vm, int value);
 
-static void withdrawn_left(filter_vm_t *vm)
+extern void vm_exec_loadk(filter_vm_t *vm, int kidx);
+
+extern void vm_exec_store(filter_vm_t *vm);
+
+extern void vm_exec_discard(filter_vm_t *vm);
+
+extern void vm_exec_settrie(filter_vm_t *vm, int trie);
+
+extern void vm_exec_settrie6(filter_vm_t *vm, int trie6);
+
+extern void vm_exec_clrtrie(filter_vm_t *vm);
+
+extern void vm_exec_clrtrie6(filter_vm_t *vm);
+
+void vm_exec_withdrawn_accumulate(filter_vm_t *vm)
 {
     bgp_msg_t *msg = vm->bgp;
     if (unlikely(!msg))
@@ -189,7 +219,26 @@ static void withdrawn_left(filter_vm_t *vm)
         vm_abort(vm, VM_BAD_PACKET);
 }
 
-static void nlri_right(filter_vm_t *vm)
+void vm_exec_withdrawn_insert(filter_vm_t *vm)
+{
+    bgp_msg_t *msg = vm->bgp;
+    if (unlikely(!msg))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    vm_exec_settrie(vm, VM_TMPTRIE);
+    vm_exec_settrie6(vm, VM_TMPTRIE6);
+
+    netaddr_t *addr;
+    startwithdrawn_r(msg);
+    while ((addr = nextwithdrawn_r(msg)) != NULL) {
+        vm_pushaddr(vm, addr);
+        vm_exec_store(vm);
+    }
+    if (unlikely(endwithdrawn_r(msg) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+void vm_exec_nlri_accumulate(filter_vm_t *vm)
 {
     bgp_msg_t *msg = vm->bgp;
     if (unlikely(!msg))
@@ -204,11 +253,45 @@ static void nlri_right(filter_vm_t *vm)
         vm_abort(vm, VM_BAD_PACKET);
 }
 
+void vm_exec_nlri_insert(filter_vm_t *vm)
+{
+    bgp_msg_t *msg = vm->bgp;
+    if (unlikely(!msg))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    vm_exec_settrie(vm, VM_TMPTRIE);
+    vm_exec_settrie6(vm, VM_TMPTRIE6);
+
+    netaddr_t *addr;
+    startnlri_r(msg);
+    while ((addr = nextnlri_r(msg)) != NULL) {
+        vm_pushaddr(vm, addr);
+        vm_exec_store(vm);
+    }
+    if (unlikely(endnlri_r(msg) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
 static void vm_emit_indexed(filter_vm_t *vm, int opcode, int idx)
 {
-    vm_emit(vm, pack_filter_op(opcode, idx & 0xff));
-    if (idx > 0xff)
-        vm_emit(vm, pack_filter_op(FOPC_EXARG, idx >> 8));
+    // NOTE: paranoid, assumes 8 bit bytes... as the whole Isolario project does
+
+    // find the most significant byte
+    int msb = (sizeof(idx) - 1) * 8;
+    while (msb > 0) {
+        if ((idx >> msb) & 0xff)
+            break;
+
+        msb -= 8;
+    }
+
+    // emit value most-significant byte first
+    while (msb > 0) {
+        vm_emit(vm, vm_makeop(FOPC_EXARG, (idx >> msb) & 0xff));
+        msb -= 8;
+    }
+    // emit the instruction with the least-signficiant byte
+    vm_emit(vm, vm_makeop(opcode, idx & 0xff));
 }
 
 /// @brief Handes "$constant" and "$[constant]" tokens
@@ -260,8 +343,76 @@ static int parse_constant(filter_vm_t *vm, const char *tok, va_list va)
     return idx;
 }
 
-static void compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
+static uint64_t parse_element(filter_vm_t *vm, const char *tok, int kind, va_list va)
 {
+    uint64_t usage_mask = 0;
+
+    int idx = parse_constant(vm, tok, va);
+    if (kind == RIGHT_TERM) {
+        if (idx <= K_MAX) {
+            // this expression did not generate a new constant, we must
+            // dynamically add it to the current Patricia and clean it
+            // after the operation, mark it as used in the usage mask
+            vm_emit(vm, vm_makeop(FOPC_LOADK, idx));
+            vm_emit(vm, FOPC_STORE);
+
+            usage_mask |= (1 << idx);
+        } else {
+            // this is just a regular constant expression in source code,
+            // precompile it into the Patricia and avoid LOADK/STORE
+            // XXX improve
+            assert(idx == (int) vm->ksiz - 1);
+
+            vm_exec_settrie(vm, vm->ntries - 2);
+            vm_exec_settrie6(vm, vm->ntries - 1);
+            vm_exec_loadk(vm, idx);
+            vm_exec_store(vm);
+
+            vm->ksiz--;  // constant may now be reused
+        }
+    }
+
+    return usage_mask;
+}
+
+static uint64_t parse_argument(FILE *f, filter_vm_t *vm, int kind, va_list va)
+{
+    uint64_t usage_mask = 0;
+    int is_array        = false;
+
+    char *tok = expecttoken(f, NULL);
+    if (strcmp(tok, "[") == 0)
+        is_array = true;
+    else
+        ungettoken(tok);
+
+    if (kind == RIGHT_TERM) {
+        // preload values in tries
+        int v4 = vm_newtrie(vm, AF_INET);
+        int v6 = vm_newtrie(vm, AF_INET6);
+
+        vm_emit_indexed(vm, FOPC_SETTRIE, v4);
+        vm_emit_indexed(vm, FOPC_SETTRIE6, v6);
+    }
+
+    do {
+        tok = expecttoken(f, NULL);
+        if (is_array && strcmp(tok, "]") == 0)
+            is_array = false;
+        else
+            usage_mask |= parse_element(vm, tok, kind, va);
+
+    } while (is_array);
+
+    return usage_mask;
+}
+
+/// @brief Compile a term, returns the trie user-custom register usage mask,
+//         used registers should be DISCARDed from trie after op
+static uint64_t compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
+{
+    uint64_t usage_mask = 0;
+
     char *tok = expecttoken(f, NULL);
     if (strncasecmp(tok, "packet.", 7) == 0) {
         // packet accessor
@@ -269,70 +420,56 @@ static void compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
         if (strcasecmp(field, "withdrawn") == 0) {
             bytecode_t opcode;
             if (kind == LEFT_TERM)
-                opcode = pack_filter_op(FOPC_CALL, ACC_WITHDRAWN_LEFT);
+                opcode = vm_makeop(FOPC_CALL, VM_WITHDRAWN_ACCUMULATE_FN);
             else
-                opcode = pack_filter_op(FOPC_CALL, ACC_WITHDRAWN_RIGHT);
+                opcode = vm_makeop(FOPC_CALL, VM_WITHDRAWN_INSERT_FN);
 
             vm_emit(vm, opcode);
         } else if (strcasecmp(field, "nlri") == 0) {
             bytecode_t opcode;
             if (kind == LEFT_TERM)
-                opcode = pack_filter_op(FOPC_CALL, ACC_NLRI_LEFT);
+                opcode = vm_makeop(FOPC_CALL, VM_NLRI_ACCUMULATE_FN);
             else
-                opcode = pack_filter_op(FOPC_CALL, ACC_NLRI_RIGHT);
+                opcode = vm_makeop(FOPC_CALL, VM_NLRI_INSERT_FN);
 
             vm_emit(vm, opcode);
         } else {
             parsingerr("unknown packet accessor '%s'", field);
         }
-    } else if (strcmp(tok, "[") == 0) {
-        // array/patricia
-        if (kind == RIGHT_TERM) {
-            // preload values in tries
-            int v4 = vm_newtrie(vm, AF_INET);
-            int v6 = vm_newtrie(vm, AF_INET6);
-            vm_emit_indexed(vm, FOPC_SETTRIE, v4);
-            vm_emit_indexed(vm, FOPC_SETTRIE6, v6);
-        }
-        while (true) {
-            tok = expecttoken(f, NULL);
-            if (strcmp(tok, "]") == 0)
-                break;
-
-            int idx = parse_constant(vm, tok, va);
-            vm_emit_indexed(vm, FOPC_LOADK, idx);
-            if (kind == RIGHT_TERM)
-                vm_emit(vm, FOPC_STORE);
-        }
     } else {
-         // assume constant (actually single element array)
-         if (kind == RIGHT_TERM) {
-            // enable temporary tries
-            int v4 = vm_newtrie(vm, AF_INET);
-            int v6 = vm_newtrie(vm, AF_INET6);
-            vm_emit_indexed(vm, FOPC_SETTRIE, v4);
-            vm_emit_indexed(vm, FOPC_SETTRIE6, v6);
-        }
-
-        int idx = parse_constant(vm, tok, va);
-        vm_emit_indexed(vm, FOPC_LOADK, idx);
-        if (kind == RIGHT_TERM)
-            vm_emit(vm, FOPC_STORE);
+        ungettoken(tok);
+        usage_mask = parse_argument(f, vm, kind, va);
     }
 
     // XXX: would be nice to reuse code both for single constants and array...
+    return usage_mask;
 }
 
-static int compile_expr(FILE *f, filter_vm_t *vm, va_list va)
+static void vm_clear_temporaries(filter_vm_t *vm, uint64_t usage_mask)
+{
+    for (int i = 0; i <= K_MAX; i++) {
+        if (usage_mask & (1ull << i)) {
+            vm_emit(vm, vm_makeop(FOPC_LOADK, i));
+            vm_emit(vm, vm_makeop(FOPC_DISCARD, i));
+        }
+    }
+}
+
+static void compile_expr(FILE *f, filter_vm_t *vm, va_list va)
 {
     while (true) {
         char *tok = expecttoken(f, NULL);
 
+        int block_start = -1;
         if (strcasecmp(tok, "NOT") == 0) {
             compile_expr(f, vm, va);
 
             vm_emit(vm, FOPC_NOT);
         } else if (strcasecmp(tok, "(") == 0) {
+            // nest a new block
+            vm_emit(vm, FOPC_BLK);  // placeholder
+
+            block_start = vm->codesiz;
             compile_expr(f, vm, va);
             expecttoken(f, ")");
         } else if (strcasecmp(tok, "CALL") == 0) {
@@ -347,18 +484,20 @@ static int compile_expr(FILE *f, filter_vm_t *vm, va_list va)
 
             tok = expecttoken(f, NULL);
             bytecode_t op;
-            if (strcasecmp(tok, "IN") == 0) {
-                op = FOPC_IN;
-            } else if (strcasecmp(tok, "ALL") == 0) {
-                op = FOPC_ALL;
+            if (strcasecmp(tok, "EXACT") == 0) {
+                op = FOPC_EXACT;
+            } else if (strcasecmp(tok, "ANY") == 0) {
+                op = FOPC_ANY;
             } else {
                 parsingerr("unknown operation: '%s'", tok);
                 break; // unreachable
             }
 
-            compile_term(f, vm, RIGHT_TERM, va);
+            uint64_t usage_mask = compile_term(f, vm, RIGHT_TERM, va);
 
             vm_emit(vm, op);
+            // DISCARD any temporary constant loaded into Patricia
+            vm_clear_temporaries(vm, usage_mask);
         }
 
         tok = parse(f);
@@ -374,9 +513,17 @@ static int compile_expr(FILE *f, filter_vm_t *vm, va_list va)
             ungettoken(tok);
             break;
         }
-    }
 
-    return 0;
+        // if we encountered a "(", we must set the BLK to jump after
+        // this opcode, we must rewrite the BLK to reflect the actual
+        // block size for that
+        if (block_start >= 0) {
+            // finalize the BLK instruction
+            int blksiz = vm->codesiz - block_start;
+            assert(blksiz <= 0xff); // FIXME should insert these instructions and support EXARG!
+            vm->code[block_start - 1] = vm_makeop(FOPC_BLK, blksiz);
+        }
+    }
 }
 
 void filter_init(filter_vm_t *vm)
@@ -390,11 +537,15 @@ void filter_init(filter_vm_t *vm)
     vm->maxk     = nelems(vm->kbuf);
     vm->ntries   = 2;  // 2 temporary tries
     vm->maxtries = nelems(vm->triebuf);
-    vm->funcs[ACC_WITHDRAWN_LEFT] = withdrawn_left;
-    vm->funcs[ACC_NLRI_RIGHT] = nlri_right;
+    vm->funcs[VM_WITHDRAWN_INSERT_FN]     = vm_exec_withdrawn_insert;
+    vm->funcs[VM_WITHDRAWN_ACCUMULATE_FN] = vm_exec_withdrawn_accumulate;
+    vm->funcs[VM_NLRI_INSERT_FN]     = vm_exec_nlri_insert;
+    vm->funcs[VM_NLRI_ACCUMULATE_FN] = vm_exec_nlri_accumulate;
 
-    patinit(&vm->tries[0], AF_INET);
-    patinit(&vm->tries[1], AF_INET6);
+    vm->flags = 0;
+
+    patinit(&vm->tries[VM_TMPTRIE],  AF_INET);
+    patinit(&vm->tries[VM_TMPTRIE6], AF_INET6);
 }
 
 void filter_clear_error(void)
@@ -462,28 +613,36 @@ int filter_compile(filter_vm_t *vm, const char *program, ...)
     return res;
 }
 
-static void exec_store(filter_vm_t *vm)
+void vm_exec_exact(filter_vm_t *vm)
 {
-    stack_cell_t *cell = vm_pop(vm);
-    netaddr_t *addr    = &cell->addr;
-    switch (addr->family) {
-    case AF_INET:
-        if (!patinsertn(vm->curtrie, addr, NULL))
-            vm_abort(vm, VM_OUT_OF_MEMORY);
-
-        break;
-    case AF_INET6:
-        if (!patinsertn(vm->curtrie6, addr, NULL))
-            vm_abort(vm, VM_OUT_OF_MEMORY);
-
-        break;
-    default:
-        vm_abort(vm, VM_SURPRISING_BYTES); // should never happen
-        break;
+    while (vm->si > 0) {
+        stack_cell_t *cell = vm_pop(vm);
+        netaddr_t *addr = &cell->addr;
+        switch (addr->family) {
+        case AF_INET:
+            if (!patsearchexactn(vm->curtrie, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, false);
+                return;
+            }
+            break;
+        case AF_INET6:
+            if (!patsearchexactn(vm->curtrie6, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, false);
+                return;
+            }
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+            break;
+        }
     }
+
+    vm_pushvalue(vm, true);
 }
 
-static void exec_in(filter_vm_t *vm)
+void vm_exec_any(filter_vm_t *vm)
 {
     while (vm->si > 0) {
         stack_cell_t *cell = vm_pop(vm);
@@ -510,101 +669,216 @@ static void exec_in(filter_vm_t *vm)
     }
 
     vm_pushvalue(vm, false);
+
 }
 
 static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nresults)
 {
+// disable pedantic diagnostic about taking address label
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+
+#if defined(__GNUC__) && !defined(ISOLARIO_VM_PLAIN_SWITCH)
+// use computed goto to speed-up bytecode interpreter
+#include "vm_opcodes.h"
+
+#define FETCH() ip = vm->code[vm->pc++];                                           \
+                np = likely(vm->pc < vm->codesiz) ? vm->code[vm->pc] : BAD_OPCODE; \
+                goto *vm_opcode_table[vm_getopcode(ip)]
+
+#define PREDICT(opcode) do {                                                     \
+        if (likely(vm_getopcode(np) == FOPC_##opcode)) {                         \
+            ip = np;                                                             \
+            np = likely(vm->pc < vm->codesiz) ? vm->code[++vm->pc] : BAD_OPCODE; \
+            goto *vm_opcode_table[FOPC_##opcode];                                \
+        }                                                                        \
+    } while (false)
+
+#define DISPATCH() break
+
+#define EXECUTE(opcode) case FOPC_##opcode: \
+                        EX_##opcode
+
+#define EXECUTE_SIGILL default: \
+                       EX_SIGILL
+
+#else
+// portable C
+
+#define FETCH() ip = vm->code[vm->pc++];                                           \
+                np = likely(vm->pc < vm->codesiz) ? vm->code[vm->pc] : BAD_OPCODE;
+
+#define PREDICT(opcode) do (void) 0; while (false)
+
+#define DISPATCH() break
+
+#define EXECUTE(opcode) case FOPC_##opcode
+
+#define EXECUTE_SIGILL  default
+#endif
+
     if (setjmp(vm->except) != 0)
         return vm->error;
 
-    bytecode_t   *cp = vm->code;
-    bytecode_t   *end = cp + vm->codesiz;
+    bytecode_t ip, np;
+    int arg, exarg;
     stack_cell_t *cell;
-    int opcode, arg, next_opcode;
 
+    vm->curblk = 0;
     vm_clearstack(vm);
     vm->error = 0;
-    while (cp < end) {
-        opcode = *cp++;
+    exarg = 0;
 
-        do {
-            next_opcode = likely(cp < end) ? *cp : BAD_OPCODE;
-            arg = opcode >> 8;
-            if (unlikely((next_opcode & 0xff) == FOPC_EXARG)) {
-                arg <<= 8;
-                arg |= (next_opcode >> 8);
-                cp++;
-            }
-        } while (unlikely((next_opcode & 0xff) == FOPC_EXARG));
+    vm_exec_settrie(vm, VM_TMPTRIE);
+    vm_exec_settrie6(vm, VM_TMPTRIE6);
+    vm_exec_clrtrie(vm);
+    vm_exec_clrtrie6(vm);
 
-        switch (opcode & 0xff) {
-        case FOPC_NOP:
-            break;
-        case FOPC_LOAD:
-            vm_pushvalue(vm, arg);
-            break;
-        case FOPC_LOADK:
-            if (unlikely(arg >= vm->ksiz))
-                vm_abort(vm, VM_K_UNDEFINED);
+    while (vm->pc < vm->codesiz) {
+        FETCH();
 
-            vm_push(vm, &vm->kp[arg]);
-            break;
-        case FOPC_STORE:
-            exec_store(vm);
-            break;
-        case FOPC_NOT:
+        switch (vm_getopcode(ip)) {
+        EXECUTE(NOP):
+            DISPATCH();
+
+        EXECUTE(BLK):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            if (unlikely(vm->pc + arg > vm->codesiz))
+                vm_abort(vm, VM_BAD_BLOCK);
+            if (unlikely(vm->curblk == nelems(vm->blkstack)))
+                vm_abort(vm, VM_BLOCKS_OVERFLOW);
+
+            vm->blkstack[vm->curblk++] = vm->pc + arg;
+            exarg = 0;
+            DISPATCH();
+
+        EXECUTE(LOAD):
+            vm_pushvalue(vm, vm_extendarg(vm_getarg(ip), exarg));
+            exarg = 0;
+            DISPATCH();
+
+        EXECUTE(LOADK):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            vm_exec_loadk(vm, arg);
+            exarg = 0;
+            DISPATCH();
+
+        EXECUTE(EXARG):
+            arg = vm_getarg(ip);
+            exarg <<= 8;
+            exarg  |= arg;
+
+            PREDICT(LOADK);
+            PREDICT(BLK);
+            PREDICT(LOAD);
+            PREDICT(CALL);
+
+            DISPATCH();
+
+        EXECUTE(STORE):
+            vm_exec_store(vm);
+            DISPATCH();
+
+        EXECUTE(DISCARD):
+            vm_exec_discard(vm);
+            DISPATCH();
+
+        EXECUTE(NOT):
             cell = vm_pop(vm);
             vm_pushvalue(vm, !cell->value);
-            break;
-        case FOPC_CPASS:
-            cell = vm_pop(vm);
-            if (cell->value)
-                return true;
+            DISPATCH();
 
-            break;
-        case FOPC_CFAIL:
-            cell = vm_pop(vm);
-            if (!cell->value)
-                return false;
+        EXECUTE(CPASS):
+            cell = vm_peek(vm);
+            if (cell->value) {
+                if (vm->curblk == 0)
+                    goto done; // no more blocks, we're done
 
-            break;
-        case FOPC_CALL:
-            if (unlikely(arg >= FILTER_FUNCS_COUNT))
+                // pop one block and go on
+                vm->pc = vm->blkstack[--vm->curblk];
+            } else {
+                vm_pop(vm);  // discard and proceed
+            }
+            DISPATCH();
+
+        EXECUTE(CFAIL):
+            cell = vm_peek(vm);
+            if (cell->value) {
+                if (vm->curblk == 0)
+                    goto done;  // no more blocks, we're done
+
+                // pop one block and see what happens
+                vm->pc = vm->blkstack[--vm->curblk];
+            } else {
+                vm_pop(vm);  // discard and proceed
+            }
+            DISPATCH();
+
+        EXECUTE(CALL):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            if (unlikely(arg >= VM_FUNCS_COUNT))
                 vm_abort(vm, VM_FUNC_UNDEFINED);
             if (unlikely(!vm->funcs[arg]))
                 vm_abort(vm, VM_FUNC_UNDEFINED);
 
             vm->funcs[arg](vm);
-            break;
-        case FOPC_IN:
-            exec_in(vm);
-            break;
-        case FOPC_SETTRIE:
-            if (unlikely(arg >= vm->ntries))
-                vm_abort(vm, VM_TRIE_UNDEFINED);
+            exarg = 0;
+            DISPATCH();
 
-            vm->curtrie = &vm->tries[arg];
-            if (unlikely(vm->curtrie->family != AF_INET))
-                vm_abort(vm, VM_TRIE_MISMATCH);
+        EXECUTE(EXACT):
+            vm_exec_exact(vm);
 
-            break;
-        case FOPC_SETTRIE6:
-            if (unlikely(arg >= vm->ntries))
-                vm_abort(vm, VM_TRIE_UNDEFINED);
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            DISPATCH();
 
-            vm->curtrie6 = &vm->tries[arg];
-            if (unlikely(vm->curtrie6->family != AF_INET6))
-                vm_abort(vm, VM_TRIE_MISMATCH);
+        EXECUTE(ANY):
+            vm_exec_any(vm);
 
-            break;
-        default:
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            DISPATCH();
+
+        EXECUTE(SETTRIE):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            vm_exec_settrie(vm, arg);
+            exarg = 0;
+            DISPATCH();
+
+        EXECUTE(SETTRIE6):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            vm_exec_settrie6(vm, arg);
+            exarg = 0;
+            DISPATCH();
+
+        EXECUTE(SUBNET):
+            // TODO
+            DISPATCH();
+
+        EXECUTE(CLRTRIE):
+            vm_exec_clrtrie(vm);
+            DISPATCH();
+
+        EXECUTE(CLRTRIE6):
+            vm_exec_clrtrie6(vm);
+            DISPATCH();
+
+        EXECUTE_SIGILL:
             vm_abort(vm, VM_ILLEGAL_OPCODE);
-            break;
+            DISPATCH();  // unreachable
         }
     }
 
+done:
     cell = vm_pop(vm);
     return cell->value != 0;
+
+#undef FETCH
+#undef DISPATCH
+#undef PREDICT
+#undef EXECUTE
+#undef EXECUTE_SIGILL
+#pragma GCC diagnostic pop
 }
 
 int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm, match_result_t *results, size_t *nresults)
