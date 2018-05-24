@@ -27,42 +27,47 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+#ifndef ISOLARIO_JSON_H_
+#define ISOLARIO_JSON_H_
 
-#ifndef ISOLARIO_CORE_TEST_H_
-#define ISOLARIO_CORE_TEST_H_
+#include <stddef.h>
+#include <sys/types.h>
 
-void testu128iter(void);
+typedef struct {
+    ssize_t len, cap;
+    char text[];
+} json_t;
 
-void testu128conv(void);
+json_t *jsonalloc(size_t n);
 
-void testhexdump(void);
+inline int jsonerror(json_t *json)
+{
+    return json->len < 0;
+}
 
-void testlog(void);
+void jsonensure(json_t **pjson, size_t n);
 
-void testjoinstrv(void);
+void newjsonobj(json_t **pjson);
 
-void testsplitjoinstr(void);
+void newjsonarr(json_t **pjson);
 
-void testtrimwhites(void);
+void newjsonfield(json_t **pjson, const char *name);
 
-void testnetaddr(void);
+void newjsonvals(json_t **pjson, const char *val);
 
-void testpatbase(void);
+void newjsonvalu(json_t **pjson, unsigned long val);
 
-void testpatgetfuncs(void);
+void newjsonvald(json_t **pjson, long val);
 
-void testpatiterator(void);
+void newjsonvalf(json_t **pjson, double val);
 
-void testpatcoverage(void);
+void newjsonvalb(json_t **pjson, int boolean);
 
-void testpatgetfirstsubnets(void);
+void closejsonarr(json_t **pjson);
 
-void testzio(void);
+void closejsonobj(json_t **pjson);
 
-void testbz2(void);
-
-void testbgpdumppacketrow(void);
-
-void testjsonsimple(void);
+// TODO: decoder and void jsonprettyp(json_t **pjson);
 
 #endif
+

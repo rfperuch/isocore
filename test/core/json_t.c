@@ -28,41 +28,56 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_CORE_TEST_H_
-#define ISOLARIO_CORE_TEST_H_
+#include <CUnit/CUnit.h>
+#include <isolario/json.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-void testu128iter(void);
+void testjsonsimple(void)
+{
+    json_t *json = jsonalloc(0);
+    newjsonobj(&json);
+    newjsonfield(&json, "makoto");
+    newjsonvals(&json, "auuu");
 
-void testu128conv(void);
+    newjsonfield(&json, "empty");
+    newjsonobj(&json);
+    closejsonobj(&json);
 
-void testhexdump(void);
+    newjsonfield(&json, "obj");
+    newjsonobj(&json);
+    for (int i = 0; i < 10; i++) {
+        char name[64];
 
-void testlog(void);
+        sprintf(name, "value%d", i);
+        newjsonfield(&json, name);
+        newjsonobj(&json);
+        for (int j = 0; j < 10; j++) {
+            sprintf(name, "field%d", j);
+            newjsonfield(&json, name);
+            newjsonvalf(&json, (double) j / 1000000.0);
+        }
+        closejsonobj(&json);
+    }
+    closejsonobj(&json);
 
-void testjoinstrv(void);
+    newjsonfield(&json, "arr");
 
-void testsplitjoinstr(void);
+    newjsonarr(&json);
+    for (int i = 0; i < 4; i++) {
+        newjsonarr(&json);
+        for (int j = 0; j < 100; j++)
+            newjsonvald(&json, j);
 
-void testtrimwhites(void);
+        closejsonarr(&json);
+    }
+    closejsonarr(&json);
 
-void testnetaddr(void);
+    closejsonobj(&json);
 
-void testpatbase(void);
+    printf("%s\n", json->text);
+    CU_ASSERT_STRING_EQUAL(json->text, "{\"makoto\":\"auuu\"}");
 
-void testpatgetfuncs(void);
+    free(json);
+}
 
-void testpatiterator(void);
-
-void testpatcoverage(void);
-
-void testpatgetfirstsubnets(void);
-
-void testzio(void);
-
-void testbz2(void);
-
-void testbgpdumppacketrow(void);
-
-void testjsonsimple(void);
-
-#endif
