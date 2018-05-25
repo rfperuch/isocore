@@ -27,16 +27,50 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+
 #ifndef ISOLARIO_JSON_H_
 #define ISOLARIO_JSON_H_
 
-#include <stddef.h>
-#include <sys/types.h>
+#include <sys/types.h>  // for ssize_t and size_t
+
+enum {
+    JSON_NONE = '\0',
+
+    JSON_BOOL = 'b',
+    JSON_NUM  = 'f',
+    JSON_STR  = 's',
+    JSON_ARR  = '[',
+    JSON_OBJ  = '{'
+};
+
+enum {
+    JSON_BUFSIZ = 128
+};
+
+enum {
+    JSON_END = -1,
+    JSON_SUCCESS,
+    JSON_INCOMPLETE,
+    JSON_BAD_SYNTAX,
+    JSON_NOMEM
+};
+
+typedef struct {
+    int type;  ///< Current element types.
+    union {
+        double numval;   ///< For \a JSON_NUM, number value.
+        int    boolval;  ///< For \a JSON_BOOL, boolean value.
+        int    size;     ///< For \a JSON_OBJ and JSON_ARR, elements count.
+    };
+    char *start, *end, *next;
+} jsontok_t;
 
 typedef struct {
     ssize_t len, cap;
     char text[];
 } json_t;
+
+// Encoding ====================================================================
 
 json_t *jsonalloc(size_t n);
 
@@ -45,7 +79,13 @@ inline int jsonerror(json_t *json)
     return json->len < 0;
 }
 
-void jsonensure(json_t **pjson, size_t n);
+inline void jsonclear(json_t *json)
+{
+    json->len = 0;
+    json->text[0] = '\0';
+}
+
+json_t *jsonensure(json_t **pjson, size_t n);
 
 void newjsonobj(json_t **pjson);
 
@@ -67,7 +107,13 @@ void closejsonarr(json_t **pjson);
 
 void closejsonobj(json_t **pjson);
 
-// TODO: decoder and void jsonprettyp(json_t **pjson);
+// Pretty-print ================================================================
+
+int jsonprettyp(json_t **pjson, const char *restrict text);
+
+// Parsing =====================================================================
+
+int jsonparse(const char *text, jsontok_t *tok);
 
 #endif
 

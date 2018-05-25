@@ -30,53 +30,93 @@
 
 #include <CUnit/CUnit.h>
 #include <isolario/json.h>
+#include <isolario/util.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+static void jsonstreq(const jsontok_t *tok, const char *expect)
+{
+    CU_ASSERT_EQUAL_FATAL(tok->type, JSON_STR);
+    size_t len = strlen(expect);
+    CU_ASSERT_EQUAL_FATAL(tok->end - tok->start, len);
+    CU_ASSERT_FATAL(strncmp(tok->start, expect, len) == 0);
+}
+
 void testjsonsimple(void)
 {
-    json_t *json = jsonalloc(0);
+    json_t *json = jsonalloc(JSON_BUFSIZ);
     newjsonobj(&json);
-    newjsonfield(&json, "makoto");
-    newjsonvals(&json, "auuu");
+    newjsonfield(&json, "myString");
+    newjsonvals(&json, "Hello, World!");
 
-    newjsonfield(&json, "empty");
+    newjsonfield(&json, "emptyObject");
     newjsonobj(&json);
     closejsonobj(&json);
 
-    newjsonfield(&json, "obj");
-    newjsonobj(&json);
-    for (int i = 0; i < 10; i++) {
-        char name[64];
-
-        sprintf(name, "value%d", i);
-        newjsonfield(&json, name);
-        newjsonobj(&json);
-        for (int j = 0; j < 10; j++) {
-            sprintf(name, "field%d", j);
-            newjsonfield(&json, name);
-            newjsonvalf(&json, (double) j / 1000000.0);
-        }
-        closejsonobj(&json);
-    }
-    closejsonobj(&json);
-
-    newjsonfield(&json, "arr");
-
+    newjsonfield(&json, "myArray");
     newjsonarr(&json);
-    for (int i = 0; i < 4; i++) {
-        newjsonarr(&json);
-        for (int j = 0; j < 100; j++)
-            newjsonvald(&json, j);
+    for (int i = 0; i < 10; i++)
+        newjsonvald(&json, i);
 
-        closejsonarr(&json);
-    }
     closejsonarr(&json);
-
     closejsonobj(&json);
 
-    printf("%s\n", json->text);
-    CU_ASSERT_STRING_EQUAL(json->text, "{\"makoto\":\"auuu\"}");
+    const char *expected_json = "{\"myString\":\"Hello, World!\",\"emptyObject\":{},\"myArray\":[0,1,2,3,4,5,6,7,8,9]}";
+
+    CU_ASSERT_FALSE_FATAL(jsonerror(json));
+    CU_ASSERT_TRUE_FATAL(json->cap > json->len);
+    CU_ASSERT_EQUAL_FATAL(strlen(expected_json), json->len);
+
+    CU_ASSERT_STRING_EQUAL_FATAL(json->text, expected_json);
+
+    jsontok_t tok;
+    memset(&tok, 0, sizeof(tok));
+    int err = jsonparse(json->text, &tok);
+    CU_ASSERT_EQUAL_FATAL(err, JSON_SUCCESS);
+    CU_ASSERT_EQUAL_FATAL(tok.type, JSON_OBJ);
+    CU_ASSERT_EQUAL_FATAL(tok.size, 3);
+
+    err = jsonparse(json->text, &tok);
+    CU_ASSERT_EQUAL_FATAL(err, JSON_SUCCESS);
+    jsonstreq(&tok, "myString");
+
+    err = jsonparse(json->text, &tok);
+    CU_ASSERT_EQUAL_FATAL(err, JSON_SUCCESS);
+    jsonstreq(&tok, "Hello, World!");
+
+    err = jsonparse(json->text, &tok);
+    CU_ASSERT_EQUAL_FATAL(err, JSON_SUCCESS);
+    jsonstreq(&tok, "emptyObject");
+
+    err = jsonparse(json->text, &tok);
+    CU_ASSERT_EQUAL_FATAL(err, JSON_SUCCESS);
+    CU_ASSERT_EQUAL_FATAL(tok.type, JSON_OBJ);
+    CU_ASSERT_EQUAL_FATAL(tok.size, 0);
+
+    err = jsonparse(json->text, &tok);
+    CU_ASSERT_EQUAL_FATAL(err, JSON_SUCCESS);
+    jsonstreq(&tok, "myArray");
+
+    err = jsonparse(json->text, &tok);
+    CU_ASSERT_EQUAL_FATAL(err, JSON_SUCCESS);
+    CU_ASSERT_EQUAL_FATAL(tok.type, JSON_ARR);
+    CU_ASSERT_EQUAL_FATAL(tok.size, 10);
+    for (int i = 0; i < 10; i++) {
+        char buf[digsof(i) + 1];
+
+        err = jsonparse(json->text, &tok);
+        CU_ASSERT_EQUAL_FATAL(err, JSON_SUCCESS);
+        CU_ASSERT_EQUAL_FATAL(tok.type, JSON_NUM);
+        CU_ASSERT_EQUAL_FATAL(tok.numval, (double) i);
+
+        int n1 = sprintf(buf, "%d", i);
+        int n2 = tok.end - tok.start;
+        CU_ASSERT_EQUAL_FATAL(n1, n2);
+        CU_ASSERT_FATAL(strncmp(tok.start, buf, n1) == 0);
+    }
+
+    err = jsonparse(json->text, &tok);
+    CU_ASSERT_EQUAL_FATAL(err, JSON_END);
 
     free(json);
 }
