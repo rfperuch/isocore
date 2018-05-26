@@ -258,7 +258,7 @@ void newjsonvald(json_t **pjson, long val)
 
 void newjsonvalf(json_t **pjson, double val)
 {
-    int n = snprintf(NULL, 0, "%f", val);
+    int n = snprintf(NULL, 0, "%g", val);
     int comma = valueneedscomma(*pjson);
 
     char buf[n + 1];
