@@ -50,10 +50,10 @@
 #include <stdint.h>
 
 enum {
-    BGP_FSM_IDLE = 1,
-    BGP_FSM_CONNECT = 2,
-    BGP_FSM_ACTIVE = 3,
-    BGP_FSM_OPENSENT = 4,
+    BGP_FSM_IDLE        = 1,
+    BGP_FSM_CONNECT     = 2,
+    BGP_FSM_ACTIVE      = 3,
+    BGP_FSM_OPENSENT    = 4,
     BGP_FSM_OPENCONFIRM = 5,
     BGP_FSM_ESTABLISHED = 6
 };
@@ -95,9 +95,9 @@ enum {
     BGP_EBADHDR,       ///< Bad BGP packet header.
     BGP_EBADTYPE,      ///< Unrecognized BGP packet type.
     BGP_EBADPARAMLEN,  ///< Open message has invalid parameters field length.
-    BGP_EBADWDRWN,  ///< Update message has invalid Withdrawn field.
-    BGP_EBADATTR,  ///< Update message has invalid Path Attributes field.
-    BGP_EBADNLRI    ///< Update message has invalid NLRI field.
+    BGP_EBADWDRWN,     ///< Update message has invalid Withdrawn field.
+    BGP_EBADATTR,      ///< Update message has invalid Path Attributes field.
+    BGP_EBADNLRI       ///< Update message has invalid NLRI field.
 };
 
 inline const char *bgpstrerror(int err)

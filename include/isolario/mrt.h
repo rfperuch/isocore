@@ -79,7 +79,7 @@ enum {
 };
 
 /**
- *   @brief BGP4_mp types
+ * @brief BGP4MP types
  *
  * further detail at https://tools.ietf.org/html/rfc6396#section-4.2
  * and for extensions https://tools.ietf.org/html/rfc8050#page-2
@@ -103,9 +103,9 @@ enum {
 };
 
 /**
-*   @brief BGP4_mp state change types
-* 
-*/
+ * @brief BGP4MP state change types
+ *
+ */
 enum {
     BGP4MP_IDLE = 1,
     BGP4MP_CONNECT = 2,
@@ -173,9 +173,10 @@ enum {
     MRT_EBADHDR,        ///< Bad MRT packet header.
     MRT_EBADTYPE,       ///< Bad MRT packet type.
     MRT_EBADPEERIDX,    ///< Error encountered parsing associated Peer Index.
-    MRT_ERIBNOTSUP      ///< Unsupported RIB entry encountered, according to RFC6396:
+    MRT_ERIBNOTSUP,     ///< Unsupported RIB entry encountered, according to RFC6396:
                         ///  "An implementation that does not recognize particular AFI and SAFI
-                        ///   values SHOULD discard the remainder of the MRT record."
+                        ///  values SHOULD discard the remainder of the MRT record."
+    MRT_EAFINOTSUP
 };
 
 inline const char *mrtstrerror(int err)
@@ -199,6 +200,8 @@ inline const char *mrtstrerror(int err)
         return "Bad Peer Index message";
     case MRT_ERIBNOTSUP:
         return "Unsupported RIB entry";
+    case MRT_EAFINOTSUP:
+        return "Unsupported AFI";
     default:
         return "Unknown error";
     }
@@ -235,6 +238,13 @@ enum {
     MRTPRESRVBUFSIZ = 512
 };
 
+typedef struct {
+    uint32_t peer_as, local_as;
+    netaddr_t peer_addr, local_addr;
+    uint16_t  iface;
+    uint16_t old_state, new_state;  ///< Only meaningful for BGP4MP_STATE_CHANGE*
+} bgp4mp_header_t;
+
 /// @brief Packet reader/writer global status structure.
 typedef struct mrt_msg_s {
     uint16_t flags;      ///< General status flags.
@@ -255,7 +265,7 @@ typedef struct mrt_msg_s {
             unsigned char *reptr; ///< Raw RIB entry pointer in current packet
         };
 
-        bgp_msg_t *bgp;
+        bgp4mp_header_t bgp4mphdr;
     };
 
     unsigned char *buf;  ///< Packet buffer base.
@@ -287,9 +297,9 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io);
 
 mrt_header_t *getmrtheader_r(mrt_msg_t *msg);
 
-int setmrtheaderv_r(mrt_msg_t *msg, const mrt_header_t *hdr, va_list va);
+int setmrtheaderv_r(mrt_msg_t *msg, const mrt_header_t *hdr, va_list va);  // TODO
 
-int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr, ...);
+int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr, ...);  // TODO
 
 // Peer Index
 
@@ -368,6 +378,16 @@ int putribent_r(mrt_msg_t *msg, const rib_entry_t *pe, uint16_t idx, time_t seco
 int endribents(void);
 
 int endribents_r(mrt_msg_t *msg);
+
+// BGP4MP
+
+bgp4mp_header_t *getbgp4mpheader(void);
+
+bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg);
+
+void *unwrapbgp4mp(size_t *pn);
+
+void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn);
 
 #endif
 

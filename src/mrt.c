@@ -108,38 +108,50 @@ enum {
 enum {
     MAX_MRT_SUBTYPE = MRT_TABLE_DUMPV2_RIB_GENERIC_ADDPATH,
 
-    F_VALID = 1 << 0,
-    F_AS32 = 1 << 1,
-    F_NEED_PI = 1 << 2,
-    F_IS_PI = 1 << 3,
-    F_IS_EXT = 1 << 4,
-    F_IS_BGP = 1 << 5,
+    F_VALID     = 1 << 0,
+    F_AS32      = 1 << 1,
+    F_NEED_PI   = 1 << 2,
+    F_IS_PI     = 1 << 3,
+    F_IS_EXT    = 1 << 4,
+    F_IS_BGP    = 1 << 5,
+    F_HAS_STATE = 1 << 6,
 
-    F_RD = 1 << 8,         ///< Packet opened for read
-    F_WR = 1 << (8 + 1),   ///< Packet opened for write
-    F_RDWR = F_RD | F_WR,  ///< Shorthand for \a (F_RD | F_WR).
+    F_RD   = 1 << 8,        ///< Packet opened for read
+    F_WR   = 1 << (8 + 1),  ///< Packet opened for write
+    F_RDWR = F_RD | F_WR,   ///< Shorthand for \a (F_RD | F_WR).
+
     F_PE = 1 << (8 + 2),
     F_RE = 1 << (8 + 3)
 };
 
-#define SHIFT(idx) ((idx)-MRT_TABLE_DUMP)
+#define SHIFT(idx) ((idx) - MRT_TABLE_DUMP)
 
 static const uint8_t masktab[][MAX_MRT_SUBTYPE + 1] = {
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE] = F_VALID | F_IS_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC] = F_VALID | F_NEED_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST] = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]   = F_VALID | F_IS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC]        = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST]   = F_VALID | F_NEED_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST] = F_VALID | F_NEED_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST] = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST]   = F_VALID | F_NEED_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST] = F_VALID | F_NEED_PI,
 
-    [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE] = F_VALID | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4] = F_VALID | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE_AS4] = F_VALID | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL] = F_VALID | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL] = F_VALID | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_ADDPATH] = F_VALID | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL_ADDPATH] = F_VALID | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_AS32 | F_IS_BGP};
+    [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE]              = F_VALID | F_IS_BGP | F_HAS_STATE,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4]               = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE_AS4]          = F_VALID | F_AS32 | F_IS_BGP | F_HAS_STATE,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL]             = F_VALID | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL]         = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_ADDPATH]       = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL_ADDPATH]     = F_VALID | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_AS32 | F_IS_BGP,
+
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_STATE_CHANGE]              = F_VALID | F_IS_EXT | F_IS_BGP | F_HAS_STATE,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4]               = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_STATE_CHANGE_AS4]          = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP | F_HAS_STATE,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_LOCAL]             = F_VALID | F_IS_EXT | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4_LOCAL]         = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4_ADDPATH]       = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_LOCAL_ADDPATH]     = F_VALID | F_IS_EXT | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP
+};
 
 /// @brief Packet reader/writer instance
 static _Thread_local mrt_msg_t curmsg, curpimsg;
@@ -775,3 +787,125 @@ int endribents_r(mrt_msg_t *msg)
     msg->flags |= F_RE;
     return MRT_ENOERR;
 }
+
+bgp4mp_header_t *getbgp4mpnewstate_r(mrt_msg_t *msg)
+{
+    if (unlikely(msg->flags & F_RD) == 0)
+        msg->err = MRT_EINVOP;
+    if (unlikely((msg->flags & F_IS_BGP) == 0))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return NULL;
+
+    // FIXME range check
+
+    unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
+    if (msg->flags & F_IS_EXT)
+        ptr = &msg->buf[MESSAGE_EXTENDED_OFFSET];
+
+    bgp4mp_header_t *hdr = &msg->bgp4mphdr;
+    memset(hdr, 0, sizeof(*hdr));
+    if (msg->flags & F_AS32) {
+        memcpy(&hdr->peer_as, ptr, sizeof(hdr->peer_as));
+        hdr->peer_as = frombig32(hdr->peer_as);
+        ptr += sizeof(hdr->peer_as);
+        memcpy(&hdr->local_as, ptr, sizeof(hdr->local_as));
+        hdr->local_as = frombig32(hdr->local_as);
+        ptr += sizeof(hdr->local_as);
+    } else {
+        uint16_t as;
+
+        memcpy(&as, ptr, sizeof(as));
+        hdr->peer_as = frombig16(as);
+        ptr += sizeof(as);
+        memcpy(&as, ptr, sizeof(as));
+        hdr->local_as = frombig16(as);
+        ptr += sizeof(as);
+    }
+
+    memcpy(&hdr->iface, ptr, sizeof(hdr->iface));
+    hdr->iface = frombig16(hdr->iface);
+    ptr += sizeof(hdr->iface);
+
+    uint16_t afi;
+    memcpy(&afi, ptr, sizeof(afi));
+    afi = frombig16(afi);
+    ptr += sizeof(afi);
+    switch (afi) {
+    case AFI_IPV4:
+        makenaddr(&hdr->peer_addr, ptr, 32);
+        ptr += sizeof(struct in_addr);
+        makenaddr(&hdr->local_addr, ptr, 32);
+        ptr += sizeof(struct in_addr);
+        break;
+    case AFI_IPV6:
+        makenaddr(&hdr->peer_addr, ptr, 128);
+        ptr += sizeof(struct in6_addr);
+        makenaddr(&hdr->local_addr, ptr, 128);
+        ptr += sizeof(struct in6_addr);
+        break;
+    default:
+        msg->err = MRT_EAFINOTSUP;
+        return NULL;
+    }
+
+    if (msg->flags & F_HAS_STATE) {
+        memcpy(&hdr->old_state, ptr, sizeof(hdr->old_state));
+        hdr->old_state = frombig16(hdr->old_state);
+        ptr += sizeof(hdr->old_state);
+        memcpy(&hdr->new_state, ptr, sizeof(hdr->new_state));
+        hdr->new_state = frombig16(hdr->new_state);
+    } else {
+        hdr->old_state = hdr->new_state = 0;
+    }
+
+    return hdr;
+}
+
+void *unwrapbgp4mp(size_t *pn)
+{
+    return unwrapbgp4mp_r(&curmsg, pn);
+}
+
+void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn)
+{
+    if (unlikely(msg->flags & F_RD) == 0)
+        msg->err = MRT_EINVOP;
+    if (unlikely((msg->flags & F_IS_BGP) == 0))
+        msg->err = MRT_EINVOP;
+    if (unlikely(msg->err))
+        return NULL;
+
+    // FIXME bounds check
+
+    unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
+    if (msg->flags & F_IS_EXT)
+        ptr = &msg->buf[MESSAGE_EXTENDED_OFFSET];
+
+    ptr += (msg->flags & F_AS32) ? 2 * sizeof(uint32_t) : 2 * sizeof(uint16_t);
+    ptr += sizeof(uint16_t);
+
+    uint16_t afi;
+    memcpy(&afi, ptr, sizeof(afi));
+    afi = frombig16(afi);
+    ptr += sizeof(afi);
+    switch (afi) {
+    case AFI_IPV4:
+        ptr += 2 * sizeof(struct in_addr);
+        break;
+    case AFI_IPV6:
+        ptr += 2 * sizeof(struct in6_addr);
+        break;
+    default:
+        msg->err = MRT_EAFINOTSUP;
+        return NULL;
+    }
+    if (msg->flags & F_HAS_STATE)
+        ptr += 2 * sizeof(uint16_t);
+
+    if (likely(pn))
+        *pn = &msg->buf[msg->bufsiz] - ptr;
+
+    return ptr;
+}
+
