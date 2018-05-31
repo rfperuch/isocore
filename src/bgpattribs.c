@@ -55,13 +55,63 @@ extern bgpattr_t *setbgporigin(bgpattr_t *attr, int origin);
 
 extern uint32_t getoriginatorid(const bgpattr_t *attr);
 
+extern bgpattr_t *setoriginatorid(bgpattr_t *attr, uint32_t id);
+
 extern struct in_addr getnexthop(const bgpattr_t *attr);
 
 extern bgpattr_t *setnexthop(bgpattr_t *attr, struct in_addr in);
 
 extern uint32_t getmultiexitdisc(const bgpattr_t *attr);
 
+extern bgpattr_t *setmultiexitdisc(bgpattr_t *attr, uint32_t disc);
+
 extern uint32_t getlocalpref(const bgpattr_t *attr);
+
+extern bgpattr_t *setlocalpref(bgpattr_t *attr, uint32_t pref);
+
+extern uint32_t getaggregatoras(const bgpattr_t *attr);
+
+extern struct in_addr getaggregatoraddress(const bgpattr_t *attr);
+
+extern bgpattr_t *setaggregator(bgpattr_t *attr, uint32_t as, size_t as_size, struct in_addr in);
+
+void *getmpnlri(bgpattr_t *attr, size_t *pn)
+{
+    assert(attr->code == MP_REACH_NLRI_CODE);
+
+    unsigned char *ptr = &attr->len;
+
+    size_t len = *ptr++;
+    if (attr->flags & ATTR_EXTENDED_LENGTH) {
+        len <<= 8;
+        len |= *ptr++;
+    }
+
+    ptr += sizeof(uint16_t) + sizeof(uint8_t);
+    if (likely(pn))
+        *pn = *ptr;
+
+    return ptr + 2 * sizeof(uint8_t);
+}
+
+void *getmpnexthop(bgpattr_t *attr, size_t *pn)
+{
+    assert(attr->code == MP_REACH_NLRI_CODE);
+
+    unsigned char *ptr = &attr->len;
+
+    size_t len = *ptr++;
+    if (attr->flags & ATTR_EXTENDED_LENGTH) {
+        len <<= 8;
+        len |= *ptr++;
+    }
+
+    ptr += sizeof(uint16_t) + sizeof(uint8_t);
+    if (likely(pn))
+        *pn = *ptr;
+
+    return ptr + 2 * sizeof(uint8_t);
+}
 
 int stobgporigin(const char *s)
 {
@@ -162,6 +212,102 @@ bgpattr_t *putasseg16(bgpattr_t *attr, int type, const uint16_t *seg, size_t cou
     *ptr++ = len;
     return attr;
 }
+
+bgpattr_t *setmpafisafi(bgpattr_t *dst, afi_t afi, safi_t safi)
+{
+    assert(dst->code == MP_REACH_NLRI_CODE || dst->code == MP_UNREACH_NLRI_CODE);
+
+    unsigned char *ptr = &dst->len;
+
+    ptr++;
+    if (dst->flags & ATTR_EXTENDED_LENGTH)
+        ptr++;
+
+    uint16_t t = tobig16(afi);
+    memcpy(ptr, &t, sizeof(t));
+    ptr += sizeof(t);
+
+    *ptr = safi;
+    return dst;
+}
+
+bgpattr_t *putmpnexthop(bgpattr_t *dst, int family, const void *addr)
+{
+    assert(dst->code == MP_REACH_NLRI_CODE);
+    assert(family == AF_INET || family == AF_INET6);
+
+    unsigned char *ptr = &dst->len;
+
+    int extended = dst->flags & ATTR_EXTENDED_LENGTH;
+    size_t len   = *ptr++;
+    size_t limit = ATTR_LENGTH_MAX;
+    if (extended) {
+        len <<= 8;
+        len |= *ptr++;
+
+        limit = ATTR_EXTENDED_LENGTH_MAX;
+    }
+
+    size_t n = (family == AF_INET) ? sizeof(struct in_addr) : sizeof(struct in6_addr);
+    if (unlikely(len + n > limit))
+        return NULL;  // would overflow attribute length
+
+    unsigned char *nhlen = ptr + sizeof(uint16_t) + sizeof(uint8_t); // keep a pointer to NEXT_HOP length
+    if (unlikely(*nhlen + n > 0xff))
+        return NULL;  // would overflow next-hop length
+    if (unlikely(nhlen + sizeof(uint8_t) + *nhlen != &ptr[len]))
+        return NULL;  // attribute already has a NLRI field!
+
+    memcpy(&ptr[len], addr, n);
+
+    // write updated NEXT HOP length
+    *nhlen += n;
+
+    // write updated length
+    ptr  = &dst->len;
+    len += n;
+    if (extended) {
+        *ptr++ = (len >> 8);
+        len &= 0xff;
+    }
+    *ptr++ = len;
+    return dst;
+}
+
+bgpattr_t *putmpnlri(bgpattr_t *dst, const netaddr_t *addr)
+{
+    assert(dst->code == MP_REACH_NLRI_CODE || dst->code == MP_UNREACH_NLRI_CODE);
+
+    unsigned char *ptr = &dst->len;
+
+    int extended = dst->flags & ATTR_EXTENDED_LENGTH;
+    size_t len   = *ptr++;
+    size_t limit = ATTR_LENGTH_MAX;
+    if (extended) {
+        len <<= 8;
+        len |= *ptr++;
+
+        limit = ATTR_EXTENDED_LENGTH_MAX;
+    }
+
+    size_t n = naddrsize(addr);
+    if (unlikely(len + n + 1 > limit))
+        return NULL;  // would overflow attribute length
+
+    ptr   += len;
+    *ptr++ = addr->bitlen;
+    memcpy(ptr, addr->bytes, n);
+
+    // write updated length
+    ptr  = &dst->len;
+    len += n + 1;
+    if (extended) {
+        *ptr++ = (len >> 8);
+        len &= 0xff;
+    }
+    *ptr++ = len;
+}
+
 /*
 static size_t appendsegment(unsigned char **pptr, unsigned char *end, int type, const void *ases, size_t as_size, size_t count)
 {

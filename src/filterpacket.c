@@ -204,19 +204,84 @@ extern void vm_exec_clrtrie(filter_vm_t *vm);
 
 extern void vm_exec_clrtrie6(filter_vm_t *vm);
 
+static void vm_accumulate_withdrawn(filter_vm_t *vm)
+{
+    netaddr_t *addr;
+    while ((addr = nextwithdrawn_r(vm->bgp)) != NULL)
+        vm_pushaddr(vm, addr);
+
+    if (unlikely(endwithdrawn_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+static void vm_accumulate_nlri(filter_vm_t *vm)
+{
+    netaddr_t *addr;
+    while ((addr = nextnlri_r(vm->bgp)) != NULL) {
+        vm_pushaddr(vm, addr);
+        vm_exec_store(vm);
+    }
+    if (unlikely(endnlri_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+static void vm_insert_withdrawn(filter_vm_t *vm)
+{
+    vm_exec_settrie(vm, VM_TMPTRIE);
+    vm_exec_settrie6(vm, VM_TMPTRIE6);
+
+    netaddr_t *addr;
+    while ((addr = nextwithdrawn_r(vm->bgp)) != NULL) {
+        vm_pushaddr(vm, addr);
+        vm_exec_store(vm);
+    }
+    if (unlikely(endwithdrawn_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+static void vm_insert_nlri(filter_vm_t *vm)
+{
+    vm_exec_settrie(vm, VM_TMPTRIE);
+    vm_exec_settrie6(vm, VM_TMPTRIE6);
+
+    netaddr_t *addr;
+    while ((addr = nextwithdrawn_r(vm->bgp)) != NULL) {
+        vm_pushaddr(vm, addr);
+        vm_exec_store(vm);
+    }
+    if (unlikely(endwithdrawn_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+void vm_exec_all_withdrawn_accumulate(filter_vm_t *vm)
+{
+    bgp_msg_t *msg = vm->bgp;
+    if (unlikely(!msg))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startallwithdrawn_r(msg);
+    vm_accumulate_withdrawn(vm);
+}
+
 void vm_exec_withdrawn_accumulate(filter_vm_t *vm)
 {
     bgp_msg_t *msg = vm->bgp;
     if (unlikely(!msg))
         vm_abort(vm, VM_PACKET_MISMATCH);
 
-    netaddr_t *addr;
     startwithdrawn_r(msg);
-    while ((addr = nextwithdrawn_r(msg)) != NULL)
-        vm_pushaddr(vm, addr);
+    vm_accumulate_withdrawn(vm);
+}
 
-    if (unlikely(endwithdrawn_r(msg) != BGP_ENOERR))
-        vm_abort(vm, VM_BAD_PACKET);
+void vm_exec_all_withdrawn_insert(filter_vm_t *vm)
+{
+    bgp_msg_t *msg = vm->bgp;
+    if (unlikely(!msg))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    netaddr_t *addr;
+    startallwithdrawn_r(msg);
+    vm_insert_withdrawn(vm);
 }
 
 void vm_exec_withdrawn_insert(filter_vm_t *vm)
@@ -225,17 +290,19 @@ void vm_exec_withdrawn_insert(filter_vm_t *vm)
     if (unlikely(!msg))
         vm_abort(vm, VM_PACKET_MISMATCH);
 
-    vm_exec_settrie(vm, VM_TMPTRIE);
-    vm_exec_settrie6(vm, VM_TMPTRIE6);
-
     netaddr_t *addr;
     startwithdrawn_r(msg);
-    while ((addr = nextwithdrawn_r(msg)) != NULL) {
-        vm_pushaddr(vm, addr);
-        vm_exec_store(vm);
-    }
-    if (unlikely(endwithdrawn_r(msg) != BGP_ENOERR))
-        vm_abort(vm, VM_BAD_PACKET);
+    vm_insert_withdrawn(vm);
+}
+
+void vm_exec_all_nlri_accumulate(filter_vm_t *vm)
+{
+    bgp_msg_t *msg = vm->bgp;
+    if (unlikely(!msg))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startallnlri_r(msg);
+    vm_accumulate_withdrawn(vm);
 }
 
 void vm_exec_nlri_accumulate(filter_vm_t *vm)
@@ -244,13 +311,18 @@ void vm_exec_nlri_accumulate(filter_vm_t *vm)
     if (unlikely(!msg))
         vm_abort(vm, VM_PACKET_MISMATCH);
 
-    netaddr_t *addr;
     startnlri_r(msg);
-    while ((addr = nextnlri_r(msg)) != NULL)
-        vm_pushaddr(vm, addr);
+    vm_accumulate_nlri(vm);
+}
 
-    if (unlikely(endnlri_r(msg) != BGP_ENOERR))
-        vm_abort(vm, VM_BAD_PACKET);
+void vm_exec_all_nlri_insert(filter_vm_t *vm)
+{
+    bgp_msg_t *msg = vm->bgp;
+    if (unlikely(!msg))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startallnlri_r(msg);
+    vm_insert_nlri(vm);
 }
 
 void vm_exec_nlri_insert(filter_vm_t *vm)
@@ -259,17 +331,8 @@ void vm_exec_nlri_insert(filter_vm_t *vm)
     if (unlikely(!msg))
         vm_abort(vm, VM_PACKET_MISMATCH);
 
-    vm_exec_settrie(vm, VM_TMPTRIE);
-    vm_exec_settrie6(vm, VM_TMPTRIE6);
-
-    netaddr_t *addr;
     startnlri_r(msg);
-    while ((addr = nextnlri_r(msg)) != NULL) {
-        vm_pushaddr(vm, addr);
-        vm_exec_store(vm);
-    }
-    if (unlikely(endnlri_r(msg) != BGP_ENOERR))
-        vm_abort(vm, VM_BAD_PACKET);
+    vm_insert_nlri(vm);
 }
 
 static void vm_emit_indexed(filter_vm_t *vm, int opcode, int idx)
@@ -425,12 +488,28 @@ static uint64_t compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
                 opcode = vm_makeop(FOPC_CALL, VM_WITHDRAWN_INSERT_FN);
 
             vm_emit(vm, opcode);
+        } else if (strcasecmp(field, "every_withdrawn") == 0) {
+            bytecode_t opcode;
+            if (kind == LEFT_TERM)
+                opcode = vm_makeop(FOPC_CALL, VM_ALL_WITHDRAWN_ACCUMULATE_FN);
+            else
+                opcode = vm_makeop(FOPC_CALL, VM_ALL_WITHDRAWN_INSERT_FN);
+
+            vm_emit(vm, opcode);
         } else if (strcasecmp(field, "nlri") == 0) {
             bytecode_t opcode;
             if (kind == LEFT_TERM)
                 opcode = vm_makeop(FOPC_CALL, VM_NLRI_ACCUMULATE_FN);
             else
                 opcode = vm_makeop(FOPC_CALL, VM_NLRI_INSERT_FN);
+
+            vm_emit(vm, opcode);
+        } else if (strcasecmp(field, "every_nlri") == 0) {
+            bytecode_t opcode;
+            if (kind == LEFT_TERM)
+                opcode = vm_makeop(FOPC_CALL, VM_ALL_NLRI_ACCUMULATE_FN);
+            else
+                opcode = vm_makeop(FOPC_CALL, VM_ALL_NLRI_INSERT_FN);
 
             vm_emit(vm, opcode);
         } else {
@@ -537,10 +616,14 @@ void filter_init(filter_vm_t *vm)
     vm->maxk     = nelems(vm->kbuf);
     vm->ntries   = 2;  // 2 temporary tries
     vm->maxtries = nelems(vm->triebuf);
-    vm->funcs[VM_WITHDRAWN_INSERT_FN]     = vm_exec_withdrawn_insert;
-    vm->funcs[VM_WITHDRAWN_ACCUMULATE_FN] = vm_exec_withdrawn_accumulate;
-    vm->funcs[VM_NLRI_INSERT_FN]     = vm_exec_nlri_insert;
-    vm->funcs[VM_NLRI_ACCUMULATE_FN] = vm_exec_nlri_accumulate;
+    vm->funcs[VM_WITHDRAWN_INSERT_FN]         = vm_exec_withdrawn_insert;
+    vm->funcs[VM_WITHDRAWN_ACCUMULATE_FN]     = vm_exec_withdrawn_accumulate;
+    vm->funcs[VM_ALL_WITHDRAWN_INSERT_FN]     = vm_exec_all_withdrawn_insert;
+    vm->funcs[VM_ALL_WITHDRAWN_ACCUMULATE_FN] = vm_exec_all_withdrawn_accumulate;
+    vm->funcs[VM_NLRI_INSERT_FN]              = vm_exec_nlri_insert;
+    vm->funcs[VM_NLRI_ACCUMULATE_FN]          = vm_exec_nlri_accumulate;
+    vm->funcs[VM_ALL_NLRI_INSERT_FN]          = vm_exec_all_nlri_insert;
+    vm->funcs[VM_ALL_NLRI_ACCUMULATE_FN]      = vm_exec_all_nlri_accumulate;
 
     vm->flags = 0;
 

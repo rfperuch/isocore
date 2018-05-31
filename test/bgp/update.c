@@ -28,19 +28,20 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_BGP_TEST_H_
-#define ISOLARIO_BGP_TEST_H_
+#include <CUnit/CUnit.h>
+#include <isolario/bgp.h>
+#include <isolario/bgpparams.h>
+#include <isolario/util.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-void testopencreate(void);
+void testupdateread(void)
+{
+    // TODO
 
-void testopenread(void);
+    // close BGP reading, we expect no error
+    CU_ASSERT_EQUAL(bgpclose(), BGP_ENOERR);
+}
 
-void testupdateread(void);
-
-void testcommunityconv(void);
-
-void testlargecommunityconv(void);
-
-void testaspathconv(void);
-
-#endif

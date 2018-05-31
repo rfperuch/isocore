@@ -123,9 +123,17 @@ static void explain_function(FILE *f, int colors, int fn)
     case VM_WITHDRAWN_ACCUMULATE_FN:
         name = "packet.withdrawn";
         break;
+    case VM_ALL_WITHDRAWN_INSERT_FN:
+    case VM_ALL_WITHDRAWN_ACCUMULATE_FN:
+        name = "packet.every_withdrawn";
+        break;
     case VM_NLRI_INSERT_FN:
     case VM_NLRI_ACCUMULATE_FN:
         name = "packet.nlri";
+        break;
+    case VM_ALL_NLRI_INSERT_FN:
+    case VM_ALL_NLRI_ACCUMULATE_FN:
+        name = "packet.every_nlri";
         break;
     default:
         break;

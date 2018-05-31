@@ -70,7 +70,8 @@ bgp_test = executable('bgp_test',
     sources : [
         'test/bgp/attribs.c',
         'test/bgp/main.c',
-        'test/bgp/open.c'
+        'test/bgp/open.c',
+        'test/bgp/update.c'
     ],
     dependencies : [
         isocore_dep,
@@ -86,7 +87,7 @@ core_test = executable('core_test',
         'test/core/dumppacket_t.c',
         'test/core/hexdump_t.c',
         'test/core/io_t.c',
-	'test/core/json_t.c',
+        'test/core/json_t.c',
         'test/core/log_t.c',
         'test/core/netaddr_t.c',
         'test/core/patriciatrie_t.c',

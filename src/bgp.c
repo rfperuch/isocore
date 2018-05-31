@@ -57,10 +57,11 @@ enum {
     F_PM = 1 << 2,  ///< Reading/writing BGP open parameters
 
     // Update packet flags
-    F_WITHDRN = 1 << 3,  ///< Reading/writing Withdrown field
-    F_PATTR   = 1 << 4,  ///< Reading/writing Path Attributes field
-    F_NLRI    = 1 << 5   ///< Reading/writing NLRI field
-
+    F_WITHDRN    = 1 << 3,    ///< Reading/writing Withdrawn field
+    F_ALLWITHDRN = 1 << 4,
+    F_PATTR      = 1 << 5,  ///< Reading/writing Path Attributes field
+    F_NLRI       = 1 << 6,  ///< Reading/writing NLRI field
+    F_ALLNLRI    = 1 << 7
 };
 
 /// @brief Offsets for various BGP packet fields
@@ -91,7 +92,12 @@ enum {
     MIN_UPDATE_LENGTH = BASE_PACKET_LENGTH + 2 * sizeof(uint16_t),
 
     // BGP route refresh packet
-    ROUTE_REFRESH_LENGTH = BASE_PACKET_LENGTH + sizeof(afi_safi_t)
+    ROUTE_REFRESH_LENGTH = BASE_PACKET_LENGTH + sizeof(afi_safi_t),
+
+    // special offset value, indicating that value was not found
+    // (used while reading special attributes in update message, to indicate
+    // that the attribute was already searched, but was not found)
+    OFFSET_NOT_FOUND = UINT16_MAX
 };
 
 /// @brief Global thread BGP message instance.
@@ -564,6 +570,18 @@ int endbgpcaps_r(bgp_msg_t *msg)
 
 // Update message read/write functions =========================================
 
+#define SAVE_UPDATE_ITER(pkt)                   \
+    int prev_flags__             = pkt->flags;  \
+    unsigned char *prev_ustart__ = pkt->ustart; \
+    unsigned char *prev_uptr__   = pkt->uptr;   \
+    unsigned char *prev_uend__   = pkt->uend;
+
+#define RESTORE_UPDATE_ITER(pkt) \
+    pkt->flags  = prev_flags__;  \
+    pkt->ustart = prev_ustart__; \
+    pkt->uptr   = prev_uptr__;   \
+    pkt->uend   = prev_uend__;
+
 static int bgpensure(bgp_msg_t *msg, size_t len)
 {
     len += msg->pktlen;
@@ -626,11 +644,13 @@ int startwithdrawn(void)
     return startwithdrawn_r(&curmsg);
 }
 
-int startwithdrawn_r(bgp_msg_t *msg)
+int startallwithdrawn(void)
 {
-    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
-        return msg->err;
+    return startallwithdrawn_r(&curmsg);
+}
 
+static int dostartwithdrawn(bgp_msg_t *msg, int flags)
+{
     endpending(msg);
 
     size_t n;
@@ -645,8 +665,25 @@ int startwithdrawn_r(bgp_msg_t *msg)
 
     msg->uptr   = ptr;
     msg->ustart = ptr;
-    msg->flags |= F_WITHDRN;
+    msg->uend   = ptr + n;
+    msg->flags |= flags;
     return BGP_ENOERR;
+}
+
+int startwithdrawn_r(bgp_msg_t *msg)
+{
+    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
+        return msg->err;
+
+    return dostartwithdrawn(msg, F_WITHDRN);
+}
+
+int startallwithdrawn_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_UPDATE, F_RD))
+        return msg->err;
+
+    return dostartwithdrawn(msg, F_WITHDRN | F_ALLWITHDRN);
 }
 
 int setwithdrawn(const void *data, size_t n)
@@ -720,19 +757,28 @@ netaddr_t *nextwithdrawn_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_RD | F_WITHDRN))
         return NULL;
 
-    uint16_t wlen;
-    memcpy(&wlen, msg->ustart - sizeof(wlen), sizeof(wlen));
-    wlen = frombig16(wlen);
+    while (msg->uptr == msg->uend) {  // this loop handles empty MP_UNREACH
 
-    unsigned char *end = msg->ustart + wlen;
-    if (msg->uptr == end)
-        return NULL;
+        if ((msg->flags & F_ALLWITHDRN) == 0)
+            return NULL;  // we're done
+
+        msg->flags &= ~F_ALLWITHDRN;
+
+        bgpattr_t *attr = getbgpmpunreach_r(msg);
+        if (!attr)
+            return NULL;
+
+        size_t len;
+        msg->ustart = getmpnlri(attr, &len);
+        msg->uptr   = msg->ustart;
+        msg->uend   = msg->ustart + len;
+    }
 
     memset(&msg->pfxbuf, 0, sizeof(msg->pfxbuf));
 
     size_t bitlen = *msg->uptr++;
     size_t n = naddrsize(bitlen);
-    if (msg->uptr + n > end) {
+    if (msg->uptr + n > msg->uend) {
         msg->err = BGP_EBADWDRWN;
         return NULL;
     }
@@ -775,13 +821,31 @@ int endwithdrawn_r(bgp_msg_t *msg)
 
     if (msg->flags & F_WR) {
         bgprestore(msg);
+
         uint16_t len = tobig16(msg->uptr - msg->ustart);
         memcpy(msg->ustart - sizeof(len), &len, sizeof(len));
     }
 
-    msg->flags &= ~F_WITHDRN;
+    msg->flags &= ~(F_WITHDRN | F_ALLWITHDRN);
     return BGP_ENOERR;
 }
+
+#define INDEX_BIAS -1
+#define MAKE_CODE_INDEX(x) ((x) + INDEX_BIAS)
+#define EXTRACT_CODE_INDEX(x) ((x) - INDEX_BIAS)
+
+// NOTE: index count must be less than nelems(bgp_msg_t.offtab)!
+static const int8_t attr_code_index[255] = {
+    [AS_PATH_CODE]            = MAKE_CODE_INDEX(0),
+    [AGGREGATOR_CODE]         = MAKE_CODE_INDEX(1),
+    [COMMUNITY_CODE]          = MAKE_CODE_INDEX(2),
+    [MP_REACH_NLRI_CODE]      = MAKE_CODE_INDEX(3),
+    [MP_UNREACH_NLRI_CODE]    = MAKE_CODE_INDEX(4),
+    [EXTENDED_COMMUNITY_CODE] = MAKE_CODE_INDEX(5),
+    [AS4_PATH_CODE]           = MAKE_CODE_INDEX(6),
+    [AS4_AGGREGATOR_CODE]     = MAKE_CODE_INDEX(7),
+    [LARGE_COMMUNITY_CODE]    = MAKE_CODE_INDEX(8)
+};
 
 void *getbgpattribs(size_t *pn)
 {
@@ -877,7 +941,7 @@ bgpattr_t *nextbgpattrib_r(bgp_msg_t *msg)
     const unsigned char *end = msg->ustart + attrlen;
     if (msg->uptr == end)
         return NULL;
-    
+
     if (unlikely(msg->uptr + ATTR_HEADER_SIZE > end)) {
         msg->err = BGP_EBADATTR;
         return NULL;
@@ -904,6 +968,12 @@ bgpattr_t *nextbgpattrib_r(bgp_msg_t *msg)
         return NULL;
     }
     msg->uptr += len;
+
+    // if this is a notable attribute, then insert its offset into offtab
+    int idx = attr_code_index[MAKE_CODE_INDEX(attr->code)];
+    if (idx >= 0)
+        msg->offtab[idx] = ((unsigned char *) attr - msg->buf);
+
     return attr;
 }
 
@@ -917,7 +987,7 @@ int endbgpattribs_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_PATTR))
         return msg->err;
 
-    if (msg->flags & F_WR) { 
+    if (msg->flags & F_WR) {
         bgprestore(msg);
         uint16_t len = tobig16(msg->uptr - msg->ustart);
         memcpy(msg->ustart - sizeof(len), &len, sizeof(len));
@@ -974,11 +1044,13 @@ int startnlri(void)
     return startnlri_r(&curmsg);
 }
 
-int startnlri_r(bgp_msg_t *msg)
+int startallnlri(void)
 {
-    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
-        return msg->err;
+    return startallnlri_r(&curmsg);
+}
 
+static int dostartnlri(bgp_msg_t *msg, int flags)
+{
     endpending(msg);
 
     size_t n;
@@ -986,10 +1058,27 @@ int startnlri_r(bgp_msg_t *msg)
     if (msg->flags & F_WR)
         msg->pktlen -= n;
 
-    msg->uptr   = ptr;
-    //msg->ustart = ptr; this is not necessary because nlri field does not have a summary length field
-    msg->flags |= F_NLRI;
-    return BGP_ENOERR;
+    msg->uptr = ptr;
+    msg->ustart = ptr; // this is not strictly necessary because nlri does not have a summary length
+    msg->uend = ptr + n;
+    msg->flags |= flags;
+    return msg->err;
+}
+
+int startnlri_r(bgp_msg_t *msg)
+{
+    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
+        return msg->err;
+
+    return dostartnlri(msg, F_NLRI);
+}
+
+int startallnlri_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_UPDATE, F_RD))
+        return msg->err;
+
+    return dostartnlri(msg, F_NLRI | F_ALLNLRI);
 }
 
 netaddr_t *nextnlri(void)
@@ -1002,15 +1091,28 @@ netaddr_t *nextnlri_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_RD | F_NLRI))
         return NULL;
 
-    if (msg->uptr == msg->buf + msg->pktlen)
-        return NULL;
+    while (msg->uptr == msg->uend) {  // this handles empty MP_REACH attributes
+        if ((msg->flags & F_ALLNLRI) == 0)
+            return NULL;
+
+        msg->flags &= ~F_ALLNLRI;
+
+        bgpattr_t *attr = getbgpmpreach_r(msg);
+        if (!attr)
+            return NULL;
+
+        size_t len;
+        msg->ustart = getmpnlri(attr, &len);
+        msg->uptr   = msg->ustart;
+        msg->uend   = msg->uptr + len;
+    }
 
     memset(&msg->pfxbuf, 0, sizeof(msg->pfxbuf));
 
     size_t bitlen = *msg->uptr++;
     size_t n = naddrsize(bitlen);
 
-    if (unlikely(msg->uptr + n > msg->buf + msg->pktlen)) {
+    if (unlikely(msg->uptr + n > msg->uend)) {
         msg->err = BGP_EBADNLRI;
         return NULL;
     }
@@ -1052,8 +1154,151 @@ int endnlri_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_NLRI))
         return msg->err;
 
-    msg->flags &= ~F_NLRI;
+    msg->flags &= ~(F_NLRI | F_ALLNLRI);
     return msg->err;
+}
+
+static bgpattr_t *seekbgpattr(bgp_msg_t *msg, int code)
+{
+    if (checktype(msg, BGP_UPDATE, F_RD))
+        return NULL;
+
+    int idx = EXTRACT_CODE_INDEX(attr_code_index[code]);
+
+    assert(idx >= 0 && idx < (int) nelems(msg->offtab));
+
+    uint16_t off = msg->offtab[idx];
+    if (unlikely(off == 0)) {
+        bgpattr_t *attr;
+
+        SAVE_UPDATE_ITER(msg);
+
+        startbgpattribs_r(msg);
+        while ((attr = nextbgpattrib_r(msg)) != NULL && attr->code != code);
+
+        if (unlikely(endbgpattribs_r(msg) != BGP_ENOERR))
+            return NULL;
+
+        RESTORE_UPDATE_ITER(msg);
+
+        off = msg->offtab[idx];
+    }
+    if (off == OFFSET_NOT_FOUND)
+        return NULL;
+
+    return (bgpattr_t *) &msg->buf[off];
+}
+
+bgpattr_t *getbgpaggregator(void)
+{
+    return getbgpaggregator_r(&curmsg);
+}
+
+bgpattr_t *getbgpaggregator_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, AGGREGATOR_CODE);
+}
+
+bgpattr_t *getbgpas4aggregator(void)
+{
+    return getbgpaggregator_r(&curmsg);
+}
+
+bgpattr_t *getbgpas4aggregator_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, AS4_AGGREGATOR_CODE);
+}
+
+bgpattr_t *getrealbgpaggregator(size_t as_size)
+{
+    return getrealbgpaggregator_r(&curmsg, as_size);
+}
+
+bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg, size_t as_size)
+{
+    if (checktype(msg, BGP_UPDATE, F_RD))
+        return NULL;
+
+    bgpattr_t *aggr = getbgpaggregator_r(msg);
+    if (unlikely(!aggr))
+        return NULL;
+
+    if (getaggregatoras(aggr) == AS_TRANS) {
+        aggr = getbgpas4aggregator_r(msg);
+        if (unlikely(!aggr))
+            msg->err = BGP_EBADATTR;
+    }
+    return aggr;
+}
+
+bgpattr_t *getbgpaspath(void)
+{
+    return getbgpaspath_r(&curmsg);
+}
+
+bgpattr_t *getbgpaspath_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, AS_PATH_CODE);
+}
+
+bgpattr_t *getbgpas4path(void)
+{
+    return getbgpas4path_r(&curmsg);
+}
+
+bgpattr_t *getbgpas4path_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, AS4_PATH_CODE);
+}
+
+bgpattr_t *getbgpmpreach(void)
+{
+    return getbgpmpreach_r(&curmsg);
+}
+
+bgpattr_t *getbgpmpreach_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, MP_REACH_NLRI_CODE);
+}
+
+bgpattr_t *getbgpmpunreach(void)
+{
+    return getbgpmpunreach_r(&curmsg);
+}
+
+bgpattr_t *getbgpmpunreach_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, MP_UNREACH_NLRI_CODE);
+}
+
+bgpattr_t *getbgpcommunities(void)
+{
+    return getbgpcommunities_r(&curmsg);
+}
+
+bgpattr_t *getbgpcommunities_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, COMMUNITY_CODE);
+}
+
+bgpattr_t *getbgplargecommunities(void)
+{
+    return getbgplargecommunities_r(&curmsg);
+}
+
+bgpattr_t *getbgplargecommunities_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, LARGE_COMMUNITY_CODE);
+}
+
+bgpattr_t *getbgpexcommunities(void)
+{
+    return getbgpexcommunities_r(&curmsg);
+}
+
+bgpattr_t *getbgpexcommunities_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, EXTENDED_COMMUNITY_CODE);
 }
 
 // TODO Route refresh message read/write functions =============================

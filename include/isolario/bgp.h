@@ -120,7 +120,7 @@ inline const char *bgpstrerror(int err)
     case BGP_EBADWDRWN:
         return "Oversized or inconsistent BGP update Withdrawn length";
     case BGP_EBADATTR:
-        return "Oversized or inconsistent BGP update Path Attributes field";
+        return "Malformed attribute list";
     case BGP_EBADNLRI:
         return "Oversized or inconsistent BGP update NLRI field";
     default:
@@ -218,6 +218,8 @@ void *getwithdrawn(size_t *pn);
 
 int startwithdrawn(void);
 
+int startallwithdrawn(void);
+
 netaddr_t *nextwithdrawn(void);
 
 int putwithdrawn(const netaddr_t *p);
@@ -241,6 +243,8 @@ int setnlri(const void *data, size_t n);
 void *getnlri(size_t *pn);
 
 int startnlri(void);
+
+int startallnlri(void);
 
 int putnlri(const netaddr_t *p);
 
@@ -289,6 +293,7 @@ typedef struct {
     unsigned char *buf;  ///< @private Packet buffer base.
     /// @private Relevant status for each BGP packet.
     union {
+        /// @private BGP open specific fields
         struct {
             unsigned char *pptr;    ///< @private Current parameter pointer
             unsigned char *params;  ///< @private Pointer to parameters base
@@ -297,14 +302,25 @@ typedef struct {
         };
         /// @private BGP update specific fields
         struct {
-            unsigned char *presbuf;  ///< @private Preserved fields buffer, for out of order field writing.
-            unsigned char *ustart;   ///< @private Current update message field starting pointer
+            unsigned char *ustart;   ///< @private Current update message field starting pointer.
             unsigned char *uptr;     ///< @private Current update message field pointer.
+            unsigned char *uend;     ///< @private Current update message field ending pointer.
 
-            /// @private following fields are mutually exclusive, so reuse storage
+            /// @private following fields are mutually exclusive
             union {
-                netaddr_t pfxbuf;                ///< @private Convenience field for reading.
-                unsigned char fastpresbuf[128];  ///< @private Fast preserved buffer, to avoid malloc()s.
+                /// @private read-specific fields.
+                struct {
+                    netaddr_t pfxbuf;    ///< @private Convenience field for reading prefixes.
+                    uint16_t offtab[32]; ///< @private Notable attributes offset table.
+                };
+
+                /// @private write-specific fields.
+                struct {
+                    /// @private Preserved buffer pointer, either \a fastpresbuf or malloc()ed
+                    unsigned char *presbuf;
+                    /// @private Fast preserve buffer, to avoid malloc()s.
+                    unsigned char fastpresbuf[96];
+                };
             };
         };
     };
@@ -355,6 +371,8 @@ int setwithdrawn_r(bgp_msg_t *msg, const void *data, size_t n);
 
 void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn);
 
+int startallwithdrawn_r(bgp_msg_t *msg);
+
 int startwithdrawn_r(bgp_msg_t *msg);
 
 netaddr_t *nextwithdrawn_r(bgp_msg_t *msg);
@@ -379,6 +397,8 @@ int setnlri_r(bgp_msg_t *msg, const void *data, size_t n);
 
 void *getnlri_r(bgp_msg_t *msg, size_t *pn);
 
+int startallnlri_r(bgp_msg_t *msg);
+
 int startnlri_r(bgp_msg_t *msg);
 
 int putnlri_r(bgp_msg_t *msg, const netaddr_t *p);
@@ -386,6 +406,71 @@ int putnlri_r(bgp_msg_t *msg, const netaddr_t *p);
 netaddr_t *nextnlri_r(bgp_msg_t *msg);
 
 int endnlri_r(bgp_msg_t *msg);
+
+// utility functions for update packages, direct access to notable attributes
+
+bgpattr_t *getbgpaggregator(void);
+bgpattr_t *getbgpaggregator_r(bgp_msg_t *msg);
+
+bgpattr_t *getbgpas4aggregator(void);
+bgpattr_t *getbgpas4aggregator_r(bgp_msg_t *msg);
+
+bgpattr_t *getrealbgpaggregator(size_t as_size);
+bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg, size_t as_size);
+
+bgpattr_t *getbgpaspath(void);
+bgpattr_t *getbgpaspath_r(bgp_msg_t *msg);
+
+bgpattr_t *getbgpas4path(void);
+bgpattr_t *getbgpas4path_r(bgp_msg_t *msg);
+
+bgpattr_t *getbgpmpreach(void);
+bgpattr_t *getbgpmpreach_r(bgp_msg_t *msg);
+
+bgpattr_t *getbgpmpunreach(void);
+bgpattr_t *getbgpmpunreach_r(bgp_msg_t *msg);
+
+bgpattr_t *getbgpcommunities(void);
+bgpattr_t *getbgpcommunities_r(bgp_msg_t *msg);
+
+bgpattr_t *getbgpexcommunities(void);
+bgpattr_t *getbgpexcommunities_r(bgp_msg_t *msg);
+
+bgpattr_t *getbgplargecommunities(void);
+bgpattr_t *getbgplargecommunities_r(bgp_msg_t *msg);
+
+/*
+    From RFC 4893
+
+   A NEW BGP speaker should also be prepared to receive the
+   AS4_AGGREGATOR attribute along with the AGGREGATOR attribute from an
+   OLD BGP speaker.  When both the attributes are received, if the AS
+   number in the AGGREGATOR attribute is not AS_TRANS, then:
+
+      -  the AS4_AGGREGATOR attribute and the AS4_PATH attribute SHALL
+         be ignored,
+
+      -  the AGGREGATOR attribute SHALL be taken as the information
+         about the aggregating node, and
+
+      -  the AS_PATH attribute SHALL be taken as the AS path
+         information.
+
+   Otherwise,
+
+      -  the AGGREGATOR attribute SHALL be ignored,
+
+      -  the AS4_AGGREGATOR attribute SHALL be taken as the information
+         about the aggregating node, and
+
+      -  the AS path information would need to be constructed, as in all
+         other cases.
+
+   In order to construct the AS path information, it would be necessary
+   to first calculate the number of AS numbers in the AS_PATH and
+   AS4_PATH attributes using the method specified in Section 9.1.2.2
+   [BGP] and [RFC3065] for route selection.
+*/
 
 /** @} */
 

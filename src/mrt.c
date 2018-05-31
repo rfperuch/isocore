@@ -615,44 +615,44 @@ void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
     uint16_t afi;
     uint8_t safi;
     switch (msg->hdr.subtype) {
-        case MRT_TABLE_DUMPV2_RIB_GENERIC:
-            memcpy(&afi, ptr, sizeof(afi));
-            afi = frombig16(afi);
-            ptr += sizeof(afi);
-            safi = *ptr++;
-            break;
-        case MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST:
-            afi = AFI_IPV4;
-            safi = SAFI_UNICAST;
-            break;
-        case MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST:
-            afi = AFI_IPV4;
-            safi = SAFI_MULTICAST;
-            break;
-        case MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST:
-            afi = AFI_IPV6;
-            safi = SAFI_UNICAST;
-            break;
-        case MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST:
-            afi = AFI_IPV6;
-            safi = SAFI_MULTICAST;
-            break;
-        default:
-            goto unsup;
+    case MRT_TABLE_DUMPV2_RIB_GENERIC:
+        memcpy(&afi, ptr, sizeof(afi));
+        afi = frombig16(afi);
+        ptr += sizeof(afi);
+        safi = *ptr++;
+        break;
+    case MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST:
+        afi = AFI_IPV4;
+        safi = SAFI_UNICAST;
+        break;
+    case MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST:
+        afi = AFI_IPV4;
+        safi = SAFI_MULTICAST;
+        break;
+    case MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST:
+        afi = AFI_IPV6;
+        safi = SAFI_UNICAST;
+        break;
+    case MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST:
+        afi = AFI_IPV6;
+        safi = SAFI_MULTICAST;
+        break;
+    default:
+        goto unsup;
     }
     if (unlikely(safi != SAFI_UNICAST && safi != SAFI_MULTICAST))
         goto unsup;
 
     sa_family_t fam;
     switch (afi) {
-        case AFI_IPV4:
-            fam = AF_INET;
-            break;
-        case AFI_IPV6:
-            fam = AF_INET6;
-            break;
-        default:
-            goto unsup;
+    case AFI_IPV4:
+        fam = AF_INET;
+        break;
+    case AFI_IPV6:
+        fam = AF_INET6;
+        break;
+    default:
+        goto unsup;
     }
 
     size_t bitlen = *ptr++;
@@ -752,9 +752,9 @@ rib_entry_t *nextribent_r(mrt_msg_t *msg)
     msg->reptr += sizeof(attr_len);
 
     msg->ribent.peer_idx = idx;
-    msg->ribent.originated = (time_t)originated;
+    msg->ribent.originated = (time_t) originated;
     msg->ribent.attr_length = attr_len;
-    msg->ribent.attrs = (bgpattr_t *)msg->reptr;
+    msg->ribent.attrs = (bgpattr_t *) msg->reptr;
 
     msg->reptr += attr_len;
     return &msg->ribent;

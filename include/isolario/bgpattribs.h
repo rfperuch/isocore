@@ -41,6 +41,7 @@
 #include <arpa/inet.h>
 #include <isolario/branch.h>
 #include <isolario/endian.h>
+#include <isolario/netaddr.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -344,9 +345,23 @@ enum {
     DEFAULT_AS4_PATH_FLAGS = ATTR_TRANSITIVE,
     EXTENDED_AS4_PATH_FLAGS = DEFAULT_AS4_PATH_FLAGS | ATTR_EXTENDED_LENGTH,
 
+    DEFAULT_MP_REACH_NLRI_FLAGS = ATTR_OPTIONAL,
+    EXTENDED_MP_REACH_NLRI_FLAGS = DEFAULT_MP_REACH_NLRI_FLAGS | ATTR_EXTENDED_LENGTH,
+    MP_REACH_BASE_LEN = sizeof(uint16_t) + 3 * sizeof(uint8_t),
+
+    DEFAULT_MP_UNREACH_NLRI_FLAGS = ATTR_OPTIONAL,
+    EXTENDED_MP_UNREACH_NLRI_FLAGS = DEFAULT_MP_UNREACH_NLRI_FLAGS | ATTR_EXTENDED_LENGTH,
+    MP_UNREACH_BASE_LEN = sizeof(uint16_t) + sizeof(uint8_t),
+
     DEFAULT_COMMUNITY_FLAGS = ATTR_TRANSITIVE | ATTR_OPTIONAL,
     EXTENDED_COMMUNITY_FLAGS = DEFAULT_COMMUNITY_FLAGS | ATTR_EXTENDED_LENGTH
 };
+
+bgpattr_t *setmpafisafi(bgpattr_t *dst, afi_t afi, safi_t safi);
+
+bgpattr_t *putmpnexthop(bgpattr_t *dst, int family, const void *addr);
+
+bgpattr_t *putmpnrli(bgpattr_t *dst, const netaddr_t *addr);
 
 /**
  * @brief Put 16-bits wide AS segment into AS path attribute.
@@ -539,6 +554,10 @@ inline bgpattr_t *setaggregator(bgpattr_t *attr, uint32_t as, size_t as_size, st
     memcpy(ptr, &in, sizeof(in));
     return attr;
 }
+
+void *getmpnlri(bgpattr_t *attr, size_t *pn);
+
+void *getmpnexthop(bgpattr_t *attr, size_t *pn);
 
 bgpattr_t *putcommunities(bgpattr_t *attr, const community_t *comms, size_t count);
 
