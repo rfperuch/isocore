@@ -68,14 +68,14 @@ enum {
 };
 
 enum {
-    MRT_BGP_NULL = 0,
-    MRT_BGP_UPDATE = 1,
-    MRT_BGP_PREF_UPDATE = 2,
+    MRT_BGP_NULL         = 0,
+    MRT_BGP_UPDATE       = 1,
+    MRT_BGP_PREF_UPDATE  = 2,
     MRT_BGP_STATE_CHANGE = 3,
-    MRT_BGP_SYNC = 4,
-    MRT_BGP_OPEN = 5,
-    MRT_BGP_NOTIFY = 6,
-    MRT_BGP_KEEPALIVE = 7
+    MRT_BGP_SYNC         = 4,
+    MRT_BGP_OPEN         = 5,
+    MRT_BGP_NOTIFY       = 6,
+    MRT_BGP_KEEPALIVE    = 7
 };
 
 /**
@@ -88,18 +88,18 @@ enum {
  *
  */
 enum {
-    BGP4MP_STATE_CHANGE = 0,               ///< RFC 6396
-    BGP4MP_MESSAGE = 1,                    ///< RFC 6396
-    BGP4MP_ENTRY = 2,                      ///< Deprecated
-    BGP4MP_SNAPSHOT = 3,                   ///< Deprecated
-    BGP4MP_MESSAGE_AS4 = 4,                ///< RFC 6396
-    BGP4MP_STATE_CHANGE_AS4 = 5,           ///< RFC 6396
-    BGP4MP_MESSAGE_LOCAL = 6,              ///< RFC 6396
-    BGP4MP_MESSAGE_AS4_LOCAL = 7,          ///< RFC 6396
-    BGP4MP_MESSAGE_ADDPATH = 8,            ///< RFC 8050
-    BGP4MP_MESSAGE_AS4_ADDPATH = 9,        ///< RFC 8050
-    BGP4MP_MESSAGE_LOCAL_ADDPATH = 10,     ///< RFC 8050
-    BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH = 11  ///< RFC 8050
+    BGP4MP_STATE_CHANGE              = 0,   ///< RFC 6396
+    BGP4MP_MESSAGE                   = 1,   ///< RFC 6396
+    BGP4MP_ENTRY                     = 2,   ///< Deprecated
+    BGP4MP_SNAPSHOT                  = 3,   ///< Deprecated
+    BGP4MP_MESSAGE_AS4               = 4,   ///< RFC 6396
+    BGP4MP_STATE_CHANGE_AS4          = 5,   ///< RFC 6396
+    BGP4MP_MESSAGE_LOCAL             = 6,   ///< RFC 6396
+    BGP4MP_MESSAGE_AS4_LOCAL         = 7,   ///< RFC 6396
+    BGP4MP_MESSAGE_ADDPATH           = 8,   ///< RFC 8050
+    BGP4MP_MESSAGE_AS4_ADDPATH       = 9,   ///< RFC 8050
+    BGP4MP_MESSAGE_LOCAL_ADDPATH     = 10,  ///< RFC 8050
+    BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH = 11   ///< RFC 8050
 };
 
 /**

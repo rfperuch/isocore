@@ -75,9 +75,15 @@ extern struct in_addr getaggregatoraddress(const bgpattr_t *attr);
 
 extern bgpattr_t *setaggregator(bgpattr_t *attr, uint32_t as, size_t as_size, struct in_addr in);
 
+extern void *getaspath(const bgpattr_t *attr, size_t *pn);
+
+extern afi_t getmpafi(const bgpattr_t *attr);
+
+extern safi_t getmpsafi(const bgpattr_t *attr);
+
 void *getmpnlri(bgpattr_t *attr, size_t *pn)
 {
-    assert(attr->code == MP_REACH_NLRI_CODE);
+    assert(attr->code == MP_REACH_NLRI_CODE || attr->code == MP_UNREACH_NLRI_CODE);
 
     unsigned char *ptr = &attr->len;
 
@@ -87,30 +93,31 @@ void *getmpnlri(bgpattr_t *attr, size_t *pn)
         len |= *ptr++;
     }
 
-    ptr += sizeof(uint16_t) + sizeof(uint8_t);
-    if (likely(pn))
-        *pn = *ptr;
+    unsigned char *start = ptr;
 
-    return ptr + 2 * sizeof(uint8_t);
+    ptr += sizeof(uint16_t) + sizeof(uint8_t);
+    if (attr->code == MP_REACH_NLRI_CODE) {
+        ptr += *ptr + 1; // skip NEXT_HOP
+        ptr++;           // skip reserved
+    }
+    if (likely(pn))
+        *pn = len - (ptr - start);
+
+    return ptr;
 }
 
 void *getmpnexthop(bgpattr_t *attr, size_t *pn)
 {
     assert(attr->code == MP_REACH_NLRI_CODE);
 
-    unsigned char *ptr = &attr->len;
-
-    size_t len = *ptr++;
-    if (attr->flags & ATTR_EXTENDED_LENGTH) {
-        len <<= 8;
-        len |= *ptr++;
-    }
+    unsigned char *ptr = &attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)];
 
     ptr += sizeof(uint16_t) + sizeof(uint8_t);
     if (likely(pn))
         *pn = *ptr;
 
-    return ptr + 2 * sizeof(uint8_t);
+    ptr++;
+    return ptr;
 }
 
 int stobgporigin(const char *s)
@@ -290,7 +297,7 @@ bgpattr_t *putmpnlri(bgpattr_t *dst, const netaddr_t *addr)
         limit = ATTR_EXTENDED_LENGTH_MAX;
     }
 
-    size_t n = naddrsize(addr);
+    size_t n = naddrsize(addr->bitlen);
     if (unlikely(len + n + 1 > limit))
         return NULL;  // would overflow attribute length
 
@@ -306,6 +313,7 @@ bgpattr_t *putmpnlri(bgpattr_t *dst, const netaddr_t *addr)
         len &= 0xff;
     }
     *ptr++ = len;
+    return dst;
 }
 
 /*

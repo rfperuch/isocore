@@ -51,57 +51,12 @@ enum {
     SUBTYPE_OFFSET = TYPE_OFFSET + sizeof(uint16_t),
     LENGTH_OFFSET = SUBTYPE_OFFSET + sizeof(uint16_t),
     MESSAGE_OFFSET = LENGTH_OFFSET + sizeof(uint32_t),
-    BASE_PACKET_LENGTH = MESSAGE_OFFSET,
+    MRT_HDRSIZ = MESSAGE_OFFSET,
 
     // extended version
     MICROSECOND_TIMESTAMP_OFFSET = MESSAGE_OFFSET,
     MESSAGE_EXTENDED_OFFSET = MICROSECOND_TIMESTAMP_OFFSET + sizeof(uint32_t),
-    BASE_PACKET_EXTENDED_LENGTH = MESSAGE_OFFSET,
-
-    // BGP (https://tools.ietf.org/html/rfc6396#section-5.4)
-    // his offset can be safely start from MESSAGE_OFFSET
-    //BGP_UPDATE
-    BGP_UPDATE_PEER_AS_NUMBER = MESSAGE_OFFSET,
-    BGP_UPDATE_PEER_IP_ADDRESS = BGP_UPDATE_PEER_AS_NUMBER + sizeof(uint16_t),
-    BGP_UPDATE_LOCAL_AS_NUMBER = BGP_UPDATE_PEER_IP_ADDRESS + sizeof(uint32_t),
-    BGP_UPDATE_LOCAL_IP_ADDRESS = BGP_UPDATE_LOCAL_AS_NUMBER + sizeof(uint16_t),
-    BGP_UPDATE_BGP_MESSAGE = BGP_UPDATE_LOCAL_IP_ADDRESS + sizeof(uint32_t),
-
-    // BGP STATE_CHANGE
-    BGP_STATE_CHANGE_PEER_AS_NUMBER = MESSAGE_OFFSET,
-    BGP_STATE_CHANGE_PEER_IP_ADDRESS = BGP_STATE_CHANGE_PEER_AS_NUMBER + sizeof(uint16_t),
-    BGP_STATE_CHANGE_OLD_STATE = BGP_STATE_CHANGE_PEER_IP_ADDRESS + sizeof(uint32_t),
-    BGP_STATE_CHANGE_NEW_STATE = BGP_STATE_CHANGE_OLD_STATE + sizeof(uint16_t),
-
-    // BGP SYNC
-    BGP_VIEW_NUMBER = MESSAGE_OFFSET,
-    BGP_FILENAME = BGP_VIEW_NUMBER + sizeof(uint16_t),
-
-    // BGP4MP (https://tools.ietf.org/html/rfc6396#page-13)
-    // his offset are intended to be added if extended BASE_PACKET_EXTENDED_LENGTH-BASE_PACKET_LENGTH so they always start from BASE_PACKET_LENGTH
-    // BGP4MP_STATE_CHANGE
-    BGP4MP_STATE_CHANGE_PEER_AS_NUMBER = BASE_PACKET_LENGTH,
-    BGP4MP_STATE_CHANGE_LOCAL_AS_NUMBER = BGP4MP_STATE_CHANGE_PEER_AS_NUMBER + sizeof(uint16_t),
-    BGP4MP_STATE_CHANGE_INTERFACE_INDEX = BGP4MP_STATE_CHANGE_LOCAL_AS_NUMBER + sizeof(uint16_t),
-    BGP4MP_STATE_CHANGE_ADDRESS_FAMILY = BGP4MP_STATE_CHANGE_INTERFACE_INDEX + sizeof(uint16_t),
-    BGP4MP_STATE_CHANGE_PEER_IP = BGP4MP_STATE_CHANGE_ADDRESS_FAMILY + sizeof(uint16_t),
-    // min size calculated with static member compreding old/new state but ip length 0 (no sense pkg)
-    BGP4MP_STATE_CHANGE_MIN_LENGTH = BGP4MP_STATE_CHANGE_PEER_IP + sizeof(uint8_t) * 2 + sizeof(uint16_t) * 2,
-    // Variable fileds ...
-
-    // BGP4MP_MESSAGE
-    BGP4MP_MESSAGE_PEER_AS_NUMBER = BASE_PACKET_LENGTH,
-    BGP4MP_MESSAGE_LOCAL_AS_NUMBER = BGP4MP_MESSAGE_PEER_AS_NUMBER + sizeof(uint16_t),
-    BGP4MP_MESSAGE_INTERFACE_INDEX = BGP4MP_MESSAGE_LOCAL_AS_NUMBER + sizeof(uint16_t),
-    BGP4MP_MESSAGE_ADDRESS_FAMILY = BGP4MP_MESSAGE_INTERFACE_INDEX + sizeof(uint16_t),
-    BGP4MP_MESSAGE_PEER_IP = BGP4MP_MESSAGE_ADDRESS_FAMILY + sizeof(uint16_t),
-    // min size calculated with static member compreding old/new state but ip length 0 (no sense pkg)
-    BGP4MP_MESSAGE_CHANGE_MIN_LENGTH = BGP4MP_STATE_CHANGE_PEER_IP + sizeof(uint8_t) * 2 + sizeof(uint16_t) * 2,
-
-    // BGP4MP_MESSAGE_AS4
-    // BGP4MP_STATE_CHANGE_AS4
-    // BGP4MP_MESSAGE_LOCAL
-    // BGP4MP_MESSAGE_AS4_LOCAL
+    EXTENDED_MRT_HDRSIZ = MESSAGE_EXTENDED_OFFSET
 };
 
 /// @brief Packet reader/writer status flags
@@ -110,11 +65,12 @@ enum {
 
     F_VALID     = 1 << 0,
     F_AS32      = 1 << 1,
-    F_NEED_PI   = 1 << 2,
+    F_NEEDS_PI  = 1 << 2,
     F_IS_PI     = 1 << 3,
     F_IS_EXT    = 1 << 4,
     F_IS_BGP    = 1 << 5,
     F_HAS_STATE = 1 << 6,
+    F_WRAPS_BGP = 1 << 7,
 
     F_RD   = 1 << 8,        ///< Packet opened for read
     F_WR   = 1 << (8 + 1),  ///< Packet opened for write
@@ -128,29 +84,31 @@ enum {
 
 static const uint8_t masktab[][MAX_MRT_SUBTYPE + 1] = {
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]   = F_VALID | F_IS_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC]        = F_VALID | F_NEED_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST]   = F_VALID | F_NEED_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST] = F_VALID | F_NEED_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST]   = F_VALID | F_NEED_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST] = F_VALID | F_NEED_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC]        = F_VALID | F_NEEDS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST]   = F_VALID | F_NEEDS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST] = F_VALID | F_NEEDS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST]   = F_VALID | F_NEEDS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST] = F_VALID | F_NEEDS_PI,
 
     [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE]              = F_VALID | F_IS_BGP | F_HAS_STATE,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4]               = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE]                   = F_VALID | F_IS_BGP | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4]               = F_VALID | F_AS32 | F_IS_BGP | F_WRAPS_BGP,
     [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE_AS4]          = F_VALID | F_AS32 | F_IS_BGP | F_HAS_STATE,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL]             = F_VALID | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL]         = F_VALID | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_ADDPATH]       = F_VALID | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL_ADDPATH]     = F_VALID | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL]             = F_VALID | F_IS_BGP | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL]         = F_VALID | F_AS32 | F_IS_BGP | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_ADDPATH]       = F_VALID | F_AS32 | F_IS_BGP | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_LOCAL_ADDPATH]     = F_VALID | F_IS_BGP | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_AS32 | F_IS_BGP | F_WRAPS_BGP,
 
     [SHIFT(MRT_BGP4MP_ET)][BGP4MP_STATE_CHANGE]              = F_VALID | F_IS_EXT | F_IS_BGP | F_HAS_STATE,
-    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4]               = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE]                   = F_VALID | F_IS_EXT | F_IS_BGP | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4]               = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP | F_WRAPS_BGP,
     [SHIFT(MRT_BGP4MP_ET)][BGP4MP_STATE_CHANGE_AS4]          = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP | F_HAS_STATE,
-    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_LOCAL]             = F_VALID | F_IS_EXT | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4_LOCAL]         = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4_ADDPATH]       = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_LOCAL_ADDPATH]     = F_VALID | F_IS_EXT | F_IS_BGP,
-    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_LOCAL]             = F_VALID | F_IS_EXT | F_IS_BGP | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4_LOCAL]         = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4_ADDPATH]       = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_LOCAL_ADDPATH]     = F_VALID | F_IS_EXT | F_IS_BGP | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP | F_WRAPS_BGP
 };
 
 /// @brief Packet reader/writer instance
@@ -245,7 +203,7 @@ static int setuppitable(mrt_msg_t *msg, mrt_msg_t *pi)
             return MRT_ENOMEM;
     }
     for (size_t i = 0; i < n; i++) {
-        msg->pitab[i] = (msg->peptr - msg->buf) - BASE_PACKET_LENGTH;
+        msg->pitab[i] = (msg->peptr - msg->buf) - MESSAGE_OFFSET;
         nextpeerent_r(pi);
     }
 
@@ -255,7 +213,7 @@ static int setuppitable(mrt_msg_t *msg, mrt_msg_t *pi)
 
 int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi)
 {
-    if (likely((msg->flags & F_NEED_PI) && (pi->flags & F_IS_PI)))
+    if (likely((msg->flags & F_NEEDS_PI) && (pi->flags & F_IS_PI)))
         return setuppitable(msg, pi);
 
     return MRT_EINVOP;
@@ -312,7 +270,7 @@ int setmrtreadfrom(io_rw_t *io)
     if (unlikely(res != MRT_ENOERR))
         return res;
 
-    if ((curmsg.flags & F_NEED_PI) && (curpimsg.flags & F_RD))
+    if ((curmsg.flags & F_NEEDS_PI) && (curpimsg.flags & F_RD))
         curmsg.peer_index = &curpimsg;
 
     return res;
@@ -323,14 +281,12 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
     if (msg->flags & F_RDWR)
         mrtclose_r(msg);
 
-    unsigned char hdr[BASE_PACKET_LENGTH];
+    unsigned char hdr[MRT_HDRSIZ];
     if (io->read(io, hdr, sizeof(hdr)) != sizeof(hdr))
         return MRT_EIO;
 
     readmrtheader(msg, hdr);
-    if (msg->hdr.len < BASE_PACKET_LENGTH)
-        return MRT_EBADHDR;
-
+ 
     msg->buf = msg->fastbuf;
     size_t n = msg->hdr.len + sizeof(hdr);
     if (unlikely(n > sizeof(msg->fastbuf)))
@@ -344,7 +300,7 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
 
     msg->flags |= F_RD;
     msg->err = MRT_ENOERR;
-    msg->bufsiz = msg->hdr.len;
+    msg->bufsiz = n;
 
     return MRT_ENOERR;
 }
@@ -415,7 +371,8 @@ int mrtclose_r(mrt_msg_t *msg)
         if (unlikely(msg->buf != msg->fastbuf))
             free(msg->buf);
 
-        memset(msg, 0, sizeof(*msg));  // XXX: optimize
+        // memset(msg, 0, sizeof(*msg));  // XXX: optimize
+        msg->flags = 0;
     }
     return err;
 }
@@ -437,7 +394,7 @@ struct in_addr getpicollector_r(mrt_msg_t *msg)
     if (unlikely(msg->err))
         return addr;
 
-    memcpy(&addr, &msg->buf[BASE_PACKET_LENGTH], sizeof(addr));
+    memcpy(&addr, &msg->buf[MESSAGE_OFFSET], sizeof(addr));
     return addr;
 }
 
@@ -454,7 +411,7 @@ size_t getpiviewname_r(mrt_msg_t *msg, char *buf, size_t n)
     if (unlikely(msg->err))
         return 0;
 
-    unsigned char *ptr = &msg->buf[BASE_PACKET_LENGTH];
+    unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
     ptr += sizeof(uint32_t);
 
     uint16_t len;
@@ -484,7 +441,7 @@ void *getpeerents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
     if (unlikely(msg->err))
         return NULL;
 
-    unsigned char *ptr = &msg->buf[BASE_PACKET_LENGTH];
+    unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
     ptr += sizeof(struct in_addr);  // collector id
 
     // view name
@@ -544,7 +501,7 @@ peer_entry_t *nextpeerent_r(mrt_msg_t *msg)
         return NULL;
 
     // NOTE: RFC 6396 "The Length field does not include the length of the MRT Common Header."
-    unsigned char *end = msg->buf + msg->hdr.len + BASE_PACKET_LENGTH;
+    unsigned char *end = msg->buf + msg->hdr.len + MESSAGE_OFFSET;
     if (msg->peptr == end)
         return NULL;
 
@@ -617,7 +574,7 @@ void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
     if (unlikely(msg->err))
         return NULL;
 
-    unsigned char *ptr = &msg->buf[BASE_PACKET_LENGTH];
+    unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
 
     uint32_t seqno;
     memcpy(&seqno, ptr, sizeof(seqno));
@@ -688,7 +645,7 @@ void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
     ptr += sizeof(count);
 
     if (pn)
-        *pn = msg->hdr.len + BASE_PACKET_LENGTH - (ptr - msg->buf);
+        *pn = msg->hdr.len + MESSAGE_OFFSET - (ptr - msg->buf);
 
     return ptr;
 
@@ -744,7 +701,7 @@ rib_entry_t *nextribent_r(mrt_msg_t *msg)
     if (unlikely(msg->err))
         return NULL;
 
-    unsigned char *end = msg->buf + BASE_PACKET_LENGTH + msg->hdr.len;
+    unsigned char *end = msg->buf + MESSAGE_OFFSET + msg->hdr.len;
     if (msg->reptr == end)
         return NULL;
 
@@ -788,7 +745,7 @@ int endribents_r(mrt_msg_t *msg)
     return MRT_ENOERR;
 }
 
-bgp4mp_header_t *getbgp4mpnewstate_r(mrt_msg_t *msg)
+bgp4mp_header_t *getbgp4header_r(mrt_msg_t *msg)
 {
     if (unlikely(msg->flags & F_RD) == 0)
         msg->err = MRT_EINVOP;
@@ -882,6 +839,8 @@ void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn)
     if (msg->flags & F_IS_EXT)
         ptr = &msg->buf[MESSAGE_EXTENDED_OFFSET];
 
+    unsigned char *end = ptr + msg->hdr.len;
+
     ptr += (msg->flags & F_AS32) ? 2 * sizeof(uint32_t) : 2 * sizeof(uint16_t);
     ptr += sizeof(uint16_t);
 
@@ -904,7 +863,7 @@ void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn)
         ptr += 2 * sizeof(uint16_t);
 
     if (likely(pn))
-        *pn = &msg->buf[msg->bufsiz] - ptr;
+        *pn = end - ptr;
 
     return ptr;
 }

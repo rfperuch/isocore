@@ -252,6 +252,28 @@ netaddr_t *nextnlri(void);
 
 int endnlri(void);
 
+typedef struct {
+    size_t as_size;
+    int type, segno;
+    uint32_t as;
+} as_pathent_t;
+
+int startaspath(size_t as_size);
+
+int startas4path(void);
+
+int startrealaspath(size_t as_size);
+
+as_pathent_t *nextaspath(void);
+
+int endaspath(void);
+
+int startnhop(void);
+
+netaddr_t *nextnhop(void);
+
+int endnhop(void);
+
 /** @} */
 
 /**
@@ -310,8 +332,25 @@ typedef struct {
             union {
                 /// @private read-specific fields.
                 struct {
-                    netaddr_t pfxbuf;    ///< @private Convenience field for reading prefixes.
-                    uint16_t offtab[32]; ///< @private Notable attributes offset table.
+                    netaddr_t pfxbuf;     ///< @private Convenience field for reading prefixes.
+                    union {
+                        struct {
+                            unsigned char *asptr, *asend;
+                            unsigned char *as4ptr, *as4end;
+                            uint8_t seglen;
+                            uint8_t segi;
+                            int16_t ascount;
+                            as_pathent_t asp;
+                        };
+                        struct {
+                            unsigned char *nhptr, *nhend;
+                            unsigned char *mpnhptr, *mpnhend;
+                            short mpfamily, mpbitlen;
+                            struct in_addr nhbuf;
+                        };
+                    };
+
+                    uint16_t offtab[16];  ///< @private Notable attributes offset table.
                 };
 
                 /// @private write-specific fields.
@@ -407,7 +446,26 @@ netaddr_t *nextnlri_r(bgp_msg_t *msg);
 
 int endnlri_r(bgp_msg_t *msg);
 
+int startaspath_r(bgp_msg_t *msg, size_t as_size);
+
+int startas4path_r(bgp_msg_t *msg);
+
+int startrealaspath_r(bgp_msg_t *msg, size_t as_size);
+
+as_pathent_t *nextaspath_r(bgp_msg_t *msg);
+
+int endaspath_r(bgp_msg_t *msg);
+
+int startnhop_r(bgp_msg_t *msg);
+
+netaddr_t *nextnhop_r(bgp_msg_t *msg);
+
+int endnhop_r(bgp_msg_t *msg);
+
 // utility functions for update packages, direct access to notable attributes
+
+bgpattr_t *getbgpnexthop(void);
+bgpattr_t *getbgpnexthop_r(bgp_msg_t *msg);
 
 bgpattr_t *getbgpaggregator(void);
 bgpattr_t *getbgpaggregator_r(bgp_msg_t *msg);

@@ -195,7 +195,7 @@ inline void vm_exec_clrtrie6(filter_vm_t *vm)
 
 inline void vm_exec_settrie(filter_vm_t *vm, int trie)
 {
-    if (unlikely(trie >= vm->ntries))
+    if (unlikely((unsigned int) trie >= vm->ntries))
         vm_abort(vm, VM_TRIE_UNDEFINED);
 
     vm->curtrie = &vm->tries[trie];
@@ -205,7 +205,7 @@ inline void vm_exec_settrie(filter_vm_t *vm, int trie)
 
 inline void vm_exec_settrie6(filter_vm_t *vm, int trie6)
 {
-    if (unlikely(trie6 >= vm->ntries))
+    if (unlikely((unsigned int) trie6 >= vm->ntries))
         vm_abort(vm, VM_TRIE_UNDEFINED);
 
     vm->curtrie6 = &vm->tries[trie6];

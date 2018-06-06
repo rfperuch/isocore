@@ -285,8 +285,8 @@ typedef struct {
 static_assert(sizeof(large_community_t) == 12, "Unsupported platform");
 
 typedef struct {
-    uint8_t code;
     uint8_t flags;
+    uint8_t code;
     union {
         struct {
             uint8_t len;
@@ -342,7 +342,7 @@ enum {
     DEFAULT_AS_PATH_FLAGS = ATTR_TRANSITIVE,
     EXTENDED_AS_PATH_FLAGS = DEFAULT_AS_PATH_FLAGS | ATTR_EXTENDED_LENGTH,
 
-    DEFAULT_AS4_PATH_FLAGS = ATTR_TRANSITIVE,
+    DEFAULT_AS4_PATH_FLAGS = ATTR_TRANSITIVE | ATTR_OPTIONAL,
     EXTENDED_AS4_PATH_FLAGS = DEFAULT_AS4_PATH_FLAGS | ATTR_EXTENDED_LENGTH,
 
     DEFAULT_MP_REACH_NLRI_FLAGS = ATTR_OPTIONAL,
@@ -362,6 +362,24 @@ bgpattr_t *setmpafisafi(bgpattr_t *dst, afi_t afi, safi_t safi);
 bgpattr_t *putmpnexthop(bgpattr_t *dst, int family, const void *addr);
 
 bgpattr_t *putmpnrli(bgpattr_t *dst, const netaddr_t *addr);
+
+inline void *getaspath(const bgpattr_t *attr, size_t *pn)
+{
+    assert(attr->code == AS_PATH_CODE || attr->code == AS4_PATH_CODE);
+
+    unsigned char *ptr = (unsigned char *) &attr->len;
+
+    size_t len = *ptr++;
+    if (attr->flags & ATTR_EXTENDED_LENGTH) {
+        len <<= 8;
+        len |= *ptr++;
+    }
+
+    if (likely(pn))
+        *pn = len;
+
+    return ptr;
+}
 
 /**
  * @brief Put 16-bits wide AS segment into AS path attribute.
@@ -553,6 +571,24 @@ inline bgpattr_t *setaggregator(bgpattr_t *attr, uint32_t as, size_t as_size, st
 
     memcpy(ptr, &in, sizeof(in));
     return attr;
+}
+
+inline afi_t getmpafi(const bgpattr_t *attr)
+{
+    assert(attr->code == MP_REACH_NLRI_CODE || attr->code == MP_UNREACH_NLRI_CODE);
+
+    const unsigned char *ptr = &attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)];
+
+    uint16_t t;
+    memcpy(&t, ptr, sizeof(t));
+    return frombig16(t);
+}
+
+inline safi_t getmpsafi(const bgpattr_t *attr)
+{
+    assert(attr->code == MP_REACH_NLRI_CODE || attr->code == MP_UNREACH_NLRI_CODE);
+
+    return attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH) + sizeof(uint16_t)];
 }
 
 void *getmpnlri(bgpattr_t *attr, size_t *pn);

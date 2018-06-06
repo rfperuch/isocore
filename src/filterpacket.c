@@ -279,7 +279,6 @@ void vm_exec_all_withdrawn_insert(filter_vm_t *vm)
     if (unlikely(!msg))
         vm_abort(vm, VM_PACKET_MISMATCH);
 
-    netaddr_t *addr;
     startallwithdrawn_r(msg);
     vm_insert_withdrawn(vm);
 }
@@ -290,7 +289,6 @@ void vm_exec_withdrawn_insert(filter_vm_t *vm)
     if (unlikely(!msg))
         vm_abort(vm, VM_PACKET_MISMATCH);
 
-    netaddr_t *addr;
     startwithdrawn_r(msg);
     vm_insert_withdrawn(vm);
 }
