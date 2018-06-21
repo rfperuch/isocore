@@ -45,25 +45,35 @@ enum {
     FOPC_BLK,      ///< NONE: push a new block in expressions stack.
     FOPC_LOAD,     ///< PUSH: direct value load
     FOPC_LOADK,    ///< PUSH: load from constants environment
+    FOPC_UNPACK,   ///< POP-PUSH: unpack an array constant into stack.
     FOPC_EXARG,    ///< NOP: extends previous operation's argument range
     FOPC_STORE,    ///< POP: store address into current trie (v4 or v6 depends on address)
     FOPC_DISCARD,  ///< POP: remove address from current trie (v4 or v6 depends on address)
-    FOPC_NOT,      ///< POP-PUSH: pops stack topmost value and negates it
+    FOPC_NOT,      ///< POP-PUSH: pops stack topmost value, negates it and pushes it back.
     FOPC_CPASS,    ///< POP: pops topmost stack element and terminates with PASS if value is true.
     FOPC_CFAIL,    ///< POP: pops topmost stack element and terminates with FAIL if value is false.
-    FOPC_EXACT,    ///< POPA-PUSH: pops the entire stack and verifies that all addresses are exactly in the tries, pushes the result.
-    FOPC_ANY,      ///< POPA-PUSH: pops the entire stack and verifies that at least one address is exactly in the tries, pushes the result.
-    FOPC_SUBNET,
+
+    FOPC_EXACT,     ///< POPA-PUSH: pops the entire stack and verifies that all addresses are exactly in the tries, pushes the result.
+    FOPC_SUBN,      ///< POPA-PUSH: pops the entire stack and verifies that at least one address is exactly in the tries, pushes the result.
+    FOPC_SUPERN,
+    FOPC_RELTD,
+
     FOPC_CALL,     ///< ???: call a function
     FOPC_SETTRIE,
     FOPC_SETTRIE6,
     FOPC_CLRTRIE,
     FOPC_CLRTRIE6,
+    FOPC_PFXCMP,
+    FOPC_ADDRCMP,
+    FOPC_ASCMP,
 
     OPCODES_COUNT
 };
 
 void vm_growstack(filter_vm_t *vm);
+void vm_growcode(filter_vm_t *vm);
+void vm_growk(filter_vm_t *vm);
+void vm_growtrie(filter_vm_t *vm);
 
 inline bytecode_t vm_makeop(int opcode, int arg)
 {
@@ -84,6 +94,40 @@ inline int vm_extendarg(int arg, int exarg)
 {
     return ((exarg << 8) | arg) & 0x7fffffff;
 }
+
+/// @brief Reserve one constant (avoids the user custom section).
+inline int vm_newk(filter_vm_t *vm)
+{
+    if (unlikely(vm->ksiz == vm->maxk))
+        vm_growk(vm);
+
+    return vm->ksiz++;
+}
+
+inline int vm_newtrie(filter_vm_t *vm, sa_family_t family)
+{
+    if (unlikely(vm->ntries == vm->maxtries))
+        vm_growtrie(vm);
+
+    int idx = vm->ntries++;
+    patinit(&vm->tries[idx], family);
+    return idx;
+}
+
+/// @brief Emit one bytecode operation
+inline void vm_emit(filter_vm_t *vm, bytecode_t opcode)
+{
+    if (unlikely(vm->codesiz == vm->maxcode))
+        vm_growcode(vm);
+
+    vm->code[vm->codesiz++] = opcode;
+}
+
+void vm_emit_ex(filter_vm_t *vm, int opcode, int idx);
+
+typedef enum { VM_HEAP_PERM, VM_HEAP_TEMP } vm_heap_zone_t;
+
+void *vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone);
 
 inline void vm_clearstack(filter_vm_t *vm)
 {
@@ -138,6 +182,14 @@ inline void vm_pushvalue(filter_vm_t *vm, int value)
     vm->sp[vm->si++].value = value;
 }
 
+inline void vm_pushas(filter_vm_t *vm, uint32_t as)
+{
+    if (unlikely(vm->si == vm->stacksiz))
+        vm_growstack(vm);
+
+    vm->sp[vm->si++].as  = as;
+}
+
 inline void vm_exec_loadk(filter_vm_t *vm, int kidx)
 {
     if (unlikely(kidx >= vm->ksiz))
@@ -145,6 +197,22 @@ inline void vm_exec_loadk(filter_vm_t *vm, int kidx)
 
     vm_push(vm, &vm->kp[kidx]);
 }
+
+inline void *vm_heap_ptr(filter_vm_t *vm, unsigned int off)
+{
+    return (unsigned char *) vm->heap + off;  // duh...
+}
+
+inline void vm_check_array(filter_vm_t *vm, stack_cell_t *arr)
+{
+    size_t bound = arr->base;
+    bound += arr->nels * arr->elsiz;
+
+    if (unlikely(arr->elsiz > sizeof(stack_cell_t) || bound > vm->heapsiz))
+        vm_abort(vm, VM_BAD_ARRAY);
+}
+
+void vm_exec_unpack(filter_vm_t *vm);
 
 inline void vm_exec_store(filter_vm_t *vm)
 {
@@ -211,6 +279,64 @@ inline void vm_exec_settrie6(filter_vm_t *vm, int trie6)
     vm->curtrie6 = &vm->tries[trie6];
     if (unlikely(vm->curtrie6->family != AF_INET6))
         vm_abort(vm, VM_TRIE_MISMATCH);
+}
+
+inline void vm_exec_ascmp(filter_vm_t *vm, int kidx)
+{
+    if (unlikely((unsigned int) kidx >= vm->ksiz))
+        vm_abort(vm, VM_K_UNDEFINED);
+
+    stack_cell_t *a = vm_peek(vm);
+    stack_cell_t *b = &vm->kp[kidx];
+
+    a->value = (a->as == b->as);
+}
+
+inline void vm_exec_addrcmp(filter_vm_t *vm, int kidx)
+{
+    if (unlikely((unsigned int) kidx >= vm->ksiz))
+        vm_abort(vm, VM_K_UNDEFINED);
+
+    stack_cell_t *a = vm_peek(vm);
+    stack_cell_t *b = &vm->kp[kidx];
+    netaddr_t *na = &a->addr;
+    netaddr_t *nb = &b->addr;
+    if (na->family != nb->family) {
+        a->value = 0;
+        return;
+    }
+    switch (na->family) {
+    case AF_INET:
+        a->value = (memcmp(&na->sin, &nb->sin, sizeof(na->sin)) == 0);
+        break;
+    case AF_INET6:
+        a->value = (memcmp(&na->sin6, &nb->sin6, sizeof(na->sin6)) == 0);
+        break;
+    default:
+        vm_abort(vm, VM_SURPRISING_BYTES);
+        break;
+    }
+}
+
+inline void vm_exec_pfxcmp(filter_vm_t *vm, int kidx)
+{
+    if (unlikely((unsigned int) kidx >= vm->ksiz))
+        vm_abort(vm, VM_K_UNDEFINED);
+
+    stack_cell_t *a = vm_peek(vm);
+    stack_cell_t *b = &vm->kp[kidx];
+    netaddr_t *na = &a->addr;
+    netaddr_t *nb = &b->addr;
+    if (na->family != nb->family) {
+        a->value = 0;
+        return;
+    }
+    if (na->bitlen != nb->bitlen) {
+        a->value = 0;
+        return;
+    }
+
+    a->value = (memcmp(na->bytes, nb->bytes, naddrsize(na->bitlen)) == 0);
 }
 
 void vm_exec_withdrawn_accumulate(filter_vm_t *vm);

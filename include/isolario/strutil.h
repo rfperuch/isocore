@@ -41,10 +41,11 @@
 #ifndef ISOLARIO_STRUTILS_H_
 #define ISOLARIO_STRUTILS_H_
 
-#include <stdarg.h>
-#include <stddef.h>
-#include <string.h>
 #include <ctype.h>
+#include <isolario/util.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
 
 inline unsigned long djb2(const char *s)
 {
@@ -90,6 +91,148 @@ inline unsigned long memsdbm(const void *p, size_t n)
         h = *ptr++ + (h << 6) + (h << 16) - h;
 
     return h;
+}
+
+inline char *itoa(char *dst, char **endp, int i)
+{
+    char buf[1 + digsof(i) + 1];
+
+    char *ptr = buf + sizeof(buf);
+
+    int val = abs(i);
+
+    *--ptr = '\0';
+
+    char *end = ptr;
+    do {
+        *--ptr = "0123456789"[val % 10];
+        val /= 10;
+    } while (val > 0);
+
+    if (i < 0)
+        *--ptr = '-';
+
+    size_t n = end - ptr;
+    if (endp)
+        *endp = &dst[n];
+
+    return memcpy(dst, ptr, n + 1);
+}
+
+inline char *utoa(char *dst, char **endp, unsigned int u)
+{
+    char buf[digsof(u) + 1];
+
+    char *ptr = buf + sizeof(buf);
+
+    *--ptr = '\0';
+
+    char *end = ptr;
+    do {
+        *--ptr = "0123456789"[u % 10];
+        u /= 10;
+    } while (u > 0);
+
+    size_t n = end - ptr;
+    if (endp)
+        *endp = &dst[n];
+
+    return memcpy(dst, ptr, n + 1);
+}
+
+
+inline char *ltoa(char *dst, char **endp, long l)
+{
+    char buf[1 + digsof(l) + 1];
+
+    char *ptr = buf + sizeof(buf);
+
+    long val = labs(l);
+
+    *--ptr = '\0';
+
+    char *end = ptr;
+    do {
+        *--ptr = "0123456789"[val % 10];
+        val /= 10;
+    } while (val > 0);
+
+    if (l < 0)
+        *--ptr = '-';
+
+    size_t n = end - ptr;
+    if (endp)
+        *endp = &dst[n];
+
+    return memcpy(dst, ptr, n + 1);
+}
+
+inline char *ultoa(char *dst, char **endp, unsigned long u)
+{
+    char buf[digsof(u) + 1];
+
+    char *ptr = buf + sizeof(buf);
+
+    *--ptr = '\0';
+
+    char *end = ptr;
+    do {
+        *--ptr = "0123456789"[u % 10];
+        u /= 10;
+    } while (u > 0);
+
+    size_t n = end - ptr;
+    if (endp)
+        *endp = &dst[n];
+
+    return memcpy(dst, ptr, n + 1);
+}
+
+inline char *lltoa(char *dst, char **endp, long long ll)
+{
+    char buf[1 + digsof(ll) + 1];
+
+    char *ptr = buf + sizeof(buf);
+
+    long long val = llabs(ll);
+
+    *--ptr = '\0';
+
+    char *end = ptr;
+    do {
+        *--ptr = "0123456789"[val % 10];
+        val /= 10;
+    } while (val > 0);
+
+    if (ll < 0)
+        *--ptr = '-';
+
+    size_t n = end - ptr;
+    if (endp)
+        *endp = &dst[n];
+
+    return memcpy(dst, ptr, n + 1);
+}
+
+inline char *ulltoa(char *dst, char **endp, unsigned long long u)
+{
+    char buf[digsof(u) + 1];
+
+    char *ptr = buf + sizeof(buf);
+
+    *--ptr = '\0';
+
+    char *end = ptr;
+    do {
+        *--ptr = "0123456789"[u % 10];
+        u /= 10;
+    } while (u > 0);
+
+    size_t n = end - ptr;
+    if (endp)
+        *endp = &dst[n];
+
+    return memcpy(dst, ptr, n + 1);
 }
 
 /**
@@ -170,7 +313,7 @@ inline char *strupper(char *s)
 
     char *ptr = s;
     while ((c = *ptr) != '\0')
-        *ptr++ = toupper(c);
+        *ptr++ = toupper((unsigned char) c);
 
     return s;
 }
@@ -182,7 +325,7 @@ inline char *strlower(char *s)
 
     char *ptr = s;
     while ((c = *ptr) != '\0')
-        *ptr++ = tolower(c);
+        *ptr++ = tolower((unsigned char) c);
 
     return s;
 }

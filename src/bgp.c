@@ -49,22 +49,23 @@ static const unsigned char bgp_marker[] = {
 
 /// @brief Packet reader/writer status flags
 enum {
-    F_RD = 1 << 0,        ///< Packet opened for read
-    F_WR = 1 << 1,        ///< Packet opened for write
+    F_SH = 1 << 0,        ///< Packet data is shared and should not be free()d on close.
+    F_RD = 1 << 1,        ///< Packet opened for read
+    F_WR = 1 << 2,        ///< Packet opened for write
     F_RDWR = F_RD | F_WR, ///< Shorthand for \a (F_RD | F_WR).
 
     // Open packet flags
-    F_PM = 1 << 2,  ///< Reading/writing BGP open parameters
+    F_PM = 1 << 3,  ///< Reading/writing BGP open parameters
 
     // Update packet flags
-    F_WITHDRN    = 1 << 3,    ///< Reading/writing Withdrawn field
-    F_ALLWITHDRN = 1 << 4,
-    F_PATTR      = 1 << 5,  ///< Reading/writing Path Attributes field
-    F_NLRI       = 1 << 6,  ///< Reading/writing NLRI field
-    F_ALLNLRI    = 1 << 7,
-    F_ASPATH     = 1 << 8,
-    F_REALASPATH = 1 << 9,
-    F_NHOP       = 1 << 10
+    F_WITHDRN    = 1 << 4,    ///< Reading/writing Withdrawn field
+    F_ALLWITHDRN = 1 << 5,
+    F_PATTR      = 1 << 6,  ///< Reading/writing Path Attributes field
+    F_NLRI       = 1 << 7,  ///< Reading/writing NLRI field
+    F_ALLNLRI    = 1 << 8,
+    F_ASPATH     = 1 << 9,
+    F_REALASPATH = 1 << 10,
+    F_NHOP       = 1 << 11
 };
 
 /// @brief Offsets for various BGP packet fields
@@ -174,30 +175,36 @@ bgp_msg_t *getbgp(void)
     return &curmsg;
 }
 
-int setbgpread(const void *data, size_t n)
+int setbgpread(const void *data, size_t n, int flags)
 {
-    return setbgpread_r(&curmsg, data, n);
+    return setbgpread_r(&curmsg, data, n, flags);
 }
 
-int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n)
+int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n, int flags)
 {
     assert(n <= UINT16_MAX);
     if (msg->flags & F_RDWR)
         bgpclose_r(msg);
-
-    msg->buf = msg->fastbuf;
-    if (unlikely(n > sizeof(msg->fastbuf)))
-        msg->buf = malloc(n);
-
-    if (unlikely(!msg->buf))
-        return BGP_ENOMEM;
 
     msg->flags = F_RD;
     msg->err = BGP_ENOERR;
     msg->pktlen = n;
     msg->bufsiz = n;
 
-    memcpy(msg->buf, data, n);
+    if (flags & BGPF_NOCOPY) {
+        msg->buf    = (unsigned char *) data;  // we won't modify it, it's read-only
+        msg->flags |= F_SH;                    // mark buffer as shared
+    } else {
+        msg->buf = msg->fastbuf;
+        if (unlikely(n > sizeof(msg->fastbuf)))
+            msg->buf = malloc(n);
+
+        if (unlikely(!msg->buf))
+            return BGP_ENOMEM;
+
+        memcpy(msg->buf, data, n);
+    }
+
     memset(msg->offtab, 0, sizeof(msg->offtab));
     return BGP_ENOERR;
 }
@@ -361,7 +368,7 @@ int bgpclose_r(bgp_msg_t *msg)
     int err = BGP_ENOERR;
     if (msg->flags & F_RDWR) {
         err = bgperror_r(msg);
-        if (unlikely(msg->buf != msg->fastbuf))
+        if (msg->buf != msg->fastbuf && (msg->flags & F_SH) == 0)
             free(msg->buf);
 
         // memset(msg, 0, sizeof(*msg) - BGPBUFSIZ); XXX: optimize
@@ -806,14 +813,16 @@ netaddr_t *nextwithdrawn_r(bgp_msg_t *msg)
         msg->uend   = msg->ustart + len;
     }
 
-    memset(&msg->pfxbuf.bytes, 0, sizeof(msg->pfxbuf.bytes));
+    memset(msg->pfxbuf.bytes, 0, sizeof(msg->pfxbuf.bytes));
 
-    size_t bitlen = *msg->uptr++;
+    size_t bitlen = *msg->uptr++;  // TODO validate value
     size_t n = naddrsize(bitlen);
     if (msg->uptr + n > msg->uend) {
         msg->err = BGP_EBADWDRWN;
         return NULL;
     }
+
+    msg->pfxbuf.bitlen = bitlen;
     memcpy(msg->pfxbuf.bytes, msg->uptr, n);
 
     msg->uptr += n;
@@ -869,15 +878,17 @@ int endwithdrawn_r(bgp_msg_t *msg)
 // NOTE: index count must be less than nelems(bgp_msg_t.offtab)!
 static const int8_t attr_code_index[255] = {
     [AS_PATH_CODE]            = MAKE_CODE_INDEX(0),
-    [AGGREGATOR_CODE]         = MAKE_CODE_INDEX(1),
-    [NEXT_HOP_CODE]           = MAKE_CODE_INDEX(2),
-    [COMMUNITY_CODE]          = MAKE_CODE_INDEX(3),
-    [MP_REACH_NLRI_CODE]      = MAKE_CODE_INDEX(4),
-    [MP_UNREACH_NLRI_CODE]    = MAKE_CODE_INDEX(5),
-    [EXTENDED_COMMUNITY_CODE] = MAKE_CODE_INDEX(6),
-    [AS4_PATH_CODE]           = MAKE_CODE_INDEX(7),
-    [AS4_AGGREGATOR_CODE]     = MAKE_CODE_INDEX(8),
-    [LARGE_COMMUNITY_CODE]    = MAKE_CODE_INDEX(9)
+    [ORIGIN_CODE]             = MAKE_CODE_INDEX(1),
+    [ATOMIC_AGGREGATE_CODE]   = MAKE_CODE_INDEX(2),
+    [AGGREGATOR_CODE]         = MAKE_CODE_INDEX(3),
+    [NEXT_HOP_CODE]           = MAKE_CODE_INDEX(4),
+    [COMMUNITY_CODE]          = MAKE_CODE_INDEX(5),
+    [MP_REACH_NLRI_CODE]      = MAKE_CODE_INDEX(6),
+    [MP_UNREACH_NLRI_CODE]    = MAKE_CODE_INDEX(7),
+    [EXTENDED_COMMUNITY_CODE] = MAKE_CODE_INDEX(8),
+    [AS4_PATH_CODE]           = MAKE_CODE_INDEX(9),
+    [AS4_AGGREGATOR_CODE]     = MAKE_CODE_INDEX(10),
+    [LARGE_COMMUNITY_CODE]    = MAKE_CODE_INDEX(11)
 };
 
 void *getbgpattribs(size_t *pn)
@@ -1274,85 +1285,82 @@ int startrealaspath_r(bgp_msg_t *msg, size_t as_size)
 
     endpending(msg);
 
-    msg->flags      |= F_ASPATH;
-    msg->seglen      = 0;
-    msg->ascount     = -1;
-    msg->asp.as_size = as_size;
-    msg->asp.segno   = -1;
+    msg->flags       |= F_ASPATH;
+    msg->seglen       = 0;
+    msg->segi         = 0;
+    msg->ascount      = -1;
+    msg->asp.as_size  = as_size;
+    msg->asp.segno    = -1;
 
     bgpattr_t *asp = getbgpaspath_r(msg);
     if (!asp) {
         msg->asptr = msg->asend = NULL;
-        msg->as4ptr = msg->as4end = NULL;
         return BGP_ENOERR;
     }
 
     size_t len;
     msg->asptr = getaspath(asp, &len);
     msg->asend = msg->asptr + len;
-    if (as_size != sizeof(uint32_t)) {
-        bgpattr_t *aggr = getbgpaggregator_r(msg);
-        if (!aggr || getaggregatoras(aggr) != AS_TRANS)
+    if (as_size == sizeof(uint32_t))
+        return BGP_ENOERR;
+
+    bgpattr_t *aggr  = getbgpaggregator_r(msg);
+    bgpattr_t *aggr4 = getbgpas4aggregator_r(msg);
+    if (aggr && aggr4) {
+        if (getaggregatoras(aggr) != AS_TRANS)
             return BGP_ENOERR;
-
-        aggr = getbgpas4aggregator_r(msg);
-        if (!aggr)
-            return BGP_ENOERR;
-
-        bgpattr_t *as4p = getbgpas4path_r(msg);
-        if (!as4p)
-            return BGP_ENOERR;
-
-        msg->as4ptr = getaspath(as4p, &len);
-        msg->as4end = msg->as4ptr + len;
-
-        unsigned char *ptr = msg->asptr;
-        unsigned char *end = msg->asend;
-
-        int ascount = 0, as4count = 0;
-        while (ptr < end) {
-            int type  = *ptr++;
-            int count = *ptr++;
-
-            ptr += count * sizeof(uint16_t);
-            if (type == AS_SEGMENT_SET)
-                count = 1;
-
-            ascount += count;
-        }
-
-        if (unlikely(ptr > end)) {
-            msg->err = BGP_EBADATTR;
-            return msg->err;
-        }
-
-        ptr = msg->as4ptr;
-        end = msg->as4end;
-        while (ptr < end) {
-            int type  = *ptr++;
-            int count = *ptr++;
-
-            ptr += count * sizeof(uint32_t);
-            if (type == AS_SEGMENT_SET)
-                count = 1;
-
-            as4count += count;
-        }
-
-        if (unlikely(ptr > end)) {
-            msg->err = BGP_EBADATTR;
-            return msg->err;
-        }
-
-        if (ascount < as4count)
-            return BGP_ENOERR;   // must ignore AS4_PATH
-
-        msg->as4ptr  = getaspath(as4p, &len);
-        msg->as4end  = msg->as4ptr + len;
-        msg->ascount = ascount;
-        msg->flags  |= F_REALASPATH;
     }
 
+    bgpattr_t *as4p = getbgpas4path_r(msg);
+    if (!as4p)
+        return BGP_ENOERR;
+
+    unsigned char *ptr = msg->asptr;
+    unsigned char *end = msg->asend;
+
+    int ascount = 0, as4count = 0;
+    while (ptr < end) {
+        int type  = *ptr++;
+        int count = *ptr++;
+
+        ptr += count * sizeof(uint16_t);
+        if (type == AS_SEGMENT_SET)
+            count = 1;
+
+        ascount += count;
+    }
+
+    if (unlikely(ptr > end)) {
+        msg->err = BGP_EBADATTR;
+        return msg->err;
+    }
+
+    ptr = getaspath(as4p, &len);
+    end = ptr + len;
+    while (ptr < end) {
+        int type  = *ptr++;
+        int count = *ptr++;
+
+        ptr += count * sizeof(uint32_t);
+        if (type == AS_SEGMENT_SET)
+            count = 1;
+
+        as4count += count;
+    }
+
+    if (unlikely(ptr > end)) {
+        msg->err = BGP_EBADATTR;
+        return msg->err;
+    }
+
+    if (ascount < as4count)
+        return BGP_ENOERR;   // must ignore AS4_PATH
+
+    msg->as4ptr  = end - len;
+    msg->as4end  = end;
+    // prepend a number of AS path from AS_PATH such that it is
+    msg->ascount = ascount - as4count;
+    msg->flags  |= F_REALASPATH;
     return BGP_ENOERR;
 }
 
@@ -1365,17 +1373,10 @@ as_pathent_t *nextaspath_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_UPDATE, F_ASPATH))
         return NULL;
-    if (msg->ascount == 0)
-        return NULL;  // end of real AS path iteration
 
-    while (msg->seglen == 0) {
-        if (msg->asptr == msg->asend) {
-            // end of iteration
-            if (unlikely(msg->ascount > 0))
-                msg->err = BGP_EBADATTR;  // unexpected AS4_PATH end
-
-            return NULL;
-        }
+    while (msg->segi == msg->seglen) {
+        if (msg->asptr == msg->asend)
+            return NULL;  // end of iteration
 
         if (unlikely(msg->asptr + 2 > msg->asend)) {
             msg->err = BGP_EBADATTR; // FIXME
@@ -1402,19 +1403,24 @@ as_pathent_t *nextaspath_r(bgp_msg_t *msg)
     }
 
     msg->asptr += msg->asp.as_size;
-    msg->seglen--;
     msg->segi++;
-    if ((msg->flags & F_REALASPATH) == 0 || msg->asp.as != AS_TRANS || msg->asp.type == AS_SEGMENT_SET) {
+
+    // if we are rebuilding a real AS path,
+    // then ascount starts as > 0 and decrements towards 0, until it switches to AS4_PATH;
+    // else ascount starts as -1 and decrements at will (!= 0 is always true, which is what we want);
+    if (msg->ascount != 0) {
         // only decrement AS count if element is first in a SET or if inside a SEQ
         msg->ascount -= (msg->asp.type != AS_SEGMENT_SET || msg->segi == 1);
         return &msg->asp;
     }
 
-    // we've hit an AS_TRANS, we must commute to AS4_PATH
+    // we've prepended enough AS_PATH entries, we must commute to AS4_PATH
     msg->asptr       = msg->as4ptr;
     msg->asend       = msg->as4end;
     msg->asp.as_size = sizeof(uint32_t);
     msg->seglen      = 0;
+    msg->segi        = 0;
+    msg->ascount     = -1;
     msg->flags      &= ~F_REALASPATH;
     return nextaspath_r(msg);
 }
@@ -1574,6 +1580,16 @@ static bgpattr_t *seekbgpattr(bgp_msg_t *msg, int code)
     return (bgpattr_t *) &msg->buf[off];
 }
 
+bgpattr_t *getbgporigin(void)
+{
+    return getbgporigin_r(&curmsg);
+}
+
+bgpattr_t *getbgporigin_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, ORIGIN_CODE);
+}
+
 bgpattr_t *getbgpnexthop(void)
 {
     return getbgpnexthop_r(&curmsg);
@@ -1602,6 +1618,16 @@ bgpattr_t *getbgpas4aggregator(void)
 bgpattr_t *getbgpas4aggregator_r(bgp_msg_t *msg)
 {
     return seekbgpattr(msg, AS4_AGGREGATOR_CODE);
+}
+
+bgpattr_t *getbgpatomicaggregate(void)
+{
+    return getbgpatomicaggregate_r(&curmsg);
+}
+
+bgpattr_t *getbgpatomicaggregate_r(bgp_msg_t *msg)
+{
+    return seekbgpattr(msg, ATOMIC_AGGREGATE_CODE);
 }
 
 bgpattr_t *getrealbgpaggregator(size_t as_size)

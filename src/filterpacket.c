@@ -28,29 +28,21 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#include <ctype.h>
-#include <isolario/bgp.h>
 #include <isolario/filterintrin.h>
 #include <isolario/filterpacket.h>
-#include <isolario/mrt.h>
 #include <isolario/parse.h>
-#include <isolario/patriciatrie.h>
 #include <isolario/util.h>
 #include <limits.h>
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdlib.h>
-#include <strings.h>
 
 enum {
     K_GROW_STEP        = 32,
     STACK_GROW_STEP    = 128,
+    HEAP_GROW_STEP     = 256,
     CODE_GROW_STEP     = 128,
     PATRICIA_GROW_STEP = 2
 };
-
-static _Thread_local char err_msg[64] = "";
-static _Thread_local jmp_buf err_jmp;
 
 extern char *filter_strerror(int err);
 
@@ -67,16 +59,8 @@ void filter_destroy(filter_vm_t *vm)
         free(vm->sp);
 
     free(vm->code);
+    free(vm->heap);
 }
-
-// static filter_regidx_t compile_expr(FILE *f, filter_vm_t *vm);
-
-enum { LEFT_TERM, RIGHT_TERM };
-
-//
-// EXPR := NOT EXPR | TERM OP TERM | CALL FN | ( EXPR ) | EXPR AND EXPR | EXPR OR EXPR
-// TERM := $REG | 127.0.0.1 | 2001:db8::ff00:42:8329 | [ TERM, ... ] | ACCESSOR
-//
 
 void vm_growstack(filter_vm_t *vm)
 {
@@ -93,18 +77,18 @@ void vm_growstack(filter_vm_t *vm)
     vm->stacksiz = stacksiz;
 }
 
-static void vm_growcode(filter_vm_t *vm)
+void vm_growcode(filter_vm_t *vm)
 {
     unsigned short codesiz = vm->maxcode + CODE_GROW_STEP;
     bytecode_t *code = realloc(vm->code, codesiz * sizeof(*code));
     if (unlikely(!code))
-        parsingerr("out of memory");
+        parsingerr("out of memory");  // FIXME: should *not* use parsingerr()...
 
     vm->code    = code;
     vm->maxcode = codesiz;
 }
 
-static void vm_growk(filter_vm_t *vm)
+void vm_growk(filter_vm_t *vm)
 {
     unsigned short ksiz = vm->maxk + K_GROW_STEP;
     stack_cell_t *k = NULL;
@@ -113,7 +97,7 @@ static void vm_growk(filter_vm_t *vm)
 
     k = realloc(k, ksiz * sizeof(*k));
     if (unlikely(!k))
-        parsingerr("out of memory");
+        parsingerr("out of memory");  // FIXME
 
     if (vm->kp == vm->kbuf)
         memcpy(k, vm->kp, sizeof(vm->kbuf));
@@ -122,7 +106,7 @@ static void vm_growk(filter_vm_t *vm)
     vm->maxk = ksiz;
 }
 
-static void vm_growtrie(filter_vm_t *vm)
+void vm_growtrie(filter_vm_t *vm)
 {
     patricia_trie_t *tries = NULL;
     if (vm->tries != vm->triebuf)
@@ -131,7 +115,7 @@ static void vm_growtrie(filter_vm_t *vm)
     unsigned short ntries = vm->maxtries + PATRICIA_GROW_STEP;
     tries = realloc(tries, ntries * sizeof(*tries));
     if (unlikely(!tries))
-        parsingerr("out of memory");
+        parsingerr("out of memory");  // FIXME
 
     if (vm->tries == vm->triebuf)
         memcpy(tries, vm->tries, sizeof(vm->triebuf));
@@ -152,33 +136,12 @@ extern void vm_clearstack(filter_vm_t *vm);
 
 extern noreturn void vm_abort(filter_vm_t *vm, int error);
 
-/// @brief Emit one bytecode operation
-static void vm_emit(filter_vm_t *vm, bytecode_t opcode)
-{
-    if (unlikely(vm->codesiz == vm->maxcode))
-        vm_growcode(vm);
-
-    vm->code[vm->codesiz++] = opcode;
-}
+extern void vm_emit(filter_vm_t *vm, bytecode_t opcode);
 
 /// @brief Reserve one constant (avoids the user custom section).
-static int vm_newk(filter_vm_t *vm)
-{
-    if (unlikely(vm->ksiz == vm->maxk))
-        vm_growk(vm);
+extern int vm_newk(filter_vm_t *vm);
 
-    return vm->ksiz++;
-}
-
-static int vm_newtrie(filter_vm_t *vm, sa_family_t family)
-{
-    if (unlikely(vm->ntries == vm->maxtries))
-        vm_growtrie(vm);
-
-    int idx = vm->ntries++;
-    patinit(&vm->tries[idx], family);
-    return idx;
-}
+extern int vm_newtrie(filter_vm_t *vm, sa_family_t family);
 
 extern stack_cell_t *vm_peek(filter_vm_t *vm);
 
@@ -190,7 +153,31 @@ extern void vm_pushaddr(filter_vm_t *vm, const netaddr_t *addr);
 
 extern void vm_pushvalue(filter_vm_t *vm, int value);
 
+extern void vm_pushas(filter_vm_t *vm, uint32_t as);
+
 extern void vm_exec_loadk(filter_vm_t *vm, int kidx);
+
+extern void vm_check_array(filter_vm_t *vm, stack_cell_t *arr);
+
+extern void *vm_heap_ptr(filter_vm_t *vm, unsigned int off);
+
+void vm_exec_unpack(filter_vm_t *vm)
+{
+    stack_cell_t *cell = vm_pop(vm);
+    vm_check_array(vm, cell);
+
+    unsigned int off   = cell->base;
+    unsigned int nels  = cell->nels;
+    unsigned int elsiz = cell->elsiz;
+    while (vm->stacksiz < vm->si + nels)
+        vm_growstack(vm);
+
+    const unsigned char *ptr = vm_heap_ptr(vm, off);
+    for (unsigned int i = 0; i < nels; i++) {
+        memcpy(&vm->sp[vm->si++], ptr, elsiz);
+        ptr += elsiz;
+    }
+}
 
 extern void vm_exec_store(filter_vm_t *vm);
 
@@ -203,6 +190,12 @@ extern void vm_exec_settrie6(filter_vm_t *vm, int trie6);
 extern void vm_exec_clrtrie(filter_vm_t *vm);
 
 extern void vm_exec_clrtrie6(filter_vm_t *vm);
+
+extern void vm_exec_ascmp(filter_vm_t *vm, int kidx);
+
+extern void vm_exec_addrcmp(filter_vm_t *vm, int kidx);
+
+extern void vm_exec_pfxcmp(filter_vm_t *vm, int kidx);
 
 static void vm_accumulate_withdrawn(filter_vm_t *vm)
 {
@@ -333,7 +326,7 @@ void vm_exec_nlri_insert(filter_vm_t *vm)
     vm_insert_nlri(vm);
 }
 
-static void vm_emit_indexed(filter_vm_t *vm, int opcode, int idx)
+void vm_emit_ex(filter_vm_t *vm, int opcode, int idx)
 {
     // NOTE: paranoid, assumes 8 bit bytes... as the whole Isolario project does
 
@@ -355,251 +348,56 @@ static void vm_emit_indexed(filter_vm_t *vm, int opcode, int idx)
     vm_emit(vm, vm_makeop(opcode, idx & 0xff));
 }
 
-/// @brief Handes "$constant" and "$[constant]" tokens
-static int parse_registry(const char *tok, va_list va)
+static void *vm_heap_ensure(filter_vm_t *vm, size_t aligned_size)
 {
-    const char *ptr = tok + 1;
-    if (*ptr == '[')
-        ptr++;
+    size_t used = vm->highwater;
+    used += vm->dynmarker;
+    if (likely(vm->heapsiz - used >= aligned_size))
+        return vm->heap;
 
-    if (!isdigit(*ptr))
-        parsingerr("%s: illegal non-numeric register constant", tok);
+    aligned_size += used;
+    aligned_size += HEAP_GROW_STEP;
+    void *heap = realloc(vm->heap, aligned_size);
+    if (unlikely(!heap))
+        return NULL;
 
-    int idx = atoi(ptr);
-    do ptr++; while (isdigit(*ptr));
-
-    if (tok[1] == '[') {
-        if (*ptr != ']')
-            parsingerr("%s: illegal register constant, mismatched brackets", tok);
-
-        va_list vc;
-        va_copy(vc, va);
-        for (int i = 0; i < idx; i++)
-            va_arg(vc, int);
-
-        idx = va_arg(vc, int);
-        va_end(vc);
-    }
-
-    if (unlikely(idx > K_MAX))
-        parsingerr("%s: constant register index %d is out of range", tok, idx);
-
-    return idx;
+    vm->heap    = heap;
+    vm->heapsiz = aligned_size;
+    return heap;
 }
 
-static int parse_constant(filter_vm_t *vm, const char *tok, va_list va)
+void *vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone)
 {
-    int idx;
+    // align allocation
+    size += sizeof(max_align_t) - 1;
+    size -= (size & (sizeof(max_align_t) - 1));
 
-    if (tok[0] == '$') {
-        // constant registry
-        idx = parse_registry(tok, va);
-    } else {
-        // IPv4 or IPv6 address
-        idx = vm_newk(vm);
-        if (stonaddr(&vm->kp[idx].addr, tok) != 0)
-            parsingerr("invalid constant value '%s'", tok);
-    }
+    unsigned char *ptr;
 
-    return idx;
-}
+    if (unlikely(!vm_heap_ensure(vm, size)))
+        return NULL;
 
-static uint64_t parse_element(filter_vm_t *vm, const char *tok, int kind, va_list va)
-{
-    uint64_t usage_mask = 0;
-
-    int idx = parse_constant(vm, tok, va);
-    if (kind == RIGHT_TERM) {
-        if (idx <= K_MAX) {
-            // this expression did not generate a new constant, we must
-            // dynamically add it to the current Patricia and clean it
-            // after the operation, mark it as used in the usage mask
-            vm_emit(vm, vm_makeop(FOPC_LOADK, idx));
-            vm_emit(vm, FOPC_STORE);
-
-            usage_mask |= (1 << idx);
-        } else {
-            // this is just a regular constant expression in source code,
-            // precompile it into the Patricia and avoid LOADK/STORE
-            // XXX improve
-            assert(idx == (int) vm->ksiz - 1);
-
-            vm_exec_settrie(vm, vm->ntries - 2);
-            vm_exec_settrie6(vm, vm->ntries - 1);
-            vm_exec_loadk(vm, idx);
-            vm_exec_store(vm);
-
-            vm->ksiz--;  // constant may now be reused
-        }
-    }
-
-    return usage_mask;
-}
-
-static uint64_t parse_argument(FILE *f, filter_vm_t *vm, int kind, va_list va)
-{
-    uint64_t usage_mask = 0;
-    int is_array        = false;
-
-    char *tok = expecttoken(f, NULL);
-    if (strcmp(tok, "[") == 0)
-        is_array = true;
-    else
-        ungettoken(tok);
-
-    if (kind == RIGHT_TERM) {
-        // preload values in tries
-        int v4 = vm_newtrie(vm, AF_INET);
-        int v6 = vm_newtrie(vm, AF_INET6);
-
-        vm_emit_indexed(vm, FOPC_SETTRIE, v4);
-        vm_emit_indexed(vm, FOPC_SETTRIE6, v6);
-    }
-
-    do {
-        tok = expecttoken(f, NULL);
-        if (is_array && strcmp(tok, "]") == 0)
-            is_array = false;
-        else
-            usage_mask |= parse_element(vm, tok, kind, va);
-
-    } while (is_array);
-
-    return usage_mask;
-}
-
-/// @brief Compile a term, returns the trie user-custom register usage mask,
-//         used registers should be DISCARDed from trie after op
-static uint64_t compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
-{
-    uint64_t usage_mask = 0;
-
-    char *tok = expecttoken(f, NULL);
-    if (strncasecmp(tok, "packet.", 7) == 0) {
-        // packet accessor
-        char *field = tok + 7;
-        if (strcasecmp(field, "withdrawn") == 0) {
-            bytecode_t opcode;
-            if (kind == LEFT_TERM)
-                opcode = vm_makeop(FOPC_CALL, VM_WITHDRAWN_ACCUMULATE_FN);
-            else
-                opcode = vm_makeop(FOPC_CALL, VM_WITHDRAWN_INSERT_FN);
-
-            vm_emit(vm, opcode);
-        } else if (strcasecmp(field, "every_withdrawn") == 0) {
-            bytecode_t opcode;
-            if (kind == LEFT_TERM)
-                opcode = vm_makeop(FOPC_CALL, VM_ALL_WITHDRAWN_ACCUMULATE_FN);
-            else
-                opcode = vm_makeop(FOPC_CALL, VM_ALL_WITHDRAWN_INSERT_FN);
-
-            vm_emit(vm, opcode);
-        } else if (strcasecmp(field, "nlri") == 0) {
-            bytecode_t opcode;
-            if (kind == LEFT_TERM)
-                opcode = vm_makeop(FOPC_CALL, VM_NLRI_ACCUMULATE_FN);
-            else
-                opcode = vm_makeop(FOPC_CALL, VM_NLRI_INSERT_FN);
-
-            vm_emit(vm, opcode);
-        } else if (strcasecmp(field, "every_nlri") == 0) {
-            bytecode_t opcode;
-            if (kind == LEFT_TERM)
-                opcode = vm_makeop(FOPC_CALL, VM_ALL_NLRI_ACCUMULATE_FN);
-            else
-                opcode = vm_makeop(FOPC_CALL, VM_ALL_NLRI_INSERT_FN);
-
-            vm_emit(vm, opcode);
-        } else {
-            parsingerr("unknown packet accessor '%s'", field);
-        }
-    } else {
-        ungettoken(tok);
-        usage_mask = parse_argument(f, vm, kind, va);
-    }
-
-    // XXX: would be nice to reuse code both for single constants and array...
-    return usage_mask;
-}
-
-static void vm_clear_temporaries(filter_vm_t *vm, uint64_t usage_mask)
-{
-    for (int i = 0; i <= K_MAX; i++) {
-        if (usage_mask & (1ull << i)) {
-            vm_emit(vm, vm_makeop(FOPC_LOADK, i));
-            vm_emit(vm, vm_makeop(FOPC_DISCARD, i));
-        }
-    }
-}
-
-static void compile_expr(FILE *f, filter_vm_t *vm, va_list va)
-{
-    while (true) {
-        char *tok = expecttoken(f, NULL);
-
-        int block_start = -1;
-        if (strcasecmp(tok, "NOT") == 0) {
-            compile_expr(f, vm, va);
-
-            vm_emit(vm, FOPC_NOT);
-        } else if (strcasecmp(tok, "(") == 0) {
-            // nest a new block
-            vm_emit(vm, FOPC_BLK);  // placeholder
-
-            block_start = vm->codesiz;
-            compile_expr(f, vm, va);
-            expecttoken(f, ")");
-        } else if (strcasecmp(tok, "CALL") == 0) {
-            tok = expecttoken(f, NULL);
-
-            int idx = parse_registry(tok, va);
-            vm_emit_indexed(vm, FOPC_CALL, idx);
-        } else {
-            // TERM OP TERM
-            ungettoken(tok);
-            compile_term(f, vm, LEFT_TERM, va);
-
-            tok = expecttoken(f, NULL);
-            bytecode_t op;
-            if (strcasecmp(tok, "EXACT") == 0) {
-                op = FOPC_EXACT;
-            } else if (strcasecmp(tok, "ANY") == 0) {
-                op = FOPC_ANY;
-            } else {
-                parsingerr("unknown operation: '%s'", tok);
-                break; // unreachable
-            }
-
-            uint64_t usage_mask = compile_term(f, vm, RIGHT_TERM, va);
-
-            vm_emit(vm, op);
-            // DISCARD any temporary constant loaded into Patricia
-            vm_clear_temporaries(vm, usage_mask);
+    switch (zone) {
+    case VM_HEAP_PERM:
+        if (unlikely(vm->dynmarker > 0)) {
+            assert(false);
+            return NULL; // illegal!
         }
 
-        tok = parse(f);
-        if (!tok)
-            break;
+        ptr = (unsigned char *) vm->heap + vm->highwater;
+        vm->highwater += size;
+        return ptr;
 
-        if (strcasecmp(tok, "AND") == 0) {
-           vm_emit(vm, FOPC_CFAIL);
-        } else if (strcasecmp(tok, "OR") == 0) {
-            vm_emit(vm, FOPC_CPASS);
-        } else {
-            // FIXME
-            ungettoken(tok);
-            break;
-        }
+    case VM_HEAP_TEMP:
+        ptr = (unsigned char *) vm->heap + vm->highwater;
+        ptr += vm->dynmarker;
 
-        // if we encountered a "(", we must set the BLK to jump after
-        // this opcode, we must rewrite the BLK to reflect the actual
-        // block size for that
-        if (block_start >= 0) {
-            // finalize the BLK instruction
-            int blksiz = vm->codesiz - block_start;
-            assert(blksiz <= 0xff); // FIXME should insert these instructions and support EXARG!
-            vm->code[block_start - 1] = vm_makeop(FOPC_BLK, blksiz);
-        }
+        vm->dynmarker += size;
+        return ptr;
+
+    default:
+        // should never happen
+        return NULL;
     }
 }
 
@@ -610,7 +408,7 @@ void filter_init(filter_vm_t *vm)
     vm->kp    = vm->kbuf;
     vm->tries = vm->triebuf;
     vm->stacksiz = nelems(vm->stackbuf);
-    vm->ksiz     = K_MAX + 1;  // reserved for user custom variables
+    vm->ksiz     = KBASESIZ;  // reserved for known variables
     vm->maxk     = nelems(vm->kbuf);
     vm->ntries   = 2;  // 2 temporary tries
     vm->maxtries = nelems(vm->triebuf);
@@ -623,107 +421,11 @@ void filter_init(filter_vm_t *vm)
     vm->funcs[VM_ALL_NLRI_INSERT_FN]          = vm_exec_all_nlri_insert;
     vm->funcs[VM_ALL_NLRI_ACCUMULATE_FN]      = vm_exec_all_nlri_accumulate;
 
-    vm->flags = 0;
-
     patinit(&vm->tries[VM_TMPTRIE],  AF_INET);
     patinit(&vm->tries[VM_TMPTRIE6], AF_INET6);
 }
 
-void filter_clear_error(void)
-{
-    err_msg[0] = '\0';
-}
-
-const char *filter_last_error(void)
-{
-    return err_msg;
-}
-
-static void handle_parse_error(const char *name, unsigned int lineno, const char *msg)
-{
-    (void) name, (void) lineno;
-
-    strncpy(err_msg, msg, sizeof(err_msg) - 1);
-    err_msg[sizeof(err_msg) - 1] = '\0';
-    longjmp(err_jmp, -1);
-}
-
-int filter_compilefv(FILE *f, filter_vm_t *vm, va_list va)
-{
-    filter_init(vm);
-    if (setjmp(err_jmp) != 0) {
-        setperrcallback(NULL);
-        return -1;
-    }
-
-    setperrcallback(handle_parse_error);
-
-    compile_expr(f, vm, va);
-
-    setperrcallback(NULL);
-    return 0;
-}
-
-int filter_compilef(FILE *f, filter_vm_t *vm, ...)
-{
-    va_list va;
-
-    va_start(va, vm);
-    int res = filter_compilefv(f, vm, va);
-    va_end(va);
-    return res;
-}
-
-int filter_compilev(filter_vm_t *vm, const char *program, va_list va)
-{
-    FILE *f = fmemopen((char *) program, strlen(program), "r");
-    if (unlikely(!f))
-        return -1;
-
-    int res = filter_compilefv(f, vm, va);
-    fclose(f);
-    return res;
-}
-
-int filter_compile(filter_vm_t *vm, const char *program, ...)
-{
-    va_list va;
-    va_start(va, program);
-    int res = filter_compilev(vm, program, va);
-    va_end(va);
-    return res;
-}
-
 void vm_exec_exact(filter_vm_t *vm)
-{
-    while (vm->si > 0) {
-        stack_cell_t *cell = vm_pop(vm);
-        netaddr_t *addr = &cell->addr;
-        switch (addr->family) {
-        case AF_INET:
-            if (!patsearchexactn(vm->curtrie, addr)) {
-                vm_clearstack(vm);
-                vm_pushvalue(vm, false);
-                return;
-            }
-            break;
-        case AF_INET6:
-            if (!patsearchexactn(vm->curtrie6, addr)) {
-                vm_clearstack(vm);
-                vm_pushvalue(vm, false);
-                return;
-            }
-            break;
-        default:
-            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
-            break;
-        }
-    }
-
-    vm_pushvalue(vm, true);
-}
-
-void vm_exec_any(filter_vm_t *vm)
 {
     while (vm->si > 0) {
         stack_cell_t *cell = vm_pop(vm);
@@ -750,10 +452,97 @@ void vm_exec_any(filter_vm_t *vm)
     }
 
     vm_pushvalue(vm, false);
-
 }
 
-static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nresults)
+void vm_exec_subn(filter_vm_t *vm)
+{/*
+    while (vm->si > 0) {
+        stack_cell_t *cell = vm_pop(vm);
+        netaddr_t *addr = &cell->addr;
+        switch (addr->family) {
+        case AF_INET:
+            if (patsearchsubnet(vm->curtrie, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        case AF_INET6:
+            if (patsearchsubnet(vm->curtrie6, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+            break;
+        }
+    }
+
+    vm_pushvalue(vm, false);*/
+}
+
+void vm_exec_supern(filter_vm_t *vm)
+{/*
+    while (vm->si > 0) {
+        stack_cell_t *cell = vm_pop(vm);
+        netaddr_t *addr = &cell->addr;
+        switch (addr->family) {
+        case AF_INET:
+            if (patsearchexactn(vm->curtrie, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        case AF_INET6:
+            if (patsearchexactn(vm->curtrie6, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+            break;
+        }
+    }
+
+    vm_pushvalue(vm, false);*/
+}
+
+
+void vm_exec_reltd(filter_vm_t *vm)
+{/*
+    while (vm->si > 0) {
+        stack_cell_t *cell = vm_pop(vm);
+        netaddr_t *addr = &cell->addr;
+        switch (addr->family) {
+        case AF_INET:
+            if (patsearchexactn(vm->curtrie, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        case AF_INET6:
+            if (patsearchexactn(vm->curtrie6, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+            break;
+        }
+    }
+
+    vm_pushvalue(vm, false);*/
+}
+
+static int filter_execute(filter_vm_t *vm)
 {
 // disable pedantic diagnostic about taking address label
 #pragma GCC diagnostic push
@@ -805,10 +594,12 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
     int arg, exarg;
     stack_cell_t *cell;
 
+    vm->pc     = 0;
     vm->curblk = 0;
     vm_clearstack(vm);
-    vm->error = 0;
-    exarg = 0;
+    vm->dynmarker = 0;
+    vm->error     = 0;
+    exarg         = 0;
 
     vm_exec_settrie(vm, VM_TMPTRIE);
     vm_exec_settrie6(vm, VM_TMPTRIE6);
@@ -844,6 +635,10 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
             exarg = 0;
             DISPATCH();
 
+        EXECUTE(UNPACK):
+            vm_exec_unpack(vm);
+            DISPATCH();
+
         EXECUTE(EXARG):
             arg = vm_getarg(ip);
             exarg <<= 8;
@@ -867,6 +662,8 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
         EXECUTE(NOT):
             cell = vm_pop(vm);
             vm_pushvalue(vm, !cell->value);
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
             DISPATCH();
 
         EXECUTE(CPASS):
@@ -885,8 +682,9 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
         EXECUTE(CFAIL):
             cell = vm_peek(vm);
             if (cell->value) {
+                cell->value = 0;  // negate existing value
                 if (vm->curblk == 0)
-                    goto done;  // no more blocks, we're done
+                    goto done;    // no more blocks, we're done
 
                 // pop one block and see what happens
                 vm->pc = vm->blkstack[--vm->curblk];
@@ -913,9 +711,20 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
             PREDICT(CFAIL);
             DISPATCH();
 
-        EXECUTE(ANY):
-            vm_exec_any(vm);
+        EXECUTE(SUBN):
+            vm_exec_subn(vm);
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            DISPATCH();
 
+        EXECUTE(SUPERN):
+            vm_exec_supern(vm);
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            DISPATCH();
+
+        EXECUTE(RELTD):
+            vm_exec_reltd(vm);
             PREDICT(CPASS);
             PREDICT(CFAIL);
             DISPATCH();
@@ -932,16 +741,39 @@ static int filter_execute(filter_vm_t *vm, match_result_t *results, size_t *nres
             exarg = 0;
             DISPATCH();
 
-        EXECUTE(SUBNET):
-            // TODO
-            DISPATCH();
-
         EXECUTE(CLRTRIE):
             vm_exec_clrtrie(vm);
             DISPATCH();
 
         EXECUTE(CLRTRIE6):
             vm_exec_clrtrie6(vm);
+            DISPATCH();
+
+        EXECUTE(ADDRCMP):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            vm_exec_addrcmp(vm, arg);
+            exarg = 0;
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
+            DISPATCH();
+
+        EXECUTE(PFXCMP):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            vm_exec_pfxcmp(vm, arg);
+            exarg = 0;
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
+            DISPATCH();
+
+        EXECUTE(ASCMP):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            vm_exec_ascmp(vm, arg);
+            exarg = 0;
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE_SIGILL:
@@ -962,28 +794,46 @@ done:
 #pragma GCC diagnostic pop
 }
 
-int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm, match_result_t *results, size_t *nresults)
+int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm)
 {
+    bgp_msg_t bgp;
+
     vm->bgp = NULL;
     vm->mrt = msg;
 
-    return filter_execute(vm, results, nresults);
+    const mrt_header_t *hdr = getmrtheader_r(msg);
+    if (hdr->type == MRT_BGP4MP || hdr->type == MRT_BGP4MP_ET) {
+        // MRT wraps a BGP packet, extract it to enable BGP filtering
+        void *data;
+        size_t n;
+
+        data = unwrapbgp4mp_r(msg, &n);
+        setbgpread_r(&bgp, data, n, BGPF_NOCOPY);
+
+        // populate feeder utility constants
+        const bgp4mp_header_t *bgphdr = getbgp4mpheader();
+        vm->kp[K_PEER_ADDR].addr = bgphdr->peer_addr;
+        vm->kp[K_PEER_AS].as     = bgphdr->peer_as;
+
+        vm->bgp = &bgp;
+    }
+
+    return filter_execute(vm);
 }
 
-int mrt_filter(filter_vm_t *vm, match_result_t *results, size_t *nresults)
+int mrt_filter(filter_vm_t *vm)
 {
-    return mrt_filter_r(getmrt(), vm, results, nresults);
+    return mrt_filter_r(getmrt(), vm);
 }
 
-int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm, match_result_t *results, size_t *nresults)
+int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
 {
     vm->bgp = msg;
     vm->mrt = NULL;
-    return filter_execute(vm, results, nresults);
+    return filter_execute(vm);
 }
 
-int bgp_filter(filter_vm_t *vm, match_result_t *results, size_t *nresults)
+int bgp_filter(filter_vm_t *vm)
 {
-    return bgp_filter_r(getbgp(), vm, results, nresults);
+    return bgp_filter_r(getbgp(), vm);
 }
-

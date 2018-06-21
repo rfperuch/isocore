@@ -85,7 +85,7 @@ void testopencreate(void)
     printf("BGP_OPEN packet with size %zd\n", n);
 
     // start reading a BGP packet from buffer
-    setbgpread(buf, n);
+    setbgpread(buf, n, BGPF_DEFAULT);
 
     // we want to find back what we wrote
     CU_ASSERT_EQUAL(getbgptype(), BGP_OPEN);
@@ -227,7 +227,7 @@ void testopenread(void)
         0x04, 0x40, 0x02, 0x00, 0x78
     };
 
-    setbgpread(buf, sizeof(buf));
+    setbgpread(buf, sizeof(buf), BGPF_DEFAULT);
 
     CU_ASSERT_EQUAL(getbgptype(), BGP_OPEN);
     CU_ASSERT_EQUAL(getbgpopen()->version, BGP_VERSION);
@@ -237,7 +237,7 @@ void testopenread(void)
     struct in_addr iden;
     inet_pton(AF_INET, "127.1.1.2", &iden);
     CU_ASSERT_EQUAL(memcmp(&(getbgpopen()->iden), &iden, sizeof(iden)), 0);
-    
+
     startbgpcaps();
     bgpcap_t *cap;
     while ((cap = nextbgpcap()) != NULL) {
@@ -252,6 +252,6 @@ void testopenread(void)
         }
     }
     endbgpcaps();
-    
+
     bgpclose();
 }

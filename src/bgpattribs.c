@@ -49,9 +49,9 @@ extern size_t getattrlenextended(const bgpattr_t *attr);
 
 extern void setattrlenextended(bgpattr_t *attr, size_t len);
 
-extern int getbgporigin(const bgpattr_t *attr);
+extern int getorigin(const bgpattr_t *attr);
 
-extern bgpattr_t *setbgporigin(bgpattr_t *attr, int origin);
+extern bgpattr_t *setorigin(bgpattr_t *attr, int origin);
 
 extern uint32_t getoriginatorid(const bgpattr_t *attr);
 
@@ -81,11 +81,11 @@ extern afi_t getmpafi(const bgpattr_t *attr);
 
 extern safi_t getmpsafi(const bgpattr_t *attr);
 
-void *getmpnlri(bgpattr_t *attr, size_t *pn)
+void *getmpnlri(const bgpattr_t *attr, size_t *pn)
 {
     assert(attr->code == MP_REACH_NLRI_CODE || attr->code == MP_UNREACH_NLRI_CODE);
 
-    unsigned char *ptr = &attr->len;
+    unsigned char *ptr = (unsigned char *) &attr->len;
 
     size_t len = *ptr++;
     if (attr->flags & ATTR_EXTENDED_LENGTH) {
@@ -106,11 +106,11 @@ void *getmpnlri(bgpattr_t *attr, size_t *pn)
     return ptr;
 }
 
-void *getmpnexthop(bgpattr_t *attr, size_t *pn)
+void *getmpnexthop(const bgpattr_t *attr, size_t *pn)
 {
     assert(attr->code == MP_REACH_NLRI_CODE);
 
-    unsigned char *ptr = &attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)];
+    unsigned char *ptr = (unsigned char *) &attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)];
 
     ptr += sizeof(uint16_t) + sizeof(uint8_t);
     if (likely(pn))
@@ -595,6 +595,8 @@ static bgpattr_t *appendcommunities(bgpattr_t *attr, const void *comms, size_t n
     return attr;
 }
 
+extern void *getcommunities(const bgpattr_t *attr, size_t size, size_t *pn);
+
 bgpattr_t *putcommunities(bgpattr_t *attr, const community_t *comms, size_t count)
 {
     assert(attr->code == COMMUNITY_CODE);
@@ -636,16 +638,23 @@ static const struct {
     {"NO_PEER", COMMUNITY_NO_PEER}
 };
 
-char *communitytos(community_t c)
+char *communitytos(community_t c, int mode)
 {
-    static _Thread_local char buf[digsof(uint32_t) + 1];
+    static _Thread_local char buf[digsof(uint16_t) + 1 + digsof(uint16_t) + 1];
 
-    for (size_t i = 0; i < nelems(str2wellknown); i++) {
-        if (str2wellknown[i].community == c)
-            return (char *) str2wellknown[i].str;
+    c = frombig32(c); // FIXME
+    if (mode == COMMSTR_EX) {
+        for (size_t i = 0; i < nelems(str2wellknown); i++) {
+            if (str2wellknown[i].community == c)
+                return (char *) str2wellknown[i].str;
+        }
     }
 
-    sprintf(buf, "%" PRIu32, (uint32_t) c);
+    char *ptr;
+
+    utoa(buf, &ptr, c >> 16);
+    *ptr++ = ':';
+    utoa(ptr, NULL, c & 0xffff);
     return buf;
 }
 
@@ -653,7 +662,17 @@ char *largecommunitytos(large_community_t c)
 {
     static _Thread_local char buf[3 * digsof(uint32_t) + 2 + 1];
 
-    sprintf(buf, "%" PRIu32 ":%" PRIu32 ":%" PRIu32, c.global, c.hilocal, c.lolocal);
+    char *ptr;
+
+    // FIXME
+    c.global = frombig32(c.global);
+    c.hilocal = frombig32(c.hilocal);
+    c.lolocal = frombig32(c.lolocal);
+    ultoa(buf, &ptr, c.global);
+    *ptr++ = ':';
+    ultoa(ptr, &ptr, c.hilocal);
+    *ptr++ = ':';
+    ultoa(ptr, NULL, c.lolocal);
     return buf;
 }
 
@@ -663,7 +682,7 @@ static uint32_t parsecommfield(const char *s, char **eptr)
     const char *ptr = s;
     while (isspace(*ptr)) ptr++;
 
-    if (!isdigit(*ptr)) {
+    if (!isdigit((unsigned char) *ptr)) {
         // no conversion, invalid community
         *eptr = (char *) s;
         return 0;

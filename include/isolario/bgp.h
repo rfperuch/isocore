@@ -65,7 +65,10 @@ enum {
 enum {
     BGP_VERSION = 4,
 
-    BGP_HOLD_SECS = 180
+    BGP_HOLD_SECS = 180,
+
+    BGPF_DEFAULT = 0,     /// @brief Default flags for \a setbgpread(), copy the buffer.
+    BGPF_NOCOPY = 1 << 0  /// @brief A flag for \a setbgpread(), does not copy the read-buffer.
 };
 
 /**
@@ -136,7 +139,7 @@ int setbgpreadfd(int fd);
 /**
  * @brief Initialize a BGP packet for read from pre-existing data.
  */
-int setbgpread(const void *data, size_t n);
+int setbgpread(const void *data, size_t n, int flags);
 
 int setbgpreadfd(int fd);
 
@@ -274,6 +277,12 @@ netaddr_t *nextnhop(void);
 
 int endnhop(void);
 
+int startcommunities(void);
+
+void *nextcommunity(void);
+
+int endcommunities(void);
+
 /** @} */
 
 /**
@@ -372,7 +381,7 @@ typedef struct {
  */
 bgp_msg_t *getbgp(void);
 
-int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n);
+int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n, int flags);
 
 int setbgpreadfd_r(bgp_msg_t *msg, int fd);
 
@@ -462,13 +471,25 @@ netaddr_t *nextnhop_r(bgp_msg_t *msg);
 
 int endnhop_r(bgp_msg_t *msg);
 
+int startcommunities_r(bgp_msg_t *msg);
+
+bgpattr_t *nextcommunity_r(bgp_msg_t *msg);
+
+int endcommunities_r(bgp_msg_t *msg);
+
 // utility functions for update packages, direct access to notable attributes
+
+bgpattr_t *getbgporigin(void);
+bgpattr_t *getbgporigin_r(bgp_msg_t *msg);
 
 bgpattr_t *getbgpnexthop(void);
 bgpattr_t *getbgpnexthop_r(bgp_msg_t *msg);
 
 bgpattr_t *getbgpaggregator(void);
 bgpattr_t *getbgpaggregator_r(bgp_msg_t *msg);
+
+bgpattr_t *getbgpatomicaggregate(void);
+bgpattr_t *getbgpatomicaggregate_r(bgp_msg_t *msg);
 
 bgpattr_t *getbgpas4aggregator(void);
 bgpattr_t *getbgpas4aggregator_r(bgp_msg_t *msg);

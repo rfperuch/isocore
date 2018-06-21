@@ -43,20 +43,27 @@ static const void *const vm_opcode_table[256] = {
     [FOPC_BLK]      = &&EX_BLK,
     [FOPC_LOAD]     = &&EX_LOAD,
     [FOPC_LOADK]    = &&EX_LOADK,
+    [FOPC_UNPACK]   = &&EX_UNPACK,
     [FOPC_EXARG]    = &&EX_EXARG,
     [FOPC_STORE]    = &&EX_STORE,
     [FOPC_DISCARD]  = &&EX_DISCARD,
     [FOPC_NOT]      = &&EX_NOT,
     [FOPC_CPASS]    = &&EX_CPASS,
     [FOPC_CFAIL]    = &&EX_CFAIL,
+
     [FOPC_EXACT]    = &&EX_EXACT,
-    [FOPC_ANY]      = &&EX_ANY,
-    [FOPC_SUBNET]   = &&EX_SUBNET,
+    [FOPC_SUBN]     = &&EX_SUBN,
+    [FOPC_SUPERN]   = &&EX_SUPERN,
+    [FOPC_RELTD]    = &&EX_RELTD,
+
     [FOPC_CALL]     = &&EX_CALL,
     [FOPC_SETTRIE]  = &&EX_SETTRIE,
     [FOPC_SETTRIE6] = &&EX_SETTRIE6,
     [FOPC_CLRTRIE]  = &&EX_CLRTRIE,
     [FOPC_CLRTRIE6] = &&EX_CLRTRIE6,
+    [FOPC_ASCMP]    = &&EX_ASCMP,
+    [FOPC_ADDRCMP]  = &&EX_ADDRCMP,
+    [FOPC_PFXCMP]   = &&EX_PFXCMP,
 
     [OPCODES_COUNT] = &&EX_SIGILL,
 
@@ -118,7 +125,5 @@ static const void *const vm_opcode_table[256] = {
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
-    &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
-    &&EX_SIGILL
 };
 

@@ -29,9 +29,61 @@
 //
 
 #include <cbench/cbench.h>
+#include <inttypes.h>
 #include <isolario/strutil.h>
 #include <isolario/util.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <stdio.h>
+
+void bulltoa(cbench_state_t *state)
+{
+    char buf[digsof(unsigned long long) + 1];
+
+    unsigned long long x = ULLONG_MAX;
+
+    while (cbench_next_iteration(state)) {
+        ulltoa(buf, NULL, x);
+        x--;
+    }
+}
+
+void bcommsprintf(cbench_state_t *state)
+{
+    char buf[digsof(uint16_t) + 1 + digsof(uint16_t) + 1];
+
+    uint32_t u = UINT32_MAX;
+
+    while (cbench_next_iteration(state)) {
+        sprintf(buf, "%"PRIu16":%"PRIu16, (uint16_t) (u >> 16), (uint16_t) (u & 0xffff));
+    }
+}
+
+void bsprintf(cbench_state_t *state)
+{
+    char buf[digsof(unsigned long long) + 1];
+
+    unsigned long long x = ULLONG_MAX;
+
+    while (cbench_next_iteration(state)) {
+        sprintf(buf, "%llu", x);
+        x--;
+    }
+}
+
+void bcommulltoa(cbench_state_t *state)
+{
+    char buf[digsof(uint16_t) + 1 + digsof(uint16_t) + 1];
+
+    uint32_t u = UINT32_MAX;
+    char *ptr;
+    while (cbench_next_iteration(state)) {
+        utoa(buf, &ptr, u >> 16);
+        *ptr++ = ':';
+        utoa(ptr, NULL, u & 0xffff);
+        u--;
+    }
+}
 
 void bsplit(cbench_state_t *state)
 {

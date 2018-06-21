@@ -19,8 +19,9 @@ add_project_arguments(cc.get_supported_arguments([
 
 m_dep = cc.find_library('m', required : false)
 threads_dep = dependency('threads')
-bz2_dep = cc.find_library('bz2', required : true)
 zlib_dep = dependency('zlib')
+bz2_dep = cc.find_library('bz2', required : true)
+lzma_dep = dependency('liblzma')
 lz4_dep = cc.find_library('lz4', required : true)
 cunit_dep = dependency('cunit')
 cbench_dep = dependency('cbench', static : true, fallback : [ 'cbench', 'cbench_dep' ])
@@ -35,6 +36,7 @@ isocore = library('isocore',
         'src/cache.c',
         'src/dumppacket.c',
         'src/endian.c',
+        'src/filtercompiler.c',
         'src/filterpacket.c',
         'src/filterdump.c',
         'src/hexdump.c',
@@ -53,7 +55,7 @@ isocore = library('isocore',
         'src/vt100.c'
     ],
     include_directories : incdir,
-    dependencies : [ m_dep, threads_dep, zlib_dep, bz2_dep, lz4_dep ],
+    dependencies : [ m_dep, threads_dep, zlib_dep, bz2_dep, lz4_dep, lzma_dep ],
     install : true
 )
 install_subdir('include', install_dir : 'include')

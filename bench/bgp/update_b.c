@@ -50,7 +50,7 @@ void bupdategen(cbench_state_t *state)
             attr->code  = ORIGIN_CODE;
             attr->flags = DEFAULT_ORIGIN_FLAGS;
             attr->len   = ORIGIN_LENGTH;
-            setbgporigin(attr, ORIGIN_IGP);
+            setorigin(attr, ORIGIN_IGP);
             putbgpattrib(attr);
 
             attr->code  = AS_PATH_CODE;

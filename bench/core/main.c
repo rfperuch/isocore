@@ -44,6 +44,18 @@ int main(void)
     if (!suite)
         goto out;
 
+    if (!cbench_add_bench(suite, "bcommsprintf", bcommsprintf, NULL))
+        goto out;
+
+    if (!cbench_add_bench(suite, "bsprintf", bsprintf, NULL))
+        goto out;
+
+    if (!cbench_add_bench(suite, "bcommulltoa", bcommulltoa, NULL))
+        goto out;
+
+    if (!cbench_add_bench(suite, "ulltoa", bulltoa, NULL))
+        goto out;
+
     if (!cbench_add_bench(suite, "splitstr", bsplit, NULL))
         goto out;
 

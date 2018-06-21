@@ -745,7 +745,7 @@ int endribents_r(mrt_msg_t *msg)
     return MRT_ENOERR;
 }
 
-bgp4mp_header_t *getbgp4header_r(mrt_msg_t *msg)
+bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg)
 {
     if (unlikely(msg->flags & F_RD) == 0)
         msg->err = MRT_EINVOP;
@@ -796,9 +796,9 @@ bgp4mp_header_t *getbgp4header_r(mrt_msg_t *msg)
         ptr += sizeof(struct in_addr);
         break;
     case AFI_IPV6:
-        makenaddr(&hdr->peer_addr, ptr, 128);
+        makenaddr6(&hdr->peer_addr, ptr, 128);
         ptr += sizeof(struct in6_addr);
-        makenaddr(&hdr->local_addr, ptr, 128);
+        makenaddr6(&hdr->local_addr, ptr, 128);
         ptr += sizeof(struct in6_addr);
         break;
     default:
@@ -817,6 +817,11 @@ bgp4mp_header_t *getbgp4header_r(mrt_msg_t *msg)
     }
 
     return hdr;
+}
+
+bgp4mp_header_t *getbgp4mpheader(void)
+{
+    return getbgp4mpheader_r(&curmsg);
 }
 
 void *unwrapbgp4mp(size_t *pn)

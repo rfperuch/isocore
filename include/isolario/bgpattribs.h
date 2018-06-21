@@ -317,14 +317,14 @@ inline void setattrlenextended(bgpattr_t *attr, size_t len)
     memcpy(attr->exlen, &n, sizeof(n));
 }
 
-inline int getbgporigin(const bgpattr_t *attr)
+inline int getorigin(const bgpattr_t *attr)
 {
     assert(attr->code == ORIGIN_CODE);
 
     return attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH)];
 }
 
-inline bgpattr_t *setbgporigin(bgpattr_t *dst, int origin)
+inline bgpattr_t *setorigin(bgpattr_t *dst, int origin)
 {
     assert(dst->code == ORIGIN_CODE);
 
@@ -591,9 +591,9 @@ inline safi_t getmpsafi(const bgpattr_t *attr)
     return attr->data[!!(attr->flags & ATTR_EXTENDED_LENGTH) + sizeof(uint16_t)];
 }
 
-void *getmpnlri(bgpattr_t *attr, size_t *pn);
+void *getmpnlri(const bgpattr_t *attr, size_t *pn);
 
-void *getmpnexthop(bgpattr_t *attr, size_t *pn);
+void *getmpnexthop(const bgpattr_t *attr, size_t *pn);
 
 bgpattr_t *putcommunities(bgpattr_t *attr, const community_t *comms, size_t count);
 
@@ -601,8 +601,30 @@ bgpattr_t *putexcommunities(bgpattr_t *attr, const ex_community_t *comms, size_t
 
 bgpattr_t *putlargecommunities(bgpattr_t *attr, const large_community_t *comms, size_t count);
 
+inline void *getcommunities(const bgpattr_t *attr, size_t size, size_t *pn)
+{
+    assert(attr->code == COMMUNITY_CODE || attr->code == EXTENDED_COMMUNITY_CODE || attr->code == LARGE_COMMUNITY_CODE);
+
+    unsigned char *ptr = (unsigned char *) &attr->len;
+    size_t len = *ptr++;
+    if (attr->flags & ATTR_EXTENDED_LENGTH) {
+        len <<= 8;
+        len |= *ptr++;
+    }
+
+    if (likely(pn))
+        *pn = len / size;
+
+    return ptr;
+}
+
+enum {
+    COMMSTR_EX,
+    COMMSTR_PLAIN
+};
+
 /// @brief Community to string.
-char *communitytos(community_t c);
+char *communitytos(community_t c, int mode);
 
 /// @brief String to community.
 community_t stocommunity(const char *s, char **eptr);

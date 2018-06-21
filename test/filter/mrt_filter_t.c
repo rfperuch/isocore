@@ -21,7 +21,7 @@ void testmrtfilter(void)
 {
     filter_vm_t vm;
 
-    int err = filter_compile(&vm, "( packet.nlri EXACT 127.0.0.1 OR packet.withdrawn ANY [ 127.0.0.1/22 192.0.0.0/24 $0 ] ) AND CALL $[0]", MY_FUN);
+    int err = filter_compile(&vm, "( packet.nlri EXACT 127.0.0.1 OR packet.withdrawn SUPERNET [ 127.0.0.1/22 192.0.0.0/24 $0 ] ) AND CALL $[0]", MY_FUN);
     if (err != 0)
         printf("compilation failed: %s\n", filter_last_error());
 
@@ -46,7 +46,7 @@ void testmrtfilter(void)
 
     filter_dump(stdout, &vm);
 
-    int result = bgp_filter(&vm, NULL, 0);
+    int result = bgp_filter(&vm);
     printf("result: %d (%s)\n", result, filter_strerror(result));
     filter_destroy(&vm);
 }
