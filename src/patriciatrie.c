@@ -103,7 +103,7 @@ static void putfreenode(patricia_trie_t *pt, pnode_t *n)
     n->next = save;
 }
 
-void patinit(patricia_trie_t *pt, afi_t family)
+void patinit(patricia_trie_t *pt, sa_family_t family)
 {
     pt->head = NULL;
     pt->family = family;
@@ -137,7 +137,7 @@ void patdestroy(patricia_trie_t *pt)
 
 static int patmaxbits(const patricia_trie_t *pt)
 {
-    return (pt->family == AFI_IPV4) ? 32 : 128;
+    return (pt->family == AF_INET) ? 32 : 128;
 }
 
 static int patcompwithmask(const netaddr_t *addr, const netaddr_t *dest, int mask)
@@ -184,7 +184,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         if (n->children[bit] == NULL)
             break;
 
-        n = n->children[bit];
+        n = n->children[bit != 0];
     }
 
     int check_bit = (n->prefix.bitlen < prefix->bitlen) ? n->prefix.bitlen : prefix->bitlen;
@@ -306,7 +306,7 @@ trienode_t* patsearchexactn(const patricia_trie_t *pt, const netaddr_t *prefix)
 
     while (n->prefix.bitlen < prefix->bitlen) {
         int bit = (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
-        n = n->children[bit];
+        n = n->children[bit != 0];
 
         if (!n)
             return NULL;
@@ -347,7 +347,7 @@ trienode_t* patsearchbestn(const patricia_trie_t *pt, const netaddr_t *prefix)
         }
 
         int bit = ((prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07))) != 0);
-        n = n->children[bit];
+        n = n->children[bit != 0];
 
         if (!n)
             break;
@@ -465,7 +465,7 @@ trienode_t** patgetsupernetsofn(const patricia_trie_t *pt, const netaddr_t *pref
         }
 
         int bit = (n->prefix.bitlen < patmaxbits(pt)) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
-        n = n->children[bit];
+        n = n->children[bit != 0];
     }
 
     if (n && !ispnodeglue(n) && n->prefix.bitlen <= prefix->bitlen && patcompwithmask(&n->prefix, prefix, prefix->bitlen))
@@ -501,7 +501,7 @@ int patchecksupernetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
         }
 
         int bit = (n->prefix.bitlen < patmaxbits(pt)) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
-        n = n->children[bit];
+        n = n->children[bit != 0];
     }
 
     if (n && !ispnodeglue(n) && n->prefix.bitlen <= prefix->bitlen && patcompwithmask(&n->prefix, prefix, prefix->bitlen))

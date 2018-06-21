@@ -9,7 +9,7 @@
 void testpatbase(void)
 {
     patricia_trie_t pt;
-    patinit(&pt, AFI_IPV4);
+    patinit(&pt, AF_INET);
 
     int inserted;
     trienode_t *n = patinsertc(&pt, "8.2.0.0/16", &inserted);
@@ -47,7 +47,7 @@ void testpatbase(void)
 void testpatgetfuncs(void)
 {
     patricia_trie_t pt;
-    patinit(&pt, AFI_IPV4);
+    patinit(&pt, AF_INET);
 
     patinsertc(&pt, "8.0.0.0/8", NULL);
     patinsertc(&pt, "8.2.0.0/16", NULL);
@@ -103,7 +103,7 @@ void testpatgetfuncs(void)
 void testpatcheckfuncs(void)
 {
     patricia_trie_t pt;
-    patinit(&pt, AFI_IPV4);
+    patinit(&pt, AF_INET);
 
     patinsertc(&pt, "8.0.0.0/8", NULL);
     patinsertc(&pt, "8.2.0.0/16", NULL);
@@ -120,12 +120,22 @@ void testpatcheckfuncs(void)
     CU_ASSERT(patcheckrelatedofc(&pt, "18.2.2.0/24") == 0);
 
     patdestroy(&pt);
+    
+    
+    patricia_trie_t p;
+    patinit(&p, AF_INET);
+    patinsertc(&p, "132.160.0.0/17", NULL);
+    patclear(&p);
+    patinsertc(&p, "132.160.0.0/17", NULL);
+    patinsertc(&p, "168.105.0.0/16", NULL);
+    patsearchexactc(&p, "205.72.240.0/20");
+    patdestroy(&p);
 }
 
 void testpatcoverage(void)
 {
     patricia_trie_t pt;
-    patinit(&pt, AFI_IPV4);
+    patinit(&pt, AF_INET);
 
     patinsertc(&pt, "0.0.0.0/0", NULL);
     patinsertc(&pt, "8.0.0.0/8", NULL);
@@ -143,7 +153,7 @@ void testpatcoverage(void)
 
     patdestroy(&pt);
 
-    patinit(&pt, AFI_IPV6);
+    patinit(&pt, AF_INET6);
 
     patinsertc(&pt, "0.0.0.0/0", NULL);
     patinsertc(&pt, "2a00::/8", NULL);
@@ -158,7 +168,7 @@ void testpatcoverage(void)
 void testpatgetfirstsubnets(void)
 {
     patricia_trie_t pt;
-    patinit(&pt, AFI_IPV4);
+    patinit(&pt, AF_INET);
 
     patinsertc(&pt, "0.0.0.0/0", NULL);
     patinsertc(&pt, "8.0.0.0/8", NULL);
@@ -179,7 +189,7 @@ void testpatgetfirstsubnets(void)
 void testpatiterator(void)
 {
     patricia_trie_t pt;
-    patinit(&pt, AFI_IPV4);
+    patinit(&pt, AF_INET);
 
     patinsertc(&pt, "0.0.0.0/0", NULL);
     patinsertc(&pt, "8.0.0.0/8", NULL);

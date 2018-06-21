@@ -71,7 +71,7 @@ static void setup_bgp_formatter_row(bgp_formatter_t *bgp_formatter)
     bgp_formatter->print_nlri = print_nlri_row;
 }
 
-void print_bgp_r(const bgp_msg_t *pkt, FILE *out, const char *fmt, ...)
+void print_bgp_r(FILE *out, const bgp_msg_t *pkt, const char *fmt, ...)
 {
     bgp_formatter_t bgp_formatter;
   

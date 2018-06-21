@@ -37,13 +37,13 @@ typedef struct nodepage_s nodepage_t;
 */
 typedef struct {
     pnode_t* head;
-    afi_t family;
+    sa_family_t family;
     unsigned int nprefs;
     nodepage_t* pages;
     pnode_t* freenodes;
 } patricia_trie_t;
 
-void patinit(patricia_trie_t* pt, afi_t family);
+void patinit(patricia_trie_t* pt, sa_family_t family);
 
 /**
  * @brief Clear a Patricia Trie *without* freeing its memory.
