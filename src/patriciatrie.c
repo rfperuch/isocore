@@ -1,3 +1,4 @@
+#include <isolario/branch.h>
 #include <isolario/patriciatrie.h>
 #include <isolario/util.h>
 #include <stdlib.h>
@@ -144,7 +145,7 @@ static int patcompwithmask(const netaddr_t *addr, const netaddr_t *dest, int mas
 {
     if (memcmp(&addr->bytes[0], &dest->bytes[0], mask / 8) == 0) {
         int n = mask / 8;
-        int m = ((unsigned int)(~0) << (8 - (mask % 8)));
+        int m = ((unsigned int) (~0) << (8 - (mask % 8)));
 
         if (((mask & 0x7) == 0) || ((addr->bytes[n] & m) == (dest->bytes[n] & m)))
             return 1;
@@ -192,6 +193,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
 
     int r;
     for (int i = 0, z = 0; z < check_bit; i++, z += 8) {
+        // XXX: optimize!
         if ((r = (prefix->bytes[i] ^ n->prefix.bytes[i])) == 0) {
             differ_bit = z + 8;
             continue;
@@ -284,7 +286,6 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
     }
 
     *inserted = PREFIX_INSERTED;
-
     return &newnode->pub;
 }
 
@@ -402,7 +403,6 @@ void* patremoven(patricia_trie_t *pt, const netaddr_t *prefix)
             return payload;
 
         // if here, the parent is glue then we need to remove the parent too
-
         if (!getpnodeparent(parent)) {
             pt->head = child;
         } else {
@@ -450,7 +450,9 @@ trienode_t** patgetsupernetsofn(const patricia_trie_t *pt, const netaddr_t *pref
 
     pnode_t *n = pt->head;
 
-    trienode_t **res = calloc(1, (prefix->bitlen + 2) * sizeof(trienode_t *));
+    trienode_t **res = malloc((prefix->bitlen + 2) * sizeof(*res));
+    if (unlikely(!res))
+        return NULL;
 
     int i = 0;
 
@@ -542,7 +544,9 @@ trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix
 
     n++;
 
-    trienode_t **res = calloc(1, n*sizeof(trienode_t*));
+    trienode_t **res = malloc(n * sizeof(*res));
+    if (unlikely(!res))
+        return NULL;
 
     int i = 0;
 
@@ -657,7 +661,9 @@ trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix
 
     n += prefix->bitlen + 3;
 
-    trienode_t **res = calloc(1, n*sizeof(trienode_t*));
+    trienode_t **res = malloc(n * sizeof(*res));
+    if (unlikely(!res))
+        return NULL;
 
     int i = 0;
     while (start && start->prefix.bitlen < prefix->bitlen) {
@@ -703,7 +709,6 @@ trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix
     res[i] = NULL;
 
     return res;
-
 }
 
 trienode_t** patgetrelatedofc(const patricia_trie_t *pt, const char *cprefix)
@@ -831,7 +836,9 @@ trienode_t** patgetfirstsubnetsofn(const patricia_trie_t *pt, const netaddr_t *p
 
     n++;
 
-    trienode_t **res = calloc(1, n*sizeof(trienode_t*));
+    trienode_t **res = malloc(n * sizeof(*res));
+    if (unlikely(!res))
+        return NULL;
 
     int i = 0;
     while ((node = next)) {
