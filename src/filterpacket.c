@@ -197,6 +197,20 @@ extern void vm_exec_addrcmp(filter_vm_t *vm, int kidx);
 
 extern void vm_exec_pfxcmp(filter_vm_t *vm, int kidx);
 
+static void vm_require_bgp(filter_vm_t *vm)
+{
+    bgp_msg_t *msg = vm->bgp;
+    if (unlikely(!msg))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+}
+
+static void vm_require_bgp_type(filter_vm_t *vm, int type)
+{
+    vm_require_bgp(vm);
+    if (unlikely(getbgptype_r(vm->bgp) != type))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+}
+
 static void vm_accumulate_withdrawn(filter_vm_t *vm)
 {
     netaddr_t *addr;
@@ -220,6 +234,8 @@ static void vm_accumulate_nlri(filter_vm_t *vm)
 
 static void vm_insert_withdrawn(filter_vm_t *vm)
 {
+    vm_require_bgp_type(vm, BGP_UPDATE);
+
     vm_exec_settrie(vm, VM_TMPTRIE);
     vm_exec_settrie6(vm, VM_TMPTRIE6);
 
@@ -234,6 +250,8 @@ static void vm_insert_withdrawn(filter_vm_t *vm)
 
 static void vm_insert_nlri(filter_vm_t *vm)
 {
+    vm_require_bgp_type(vm, BGP_UPDATE);
+
     vm_exec_settrie(vm, VM_TMPTRIE);
     vm_exec_settrie6(vm, VM_TMPTRIE6);
 
@@ -248,81 +266,65 @@ static void vm_insert_nlri(filter_vm_t *vm)
 
 void vm_exec_all_withdrawn_accumulate(filter_vm_t *vm)
 {
-    bgp_msg_t *msg = vm->bgp;
-    if (unlikely(!msg))
-        vm_abort(vm, VM_PACKET_MISMATCH);
+    vm_require_bgp_type(vm, BGP_UPDATE);
 
-    startallwithdrawn_r(msg);
+    startallwithdrawn_r(vm->bgp);
     vm_accumulate_withdrawn(vm);
 }
 
 void vm_exec_withdrawn_accumulate(filter_vm_t *vm)
 {
-    bgp_msg_t *msg = vm->bgp;
-    if (unlikely(!msg))
-        vm_abort(vm, VM_PACKET_MISMATCH);
+    vm_require_bgp_type(vm, BGP_UPDATE);
 
-    startwithdrawn_r(msg);
+    startwithdrawn_r(vm->bgp);
     vm_accumulate_withdrawn(vm);
 }
 
 void vm_exec_all_withdrawn_insert(filter_vm_t *vm)
 {
-    bgp_msg_t *msg = vm->bgp;
-    if (unlikely(!msg))
-        vm_abort(vm, VM_PACKET_MISMATCH);
+    vm_require_bgp_type(vm, BGP_UPDATE);
 
-    startallwithdrawn_r(msg);
+    startallwithdrawn_r(vm->bgp);
     vm_insert_withdrawn(vm);
 }
 
 void vm_exec_withdrawn_insert(filter_vm_t *vm)
 {
-    bgp_msg_t *msg = vm->bgp;
-    if (unlikely(!msg))
-        vm_abort(vm, VM_PACKET_MISMATCH);
+    vm_require_bgp_type(vm, BGP_UPDATE);
 
-    startwithdrawn_r(msg);
+    startwithdrawn_r(vm->bgp);
     vm_insert_withdrawn(vm);
 }
 
 void vm_exec_all_nlri_accumulate(filter_vm_t *vm)
 {
-    bgp_msg_t *msg = vm->bgp;
-    if (unlikely(!msg))
-        vm_abort(vm, VM_PACKET_MISMATCH);
+    vm_require_bgp_type(vm, BGP_UPDATE);
 
-    startallnlri_r(msg);
-    vm_accumulate_withdrawn(vm);
+    startallnlri_r(vm->bgp);
+    vm_accumulate_nlri(vm);
 }
 
 void vm_exec_nlri_accumulate(filter_vm_t *vm)
 {
-    bgp_msg_t *msg = vm->bgp;
-    if (unlikely(!msg))
-        vm_abort(vm, VM_PACKET_MISMATCH);
+    vm_require_bgp_type(vm, BGP_UPDATE);
 
-    startnlri_r(msg);
+    startnlri_r(vm->bgp);
     vm_accumulate_nlri(vm);
 }
 
 void vm_exec_all_nlri_insert(filter_vm_t *vm)
 {
-    bgp_msg_t *msg = vm->bgp;
-    if (unlikely(!msg))
-        vm_abort(vm, VM_PACKET_MISMATCH);
+    vm_require_bgp_type(vm, BGP_UPDATE);
 
-    startallnlri_r(msg);
+    startallnlri_r(vm->bgp);
     vm_insert_nlri(vm);
 }
 
 void vm_exec_nlri_insert(filter_vm_t *vm)
 {
-    bgp_msg_t *msg = vm->bgp;
-    if (unlikely(!msg))
-        vm_abort(vm, VM_PACKET_MISMATCH);
+    vm_require_bgp_type(vm, BGP_UPDATE);
 
-    startnlri_r(msg);
+    startnlri_r(vm->bgp);
     vm_insert_nlri(vm);
 }
 
@@ -455,20 +457,20 @@ void vm_exec_exact(filter_vm_t *vm)
 }
 
 void vm_exec_subn(filter_vm_t *vm)
-{/*
+{
     while (vm->si > 0) {
         stack_cell_t *cell = vm_pop(vm);
         netaddr_t *addr = &cell->addr;
         switch (addr->family) {
         case AF_INET:
-            if (patsearchsubnet(vm->curtrie, addr)) {
+            if (patchecksubnetsofn(vm->curtrie, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
             }
             break;
         case AF_INET6:
-            if (patsearchsubnet(vm->curtrie6, addr)) {
+            if (patchecksubnetsofn(vm->curtrie6, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
@@ -480,24 +482,24 @@ void vm_exec_subn(filter_vm_t *vm)
         }
     }
 
-    vm_pushvalue(vm, false);*/
+    vm_pushvalue(vm, false);
 }
 
 void vm_exec_supern(filter_vm_t *vm)
-{/*
+{
     while (vm->si > 0) {
         stack_cell_t *cell = vm_pop(vm);
         netaddr_t *addr = &cell->addr;
         switch (addr->family) {
         case AF_INET:
-            if (patsearchexactn(vm->curtrie, addr)) {
+            if (patchecksupernetsofn(vm->curtrie, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
             }
             break;
         case AF_INET6:
-            if (patsearchexactn(vm->curtrie6, addr)) {
+            if (patchecksupernetsofn(vm->curtrie6, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
@@ -509,25 +511,25 @@ void vm_exec_supern(filter_vm_t *vm)
         }
     }
 
-    vm_pushvalue(vm, false);*/
+    vm_pushvalue(vm, false);
 }
 
 
 void vm_exec_reltd(filter_vm_t *vm)
-{/*
+{
     while (vm->si > 0) {
         stack_cell_t *cell = vm_pop(vm);
         netaddr_t *addr = &cell->addr;
         switch (addr->family) {
         case AF_INET:
-            if (patsearchexactn(vm->curtrie, addr)) {
+            if (patcheckrelatedofn(vm->curtrie, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
             }
             break;
         case AF_INET6:
-            if (patsearchexactn(vm->curtrie6, addr)) {
+            if (patcheckrelatedofn(vm->curtrie6, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
@@ -539,7 +541,7 @@ void vm_exec_reltd(filter_vm_t *vm)
         }
     }
 
-    vm_pushvalue(vm, false);*/
+    vm_pushvalue(vm, false);
 }
 
 static int filter_execute(filter_vm_t *vm)
@@ -801,8 +803,7 @@ int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm)
     vm->bgp = NULL;
     vm->mrt = msg;
 
-    const mrt_header_t *hdr = getmrtheader_r(msg);
-    if (hdr->type == MRT_BGP4MP || hdr->type == MRT_BGP4MP_ET) {
+    if (isbgpwrapper_r(msg)) {
         // MRT wraps a BGP packet, extract it to enable BGP filtering
         void *data;
         size_t n;
@@ -818,7 +819,11 @@ int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm)
         vm->bgp = &bgp;
     }
 
-    return filter_execute(vm);
+    int result = filter_execute(vm);
+    if (vm->bgp)
+        bgpclose_r(vm->bgp);
+
+    return result;
 }
 
 int mrt_filter(filter_vm_t *vm)
