@@ -102,6 +102,17 @@ trienode_t** patgetsupernetsofn(const patricia_trie_t *pt, const netaddr_t *pref
 trienode_t** patgetsupernetsofc(const patricia_trie_t *pt, const char *cprefix);
 
 /**
+ * @brief Check if supernets of a prefix
+ *
+ * @return 1 if the provided prefix is supernet of any patricia prefix,
+ * 0 otherwise
+ *
+ */
+int patchecksupernetsofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+
+int patchecksupernetsofc(const patricia_trie_t *pt, const char *cprefix);
+
+/**
  * @brief Subnets of a prefix
  *
  * @return The subnets of the provided prefix
@@ -115,6 +126,17 @@ trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix
 trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix);
 
 /**
+ * @brief Check subnet of a prefix
+ *
+ * @return 1 if the provided prefix is subnet of any patricia prefix,
+ * 0 otherwise
+ *
+ */
+int patchecksubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+
+int patchecksubnetsofc(const patricia_trie_t *pt, const char *cprefix);
+
+/**
  * @brief Related of a prefix
  *
  * @return The related prefixes of the provided prefix
@@ -126,6 +148,16 @@ trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix);
 trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix);
 
 trienode_t** patgetrelatedofc(const patricia_trie_t *pt, const char *cprefix);
+
+/**
+ * @brief Check if related of a prefix
+ *
+ * @return 1 if the provided prefix is related to any of the patricia prefixes,
+ * 0 otherwise
+ */
+int patcheckrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+
+int patcheckrelatedofc(const patricia_trie_t *pt, const char *cprefix);
 
 /**
  * @brief Coverage of prefixes

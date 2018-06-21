@@ -70,6 +70,9 @@ int main(void)
 
     if (!CU_add_test(suite, "test patricia get functions", testpatgetfuncs))
         goto error;
+        
+    if (!CU_add_test(suite, "test patricia check functions", testpatcheckfuncs))
+        goto error;
 
     if (!CU_add_test(suite, "test patricia iterator", testpatiterator))
         goto error;

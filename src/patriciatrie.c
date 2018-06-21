@@ -149,7 +149,7 @@ static int patcompwithmask(const netaddr_t *addr, const netaddr_t *dest, int mas
         if (((mask & 0x7) == 0) || ((addr->bytes[n] & m) == (dest->bytes[n] & m)))
             return 1;
     }
-    
+
     return 0;
 }
 
@@ -183,14 +183,13 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         int bit = (n->prefix.bitlen < maxbits) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> n->prefix.bitlen & 0x07));
         if (n->children[bit] == NULL)
             break;
-            
+
         n = n->children[bit];
     }
-    
-    
+
     int check_bit = (n->prefix.bitlen < prefix->bitlen) ? n->prefix.bitlen : prefix->bitlen;
     int differ_bit = 0;
-    
+
     int r;
     for (int i = 0, z = 0; z < check_bit; i++, z += 8) {
         if ((r = (prefix->bytes[i] ^ n->prefix.bytes[i])) == 0) {
@@ -207,7 +206,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         differ_bit = z + j;
         break;
     }
-    
+
     if (differ_bit > check_bit)
         differ_bit = check_bit;
 
@@ -216,7 +215,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         n = parent;
         parent = getpnodeparent(n);
     }
-    
+
     if (differ_bit == prefix->bitlen && n->prefix.bitlen == prefix->bitlen) {
         if (ispnodeglue(n))
             return &n->pub;
@@ -227,17 +226,17 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
 
         return &n->pub;
     }
-    
+
     pnode_t *newnode = getfreenode(pt);
     if (unlikely(!newnode))
         return NULL;
 
     pnodeinit(newnode, prefix);
     pt->nprefs++;
-   
+
     if (n->prefix.bitlen == differ_bit) {
         setpnodeparent(newnode, n);
-        
+
         int bit = (n->prefix.bitlen < maxbits) && (prefix->bytes[n->prefix.bitlen >> 3] & 0x80 >> (n->prefix.bitlen & 0x07));
         n->children[bit] = newnode;
 
@@ -245,12 +244,12 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
 
         return &newnode->pub;
     }
-    
+
     if (n->prefix.bitlen == differ_bit) {
         int bit = (prefix->bitlen < maxbits) && (n->prefix.bytes[n->prefix.bitlen >> 3] & 0x80 >> (prefix->bitlen & 0x07));
         newnode->children[bit] = n;
         setpnodeparent(newnode, n);
-        
+
         if (!getpnodeparent(n)) {
             pt->head = newnode;
         } else if (getpnodeparent(n)->children[1] == n) {
@@ -262,7 +261,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         pnode_t *glue = getfreenode(pt);
         if (unlikely(!glue))
             return NULL;
-            
+
         pnodeinit(glue, NULL);
         glue->prefix.bitlen = differ_bit;
         setpnodeglue(glue);
@@ -283,7 +282,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
 
         setpnodeparent(n, glue);
     }
-    
+
     *inserted = PREFIX_INSERTED;
 
     return &newnode->pub;
@@ -304,7 +303,7 @@ trienode_t* patsearchexactn(const patricia_trie_t *pt, const netaddr_t *prefix)
         return NULL;
 
     pnode_t *n = pt->head;
-    
+
     while (n->prefix.bitlen < prefix->bitlen) {
         int bit = (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
         n = n->children[bit];
@@ -312,7 +311,7 @@ trienode_t* patsearchexactn(const patricia_trie_t *pt, const netaddr_t *prefix)
         if (!n)
             return NULL;
     }
-    
+
     if (n->prefix.bitlen > prefix->bitlen || ispnodeglue(n))
         return NULL;
 
@@ -327,7 +326,7 @@ trienode_t* patsearchexactc(const patricia_trie_t *pt, const char *cprefix)
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return NULL;
-    
+
     return patsearchexactn(pt, &prefix);
 }
 
@@ -335,10 +334,10 @@ trienode_t* patsearchbestn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
     if (!pt->head)
         return NULL;
-    
+
     pnode_t *n = pt->head;
     pnode_t *last = NULL;
-    
+
     while (n->prefix.bitlen < prefix->bitlen) {
         if (!ispnodeglue(n)) {
             if ((n->prefix.bitlen <= prefix->bitlen) && (patcompwithmask(&n->prefix, prefix, n->prefix.bitlen)))
@@ -346,14 +345,14 @@ trienode_t* patsearchbestn(const patricia_trie_t *pt, const netaddr_t *prefix)
             else
                 break;
         }
-        
+
         int bit = ((prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07))) != 0);
         n = n->children[bit];
-        
+
         if (!n)
             break;
     }
-    
+
     return &last->pub;
 }
 
@@ -362,48 +361,48 @@ trienode_t* patsearchbestc(const patricia_trie_t *pt, const char *cprefix)
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return NULL;
-    
+
     return patsearchbestn(pt, &prefix);
 }
 
 void* patremoven(patricia_trie_t *pt, const netaddr_t *prefix)
 {
     pnode_t *n = (pnode_t*)patsearchexactn(pt, prefix);
-    
+
     pt->nprefs--;
-    
+
     if (!n)
         return NULL;
-        
+
     void* payload = n->payload;
-    
+
     if (n->children[0] && n->children[1]) {
         putfreenode(pt, n);
         setpnodeglue(n);
         return payload;
     }
-    
+
     pnode_t *parent;
     pnode_t *child;
-    
+
     if (!n->children[0] && !n->children[1]) {
         parent = getpnodeparent(n);
         putfreenode(pt, n);
-        
+
         if (!parent) {
             pt->head = NULL;
             return payload;
         }
-        
+
         int bit = (parent->children[1] == n);
         parent->children[bit] = NULL;
         child = parent->children[!bit];
-        
+
         if (!ispnodeglue(parent))
             return payload;
-            
+
         // if here, the parent is glue then we need to remove the parent too
-        
+
         if (!getpnodeparent(parent)) {
             pt->head = child;
         } else {
@@ -412,27 +411,26 @@ void* patremoven(patricia_trie_t *pt, const netaddr_t *prefix)
         }
         setpnodeparent(child, getpnodeparent(parent));
         putfreenode(pt, parent);
-        
+
         return payload;
     }
-    
-    
+
     int bit = (n->children[1] != NULL);
     child = n->children[bit];
-    
+
     parent = getpnodeparent(n);
     setpnodeparent(child, parent);
-    
+
     putfreenode(pt, n);
-    
+
     if (!parent) {
         pt->head = child;
         return payload;
     }
-    
+
     bit = (parent->children[1] == n);
     parent->children[bit] = child;
-    
+
     return payload;
 }
 
@@ -441,7 +439,7 @@ void* patremovec(patricia_trie_t *pt, const char *cprefix)
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return NULL;
-    
+
     return patremoven(pt, &prefix);
 }
 
@@ -451,9 +449,9 @@ trienode_t** patgetsupernetsofn(const patricia_trie_t *pt, const netaddr_t *pref
         return NULL;
 
     pnode_t *n = pt->head;
-    
+
     trienode_t **res = calloc(1, (prefix->bitlen + 2) * sizeof(trienode_t *));
-    
+
     int i = 0;
 
     while (n && n->prefix.bitlen < prefix->bitlen) {
@@ -469,12 +467,12 @@ trienode_t** patgetsupernetsofn(const patricia_trie_t *pt, const netaddr_t *pref
         int bit = (n->prefix.bitlen < patmaxbits(pt)) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
         n = n->children[bit];
     }
-    
+
     if (n && !ispnodeglue(n) && n->prefix.bitlen <= prefix->bitlen && patcompwithmask(&n->prefix, prefix, prefix->bitlen))
         res[i++] = &n->pub;
-    
+
     res[i] = NULL;
-    
+
     return res;
 }
 
@@ -483,22 +481,56 @@ trienode_t** patgetsupernetsofc(const patricia_trie_t *pt, const char *cprefix)
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return NULL;
-    
+
     return patgetsupernetsofn(pt, &prefix);
+}
+
+int patchecksupernetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
+{
+    if (!pt->head)
+        return 0;
+
+    pnode_t *n = pt->head;
+
+    while (n && n->prefix.bitlen < prefix->bitlen) {
+        if (!ispnodeglue(n)) {
+            if (n->prefix.bitlen < patmaxbits(pt) && patcompwithmask(&n->prefix, prefix, n->prefix.bitlen))
+                return 1;
+            else
+                return 0;
+        }
+
+        int bit = (n->prefix.bitlen < patmaxbits(pt)) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
+        n = n->children[bit];
+    }
+
+    if (n && !ispnodeglue(n) && n->prefix.bitlen <= prefix->bitlen && patcompwithmask(&n->prefix, prefix, prefix->bitlen))
+        return 1;
+
+    return 0;
+}
+
+int patchecksupernetsofc(const patricia_trie_t *pt, const char *cprefix)
+{
+    netaddr_t prefix;
+    if (stonaddr(&prefix, cprefix) != 0)
+        return 0;
+
+    return patchecksupernetsofn(pt, &prefix);
 }
 
 trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
     if (!pt->head)
         return NULL;
-    
+
     pnode_t *start = pt->head;
-    
+
     while (start && start->prefix.bitlen < prefix->bitlen) {
         int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen & 0x07));
         start = start->children[bit];
     }
-    
+
     uint64_t n;
     if (prefix->family == AF_INET || prefix->bitlen >= 96) {
         n = (1ull << (patmaxbits(pt) - prefix->bitlen));
@@ -507,15 +539,15 @@ trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix
     } else {
         n = pt->nprefs;
     }
-    
+
     n++;
-    
+
     trienode_t **res = calloc(1, n*sizeof(trienode_t*));
-    
+
     int i = 0;
-    
+
     pnode_t *node;
-    
+
     pnode_t *stack[patmaxbits(pt)+1];
     pnode_t **sp = stack;
     pnode_t *next = start;
@@ -527,7 +559,7 @@ trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix
                 break;
             }
         }
-        
+
         if (next->children[0]) {
             if (next->children[1]) {
                 *sp++ = next->children[1];
@@ -541,9 +573,9 @@ trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix
             next = NULL;
         }
     }
-    
+
     res[i] = NULL;
-    
+
     return res;
 }
 
@@ -552,17 +584,68 @@ trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix)
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return NULL;
-    
+
     return patgetsubnetsofn(pt, &prefix);
+}
+
+int patchecksubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
+{
+    if (!pt->head)
+        return 0;
+
+    pnode_t *start = pt->head;
+
+    while (start && start->prefix.bitlen < prefix->bitlen) {
+        int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen & 0x07));
+        start = start->children[bit];
+    }
+
+    pnode_t *node;
+
+    pnode_t *stack[patmaxbits(pt)+1];
+    pnode_t **sp = stack;
+    pnode_t *next = start;
+    while ((node = next)) {
+        if (!ispnodeglue(node)) {
+            if (patcompwithmask(&node->prefix, prefix, prefix->bitlen))
+                return 1;
+
+            break;
+        }
+
+        if (next->children[0]) {
+            if (next->children[1]) {
+                *sp++ = next->children[1];
+            }
+            next = next->children[0];
+        } else if (next->children[1]) {
+            next = next->children[1];
+        } else if (sp != stack) {
+            next = *(sp--);
+        } else {
+            next = NULL;
+        }
+    }
+
+    return 0;
+}
+
+int patchecksubnetsofc(const patricia_trie_t *pt, const char *cprefix)
+{
+    netaddr_t prefix;
+    if (stonaddr(&prefix, cprefix) != 0)
+        return 0;
+
+    return patchecksubnetsofn(pt, &prefix);
 }
 
 trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
     if (!pt->head)
         return NULL;
-    
+
     pnode_t *start = pt->head;
-    
+
     uint64_t n;
     if (prefix->family == AF_INET || prefix->bitlen >= 96) {
         n = (1ull << (patmaxbits(pt) - prefix->bitlen));
@@ -571,11 +654,11 @@ trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix
     } else {
         n = pt->nprefs;
     }
-    
+
     n += prefix->bitlen + 3;
-    
+
     trienode_t **res = calloc(1, n*sizeof(trienode_t*));
-    
+
     int i = 0;
     while (start && start->prefix.bitlen < prefix->bitlen) {
         if (!ispnodeglue(start)) {
@@ -585,11 +668,11 @@ trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix
                 return res;
             }
         }
-        
+
         int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen) & 0x07);
         start = start->children[bit];
     }
-    
+
     pnode_t *node;
     pnode_t *stack[patmaxbits(pt)+1];
     pnode_t **sp = stack;
@@ -602,7 +685,7 @@ trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix
                 break;
             }
         }
-        
+
         if (next->children[0]) {
             if (next->children[1]) {
                 *sp++ = next->children[1];
@@ -616,11 +699,11 @@ trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix
             next = NULL;
         }
     }
-    
+
     res[i] = NULL;
-    
+
     return res;
-    
+
 }
 
 trienode_t** patgetrelatedofc(const patricia_trie_t *pt, const char *cprefix)
@@ -628,19 +711,72 @@ trienode_t** patgetrelatedofc(const patricia_trie_t *pt, const char *cprefix)
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return NULL;
-    
+
     return patgetrelatedofn(pt, &prefix);
+}
+
+int patcheckrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
+{
+    if (!pt->head)
+        return 0;
+
+    pnode_t *start = pt->head;
+
+    while (start && start->prefix.bitlen < prefix->bitlen) {
+        if (!ispnodeglue(start)) {
+            if (patcompwithmask(&start->prefix, prefix, start->prefix.bitlen))
+                return 1;
+        }
+
+        int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen) & 0x07);
+        start = start->children[bit];
+    }
+
+    pnode_t *node;
+    pnode_t *stack[patmaxbits(pt)+1];
+    pnode_t **sp = stack;
+    pnode_t *next = start;
+    while ((node = next)) {
+        if (!ispnodeglue(node)) {
+            if (patcompwithmask(&node->prefix, prefix, prefix->bitlen))
+                return 1;
+        }
+
+        if (next->children[0]) {
+            if (next->children[1]) {
+                *sp++ = next->children[1];
+            }
+            next = next->children[0];
+        } else if (next->children[1]) {
+            next = next->children[1];
+        } else if (sp != stack) {
+            next = *(sp--);
+        } else {
+            next = NULL;
+        }
+    }
+
+    return 0;
+}
+
+int patcheckrelatedofc(const patricia_trie_t *pt, const char *cprefix)
+{
+    netaddr_t prefix;
+    if (stonaddr(&prefix, cprefix) != 0)
+        return 0;
+
+    return patcheckrelatedofn(pt, &prefix);
 }
 
 uint128_t patcoverage(const patricia_trie_t *pt)
 {
     uint128_t coverage = UINT128_ZERO;
-    
+
     pnode_t *n;
     pnode_t *stack[patmaxbits(pt) + 1];
     pnode_t **sp = stack;
     pnode_t *next = pt->head;
-    
+
     while ((n = next)) {
         if (!ispnodeglue(n) && n->prefix.bitlen != 0) {
             coverage = u128add(coverage, u128shl(UINT128_ONE, (patmaxbits(pt) - n->prefix.bitlen)));
@@ -648,10 +784,10 @@ uint128_t patcoverage(const patricia_trie_t *pt)
                 next = *(--sp);
             else
                 next = NULL;
-            
+
             continue;
         }
-        
+
         if (next->children[0]) {
             if (next->children[1])
                 *sp++ = next->children[1];
@@ -664,7 +800,7 @@ uint128_t patcoverage(const patricia_trie_t *pt)
             next = NULL;
         }
     }
-    
+
     return coverage;
 }
 
@@ -672,7 +808,7 @@ trienode_t** patgetfirstsubnetsofn(const patricia_trie_t *pt, const netaddr_t *p
 {
     if (!pt->head)
         return NULL;
-    
+
     pnode_t *node = pt->head;
 
     while (node && node->prefix.bitlen < prefix->bitlen) {
@@ -692,11 +828,11 @@ trienode_t** patgetfirstsubnetsofn(const patricia_trie_t *pt, const netaddr_t *p
     } else {
         n = pt->nprefs;
     }
-    
+
     n++;
-    
+
     trienode_t **res = calloc(1, n*sizeof(trienode_t*));
-    
+
     int i = 0;
     while ((node = next)) {
         if (!ispnodeglue(node) && node->prefix.bitlen != 0) {
@@ -705,10 +841,10 @@ trienode_t** patgetfirstsubnetsofn(const patricia_trie_t *pt, const netaddr_t *p
                 next = *(--sp);
             else
                 next = NULL;
-            
+
             continue;
         }
-        
+
         if (next->children[0]) {
             if (next->children[1])
                 *sp++ = next->children[1];
@@ -721,9 +857,9 @@ trienode_t** patgetfirstsubnetsofn(const patricia_trie_t *pt, const netaddr_t *p
             next = NULL;
         }
     }
-    
+
     res[i] = NULL;
-    
+
     return res;
 }
 
@@ -732,7 +868,7 @@ trienode_t** patgetfirstsubnetsofc(const patricia_trie_t *pt, const char *cprefi
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return NULL;
-    
+
     return patgetfirstsubnetsofn(pt, &prefix);
 }
 
@@ -742,7 +878,7 @@ void patiteratormovenext(patiterator_t *state)
 {
     pnode_t *l = state->curr->children[0];
     pnode_t *r = state->curr->children[1];
-    
+
     if (l) {
         if (r) {
             *state->sp++ = r;

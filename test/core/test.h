@@ -51,6 +51,8 @@ void testpatbase(void);
 
 void testpatgetfuncs(void);
 
+void testpatcheckfuncs(void);
+
 void testpatiterator(void);
 
 void testpatcoverage(void);
