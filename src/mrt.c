@@ -211,6 +211,26 @@ static int setuppitable(mrt_msg_t *msg, mrt_msg_t *pi)
     return MRT_ENOERR;
 }
 
+int ismrtext(void)
+{
+    return ismrtext_r(&curmsg);
+}
+
+int ismrtext_r(mrt_msg_t *msg)
+{
+    return (msg->flags & (F_RD | F_IS_EXT)) == (F_RD | F_IS_EXT);
+}
+
+int isbgpwrapper(void)
+{
+    return isbgpwrapper_r(&curmsg);
+}
+
+int isbgpwrapper_r(mrt_msg_t* msg)
+{
+    return (msg->flags & (F_RD | F_WRAPS_BGP)) == (F_RD | F_WRAPS_BGP);
+}
+
 int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi)
 {
     if (likely((msg->flags & F_NEEDS_PI) && (pi->flags & F_IS_PI)))
@@ -231,8 +251,6 @@ int setmrtread(const void *data, size_t n)
 int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
 {
     assert(n <= UINT32_MAX);
-    if (msg->flags & F_RDWR)
-        mrtclose_r(msg);
 
     int res = readmrtheader(msg, data);
     if (unlikely(res != MRT_ENOERR))
@@ -278,9 +296,6 @@ int setmrtreadfrom(io_rw_t *io)
 
 int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
 {
-    if (msg->flags & F_RDWR)
-        mrtclose_r(msg);
-
     unsigned char hdr[MRT_HDRSIZ];
     if (io->read(io, hdr, sizeof(hdr)) != sizeof(hdr))
         return MRT_EIO;
@@ -365,15 +380,11 @@ int mrtclosepi(void)
 
 int mrtclose_r(mrt_msg_t *msg)
 {
-    int err = MRT_ENOERR;
-    if (msg->flags & F_RDWR) {
-        err = mrterror_r(msg);
-        if (unlikely(msg->buf != msg->fastbuf))
-            free(msg->buf);
+    int err = mrterror_r(msg);
+    if (unlikely(msg->buf != msg->fastbuf))
+        free(msg->buf);
 
-        // memset(msg, 0, sizeof(*msg));  // XXX: optimize
-        msg->flags = 0;
-    }
+    // memset(msg, 0, sizeof(*msg));  // XXX: optimize
     return err;
 }
 
@@ -558,7 +569,6 @@ int setribpi(void)
         return MRT_NOTPEERIDX;
 
     memcpy(&curpimsg, &curmsg, sizeof(curmsg));
-    curmsg.flags = 0;
     return MRT_ENOERR;
 }
 
@@ -833,7 +843,7 @@ void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn)
 {
     if (unlikely(msg->flags & F_RD) == 0)
         msg->err = MRT_EINVOP;
-    if (unlikely((msg->flags & F_IS_BGP) == 0))
+    if (unlikely((msg->flags & F_WRAPS_BGP) == 0))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return NULL;

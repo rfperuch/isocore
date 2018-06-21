@@ -183,8 +183,6 @@ int setbgpread(const void *data, size_t n, int flags)
 int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n, int flags)
 {
     assert(n <= UINT16_MAX);
-    if (msg->flags & F_RDWR)
-        bgpclose_r(msg);
 
     msg->flags = F_RD;
     msg->err = BGP_ENOERR;
@@ -227,9 +225,6 @@ int setbgpreadfrom(io_rw_t *io)
 
 int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io)
 {
-    if (msg->flags & F_RDWR)
-        bgpclose_r(msg);
-
     unsigned char hdr[BASE_PACKET_LENGTH];
     if (io->read(io, hdr, sizeof(hdr)) != sizeof(hdr))
         return BGP_EIO;
@@ -269,9 +264,6 @@ int setbgpwrite(int type)
 
 int setbgpwrite_r(bgp_msg_t *msg, int type)
 {
-    if (msg->flags & F_RDWR)
-        bgpclose_r(msg);
-
     if (unlikely(type < 0 || (unsigned int) type >= nelems(bgp_minlengths)))
         return BGP_EBADTYPE;
 
@@ -365,15 +357,11 @@ int bgpclose(void)
 
 int bgpclose_r(bgp_msg_t *msg)
 {
-    int err = BGP_ENOERR;
-    if (msg->flags & F_RDWR) {
-        err = bgperror_r(msg);
-        if (msg->buf != msg->fastbuf && (msg->flags & F_SH) == 0)
-            free(msg->buf);
+    int err = bgperror_r(msg);
+    if (msg->buf != msg->fastbuf && (msg->flags & F_SH) == 0)
+        free(msg->buf);
 
-        // memset(msg, 0, sizeof(*msg) - BGPBUFSIZ); XXX: optimize
-        msg->flags = 0;
-    }
+    // memset(msg, 0, sizeof(*msg) - BGPBUFSIZ); XXX: optimize
     return err;
 }
 

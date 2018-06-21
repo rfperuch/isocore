@@ -268,6 +268,14 @@ mrt_msg_t *getmrt(void);
 
 mrt_msg_t *getmrtpi(void);
 
+int ismrtext(void);
+
+int ismrtext_r(mrt_msg_t *msg);
+
+int isbgpwrapper(void);
+
+int isbgpwrapper_r(mrt_msg_t *msg);
+
 int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi);
 
 int mrterror_r(mrt_msg_t *msg);
