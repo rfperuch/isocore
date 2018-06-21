@@ -44,6 +44,11 @@
 enum {
     K_MAX = 32,  // maximum user-defined filter constants
 
+    K_PEER_ADDR,
+    K_PEER_AS,
+
+    KBASESIZ,  // base size for known variables
+
     KBUFSIZ = 64,
     STACKBUFSIZ = 256,
 
@@ -73,6 +78,11 @@ typedef union {
     ex_community_t excomm;
     large_community_t lrgcomm;
     int value;
+    struct {
+        unsigned int base;
+        unsigned int nels;
+        unsigned int elsiz;
+    };
 } stack_cell_t;
 
 typedef uint16_t bytecode_t;
@@ -110,8 +120,12 @@ typedef struct filter_vm_s {
     stack_cell_t kbuf[KBUFSIZ];
     patricia_trie_t triebuf[2];
     bytecode_t *code;
-    jmp_buf except;
+    void *heap;
+    unsigned int highwater;
+    unsigned int dynmarker;
+    unsigned int heapsiz;
     int error;
+    jmp_buf except;
 } filter_vm_t;
 
 typedef struct {
@@ -133,7 +147,8 @@ enum {
     VM_ILLEGAL_OPCODE   = -10,
     VM_BAD_BLOCK        = -11,
     VM_BLOCKS_OVERFLOW  = -12,
-    VM_SURPRISING_BYTES = -13
+    VM_SURPRISING_BYTES = -13,
+    VM_BAD_ARRAY        = -14
 };
 
 inline char *filter_strerror(int err)
@@ -170,6 +185,8 @@ inline char *filter_strerror(int err)
         return "Blocks overflow, too many nested blocks";
     case VM_SURPRISING_BYTES:
         return "Sorry, I cannot make sense of these bytes";
+    case VM_BAD_ARRAY:
+        return "Array access out of bounds";
     default:
         return "<Unknown error>";
     }
@@ -192,15 +209,14 @@ int filter_compilev(filter_vm_t *vm, const char *program, va_list va);
 
 int filter_compile(filter_vm_t *vm, const char *program, ...);
 
-int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm, match_result_t *results, size_t *nresults);
+int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm);
 
-int mrt_filter(filter_vm_t *vm, match_result_t *results, size_t *nresults);
+int mrt_filter(filter_vm_t *vm);
 
-int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm, match_result_t *results, size_t *nresults);
+int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm);
 
-int bgp_filter(filter_vm_t *vm, match_result_t *results, size_t *nresults);
+int bgp_filter(filter_vm_t *vm);
 
 void filter_destroy(filter_vm_t *vm);
 
 #endif
-

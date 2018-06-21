@@ -1,4 +1,5 @@
 #include <isolario/netaddr.h>
+#include <isolario/strutil.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,7 +30,7 @@ int stonaddr(netaddr_t *ip, const char *s)
 
     void *dst = &ip->sin;
     unsigned int maxbitlen = 32;
-    
+
     if (af == AF_INET6) {
         dst = &ip->sin6;
         dst = &ip->sin6;
@@ -71,14 +72,17 @@ int stonaddr(netaddr_t *ip, const char *s)
 
 char* naddrtos(const netaddr_t* ip, int mode)
 {
-    static _Thread_local char buf[INET6_ADDRSTRLEN + 5];
-    
+    static _Thread_local char buf[INET6_ADDRSTRLEN + 1 + digsof(ip->bitlen) + 1];
+
     if (inet_ntop(ip->family, &ip->sin, buf, sizeof(buf)) == NULL)
         return "invalid";
-    
-    if (mode == NADDR_CIDR)
-        sprintf(buf + strlen(buf), "/%d", ip->bitlen);
-    
+
+    if (mode == NADDR_CIDR) {
+        char *ptr = buf + strlen(buf);
+
+        *ptr++ = '/';
+        utoa(ptr, NULL, ip->bitlen);
+    }
     return buf;
 }
 

@@ -37,6 +37,7 @@
 #include <isolario/util.h>
 #include <limits.h>
 #include <lz4frame.h>
+#include <lzma.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -49,17 +50,29 @@
 
 size_t io_fread(io_rw_t *io, void *dst, size_t n)
 {
+#ifdef __GNUC__
+    return fread_unlocked(dst, 1, n, io->file);
+#else
     return fread(dst, 1, n, io->file);
+#endif
 }
 
 size_t io_fwrite(io_rw_t *io, const void *src, size_t n)
 {
+#ifdef __GNUC__
+    return fwrite_unlocked(src, 1, n, io->file);
+#else
     return fwrite(src, 1, n, io->file);
+#endif
 }
 
 int io_ferror(io_rw_t *io)
 {
+#ifdef __GNUC__
+    return ferror_unlocked(io->file);
+#else
     return ferror(io->file);
+#endif
 }
 
 int io_fclose(io_rw_t *io)
@@ -261,17 +274,17 @@ io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...)
     int wbits = 15;
     switch (z->mode) {
     case 'r':
-        if (*mode == '*')
-            wbits = va_arg(va, int);
-        else if (isdigit(*mode))
-            wbits = atoi(mode);
-
+        mode++;
         break;
     case 'w':
-        if (*mode == '*')
+        if (*mode == '*') {
             compression = va_arg(va, int);
-        else if (isdigit(*mode))
+            mode++;
+        } else if (isdigit((unsigned char) *mode)) {
             compression = atoi(mode);
+
+            do mode++; while (isdigit((unsigned char) *mode));
+        }
 
         break;
     default:
@@ -280,12 +293,43 @@ io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...)
         goto fail;
     }
 
+    // normalize compression level
+    compression = clamp(compression, 1, 9);
+
+    // additional arguments
+    if (*mode == 'b') {
+        // manual specification of window bits
+        mode++;
+        if (*mode == '*') {
+            wbits = va_arg(va, int);
+            mode++;
+        } else if (isdigit((unsigned char) *mode)) {
+            wbits = atoi(mode);
+
+            do mode++; while (isdigit((unsigned char) *mode));
+        }
+    }
+
+    // normalize window bits
+    wbits = clamp(wbits, 8, 15);
+    switch (*mode) {
+    case 'd':
+        // use the original deflate format RFC 1951
+        wbits = -wbits;
+        break;
+    case 'z':
+        // use the zlib format RFC 1950
+        break;
+    case 'g':
+    default:
+        // support gzip compression (default) RFC 1952
+        wbits += 16;
+        break;
+    }
+
     va_end(va);
 
-    // normalize arguments for Zlib
-    compression = clamp(compression, 1, 9);
-    wbits       = clamp(wbits, 8, 15);
-
+    // open stream
     z_stream *str = &z->stream;
     memset(str, 0, sizeof(*str));
 
@@ -293,7 +337,7 @@ io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...)
     if (z->mode == 'r') {
         err = inflateInit2(str, wbits);
     } else {
-        err = deflateInit(str, compression);
+        err = deflateInit2(str, compression, Z_DEFLATED, wbits, 8, Z_DEFAULT_STRATEGY);
 
         str->next_out  = z->buf;
         str->avail_out = z->bufsiz;
@@ -553,6 +597,241 @@ fail:
     return NULL;
 }
 
+// xz (LZMA) ==================================================================
+
+typedef struct {
+    int fd;
+    lzma_ret err;
+    int mode;  // either 'r' or 'w'
+    int bufsiz;
+    lzma_stream stream;
+    unsigned char buf[];  // bufsiz large
+} io_xzstate;
+
+static size_t io_xzread(io_rw_t *io, void *dst, size_t n)
+{
+    io_xzstate *xz = io_getstate(io);
+    if (unlikely(xz->err != LZMA_OK))
+        return 0;
+
+    lzma_stream *str = &xz->stream;
+    str->next_out = dst;
+    str->avail_out = n;
+    while (str->avail_out > 0) {
+        if (str->avail_in == 0) {
+            ssize_t nr = read(xz->fd, xz->buf, xz->bufsiz);
+            if (nr < 0) {
+                xz->err = errno;
+                break;
+            }
+            if (nr == 0)
+                break;  // EOF
+
+            str->next_in = xz->buf;
+            str->avail_in = nr;
+        }
+
+        lzma_ret err = lzma_code(str, LZMA_RUN);
+        if (unlikely(err != LZMA_OK && err != LZMA_STREAM_END)) {
+            xz->err = err;
+            break;
+        }
+    }
+    return n - str->avail_out;
+}
+
+static size_t io_xzwrite(io_rw_t *io, const void *src, size_t n)
+{
+    io_xzstate *xz = io_getstate(io);
+    if (unlikely(xz->err != LZMA_OK))
+        return 0;
+
+    lzma_stream *str = &xz->stream;
+
+    str->next_in  = (void *) src;
+    str->avail_in = n;
+    while (str->avail_in > 0) {
+        if (str->avail_out == 0) {
+            ssize_t nw = write(xz->fd, xz->buf, xz->bufsiz);
+            if (unlikely(nw < xz->bufsiz)) {
+                xz->err = errno;
+                break;
+            }
+
+            str->next_out  = xz->buf;
+            str->avail_out = xz->bufsiz;
+        }
+
+        int err = lzma_code(str, LZMA_RUN);
+        if (unlikely(err != LZMA_OK)) {
+            xz->err = err;
+            break;
+        }
+    }
+    return n - str->avail_in;
+}
+
+static int io_xzerror(io_rw_t *io)
+{
+    io_xzstate *lz = io_getstate(io);
+    return lz->err;
+}
+
+static int io_xzclose(io_rw_t *io)
+{
+    io_xzstate *xz = io_getstate(io);
+
+    int err = xz->err;
+    lzma_stream *str = &xz->stream;
+
+    switch (xz->mode) {
+    case 'w':
+        if (err == LZMA_OK) {
+            // flush LZMA to disk
+            err = lzma_code(str, LZMA_FINISH);
+            if (err == LZMA_STREAM_END) {
+                ssize_t n = xz->bufsiz - str->avail_out;
+                if (write(xz->fd, xz->buf, n) != n)
+                    err = errno;
+            }
+        }
+
+        // fallthrough
+    case 'r':
+        lzma_end(str);
+        break;
+    default:
+        assert(false);
+        break;
+    }
+
+    if (close(xz->fd) != 0)
+        err = errno;
+
+    free(io);
+    return err;
+}
+
+io_rw_t *io_xzopen(int fd, size_t bufsiz, const char *mode, ...)
+{
+    if (bufsiz == 0)
+        bufsiz = BUFSIZ;
+    if (unlikely(bufsiz > INT_MAX))
+        bufsiz = INT_MAX;  // ssize_t used for Unix I/O is signed, pick safe values
+
+    io_xzstate *xz;
+    io_rw_t *io = malloc(io_getsize(sizeof(*xz) + bufsiz));
+    if (unlikely(!io))
+        return NULL;
+
+    io->read  = io_xzread;
+    io->write = io_xzwrite;
+    io->error = io_xzerror;
+    io->close = io_xzclose;
+
+    xz         = io_getstate(io);
+    xz->fd     = fd;
+    xz->err    = LZMA_OK;
+    xz->mode   = *mode++;
+    xz->bufsiz = bufsiz;
+
+    va_list va;
+
+    uint32_t compression = 6;
+    switch (xz->mode) {
+    case 'r':
+        break;
+
+    case 'w':
+        if (isdigit((unsigned char) *mode)) {
+            compression = atoi(mode);
+
+            do mode++; while (isdigit((unsigned char) *mode));
+        } else if (*mode == '*') {
+            compression = va_arg(va, int);
+
+            mode++;
+        }
+        break;
+
+    default:
+        va_end(va);
+        goto fail;
+    }
+
+    // parse optional arguments
+    char c;
+    uint32_t presets  = 0;
+    uint32_t flags    = 0;
+    uint64_t memusage = UINT64_MAX;
+    lzma_check check  = LZMA_CHECK_CRC64;
+    while ((c = *mode++) != '\0') {
+        switch (c) {
+        case 'e':
+            presets |= LZMA_PRESET_EXTREME;
+            break;
+        case '-':
+            flags |= LZMA_IGNORE_CHECK;
+            check = LZMA_CHECK_NONE;
+            break;
+        case 'c':
+            check = LZMA_CHECK_CRC32;
+            break;
+        case 'C':
+            check = LZMA_CHECK_CRC64;
+            break;
+        case 's':
+            check = LZMA_CHECK_SHA256;
+            break;
+        case '+':
+            // explicit default checksum settings
+            flags &= ~LZMA_IGNORE_CHECK;
+            check = LZMA_CHECK_CRC64;
+            break;
+        case 'm':
+            if (*mode == '*') {
+                memusage = va_arg(va, uint64_t);
+            } else if (isdigit((unsigned char) *mode)) {
+                memusage = atoll(mode);
+
+                do mode++; while (isdigit((unsigned char) *mode));
+            }
+
+            break;
+        default:
+            break;
+        }
+    }
+
+    va_end(va);
+
+    // normalize compression value
+    compression = clamp(compression, 0, 9);
+
+    // setup LZMA stream
+    lzma_stream *str = &xz->stream;
+    memset(str, 0, sizeof(*str));
+
+    int err;
+    if (xz->mode == 'r') {
+        err = lzma_auto_decoder(str, memusage, flags);
+    } else {
+        err = lzma_easy_encoder(str, compression | presets, check);
+
+        str->next_out  = xz->buf;
+        str->avail_out = xz->bufsiz;
+    }
+
+    if (err != LZMA_OK)
+        goto fail;
+
+    return io;
+
+fail:
+    free(io);
+    return NULL;
+}
+
 // LZ4 =========================================================================
 
 typedef struct {
@@ -595,7 +874,7 @@ static LZ4F_errorCode_t io_lz4begincompress(io_lz4state *lz, const LZ4F_preferen
 static ssize_t io_lz4flush(io_lz4state *lz)
 {
     ssize_t size = lz->cbufsiz - lz->cbufavail;
-    
+
     ssize_t n = write(lz->fd, &lz->buf[lz->bufsiz], size);
     if (unlikely(n != size)) {
         lz->err = errno;

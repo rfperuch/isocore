@@ -11,9 +11,9 @@
 void testbgpdumppacketrow(void)
 {
     setbgpwrite(BGP_UPDATE);
-   
+
     unsigned char buf[255];
-    
+
     startbgpattribs();
 
     bgpattr_t *origin = (bgpattr_t *)buf;
@@ -21,7 +21,7 @@ void testbgpdumppacketrow(void)
     origin->len = ORIGIN_LENGTH;
     origin->flags = DEFAULT_ORIGIN_FLAGS;
 
-    setbgporigin(origin, ORIGIN_IGP);
+    setorigin(origin, ORIGIN_IGP);
     putbgpattrib(origin);
 
     struct sockaddr_in nh;
@@ -54,8 +54,8 @@ void testbgpdumppacketrow(void)
 
     size_t pktlen;
     bgpfinish(&pktlen);
-    
+
     bgp_msg_t *pkt = getbgp();
 
-    print_bgp_r(pkt, stdout, "r");
+    printbgp_r(stdout, pkt, "r");
 }

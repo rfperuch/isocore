@@ -33,6 +33,7 @@
 #include <errno.h>
 #include <isolario/branch.h>
 #include <isolario/json.h>
+#include <isolario/strutil.h>
 #include <isolario/util.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -219,8 +220,11 @@ void newjsonvals(json_t **pjson, const char *val)
 void newjsonvalu(json_t **pjson, unsigned long val)
 {
     char buf[digsof(val) + 1];
+    char *end;
 
-    int n = sprintf(buf, "%lu", val);
+    ultoa(buf, &end, val);
+
+    int n     = end - buf;
     int comma = valueneedscomma(*pjson);
 
     json_t *json = jsonensure(pjson, comma + n);
@@ -239,8 +243,11 @@ void newjsonvalu(json_t **pjson, unsigned long val)
 void newjsonvald(json_t **pjson, long val)
 {
     char buf[digsof(val) + 2];
+    char *end;
 
-    int n = sprintf(buf, "%ld", val);
+    ltoa(buf, &end, val);
+
+    int n     = end - buf;
     int comma = valueneedscomma(*pjson);
 
     json_t *json = jsonensure(pjson, comma + n);

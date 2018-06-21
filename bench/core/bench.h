@@ -33,6 +33,14 @@
 
 #include <cbench/cbench.h>
 
+void bcommsprintf(cbench_state_t *state);
+
+void bsprintf(cbench_state_t *state);
+
+void bcommulltoa(cbench_state_t *state);
+
+void bulltoa(cbench_state_t *state);
+
 void bsplit(cbench_state_t *state);
 
 void bjoinv(cbench_state_t *state);

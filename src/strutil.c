@@ -41,6 +41,18 @@ extern unsigned long sdbm(const char *s);
 
 extern unsigned long memsdbm(const void *p, size_t n);
 
+extern char *itoa(char *dst, char **end, int i);
+
+extern char *utoa(char *dst, char **end, unsigned int u);
+
+extern char *ltoa(char *dst, char **end, long l);
+
+extern char *ultoa(char *dst, char **end, unsigned long u);
+
+extern char *lltoa(char *dst, char **end, long long ll);
+
+extern char *ulltoa(char *dst, char **end, unsigned long long u);
+
 static size_t substrcnt(const char *s, const char *substr, size_t *pn)
 {
     if (unlikely(!substr))

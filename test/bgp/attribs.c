@@ -69,7 +69,7 @@ void testcommunityconv(void)
         CU_ASSERT_EQUAL(errno, 0);
         CU_ASSERT_EQUAL(*eptr, '\0');
         CU_ASSERT_EQUAL(c, comm2str[i].expect);
-        CU_ASSERT_STRING_EQUAL(communitytos(c), comm2str[i].str);
+        CU_ASSERT_STRING_EQUAL(communitytos(c, COMMSTR_EX), comm2str[i].str);
     }
 }
 

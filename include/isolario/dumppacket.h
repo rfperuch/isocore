@@ -32,8 +32,24 @@
 #define ISOLARIO_DUMPPACKET_H_
 
 #include <isolario/bgp.h>
+#include <isolario/mrt.h>
+#include <stdarg.h>
 #include <stdio.h>
 
-void print_bgp_r(FILE *out, const bgp_msg_t *pkt, const char *fmt, ...);
+void printbgpv_r(FILE *out, bgp_msg_t *pkt, const char *fmt, va_list va);
+
+void printbgp_r(FILE *out, bgp_msg_t *pkt, const char *fmt, ...);
+
+void printbgpv(FILE *out, const char *fmt, va_list va);
+
+void printbgp(FILE *out, const char *fmt, ...);
+
+void printmrtv_r(FILE *out, mrt_msg_t *pkt, const char *fmt, va_list va);
+
+void printmrt_r(FILE *out, mrt_msg_t *pkt, const char *fmt, ...);
+
+void printmrtv(FILE *out, const char *fmt, va_list va);
+
+void printmrt(FILE *out, const char *fmt, ...);
 
 #endif

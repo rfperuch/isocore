@@ -102,19 +102,6 @@ enum {
     BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH = 11   ///< RFC 8050
 };
 
-/**
- * @brief BGP4MP state change types
- *
- */
-enum {
-    BGP4MP_IDLE = 1,
-    BGP4MP_CONNECT = 2,
-    BGP4MP_ACTIVE = 3,
-    BGP4MP_OPENSENT = 4,
-    BGP4MP_OPENCONFIRM = 5,
-    BGP4MP_ESTABLISHED = 6
-};
-
 typedef struct {
     afi_t afi;
     size_t as_size;
