@@ -234,6 +234,25 @@ char *trimwhites(char *s)
     return s;
 }
 
+char *strpathext(const char *name)
+{
+    const char *ext = NULL;
+
+    int c;
+    while ((c = *name) != '\0') {
+       if (c == '/')
+           ext = NULL;
+       if (c == '.')
+           ext = name;
+
+        name++;
+    }
+    if (!ext)
+        ext = name;
+
+    return (char *) ext;
+}
+
 extern int startswith(const char *s, const char *prefix);
 
 extern int endswith(const char *s, const char *suffix);

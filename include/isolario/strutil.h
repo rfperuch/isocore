@@ -290,6 +290,9 @@ char *joinstrv(const char *delim, ...);
 /// @brief Trim leading and trailing whitespaces from string, operates in-place.
 char *trimwhites(char *s);
 
+/// @brief Return file extension, including leading '.', \a NULL if no extension is found.
+char *strpathext(const char *name);
+
 /// @brief Check whether a string starts with a specific prefix.
 inline int startswith(const char *s, const char *prefix)
 {
