@@ -28,6 +28,13 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+/**
+ * @file isolario/filterintrin.h
+ *
+ * @brief Filter Virtual Machine intrinsics, low level access to the packet
+ *        filtering engine.
+ */
+
 #ifndef ISOLARIO_FILTERINTRIN_H_
 #define ISOLARIO_FILTERINTRIN_H_
 
@@ -38,10 +45,12 @@
 #include <stdnoreturn.h>
 #include <string.h>
 
+/// @brief Filter Virtual Machine opcodes.
 enum {
     BAD_OPCODE = -1,
 
-    FOPC_NOP,      ///< NOP: does nothing
+    FOPC_NOP,      ///< NOP: No operation, does nothing.
+
     FOPC_BLK,      ///< NONE: push a new block in expressions stack.
     FOPC_LOAD,     ///< PUSH: direct value load
     FOPC_LOADK,    ///< PUSH: load from constants environment
@@ -53,10 +62,23 @@ enum {
     FOPC_CPASS,    ///< POP: pops topmost stack element and terminates with PASS if value is true.
     FOPC_CFAIL,    ///< POP: pops topmost stack element and terminates with FAIL if value is false.
 
-    FOPC_EXACT,     ///< POPA-PUSH: pops the entire stack and verifies that all addresses are exactly in the tries, pushes the result.
-    FOPC_SUBN,      ///< POPA-PUSH: pops the entire stack and verifies that at least one address is exactly in the tries, pushes the result.
-    FOPC_SUPERN,
-    FOPC_RELTD,
+    FOPC_EXACT,
+        /**<
+         * Pops the entire stack and verifies that at least one *address* has an *exact* relationship with
+         * the addresses stored inside the current tries, pushes a boolean result.
+         *
+         * This opcode expects that the entire stack is composed of cells containing \a netaddr_t.
+         *
+         * @note Stack operation mode is POPA-PUSH, this opcode has no arguments.
+         */
+
+    FOPC_SUBNET,
+    FOPC_SUPERNET,
+    FOPC_RELATED,
+
+    FOPC_PFXCONTAINS,    ///< POPA-PUSH: Prefix Contained
+    FOPC_ADDRCONTAINS,
+    FOPC_ASCONTAINS,
 
     FOPC_CALL,     ///< ???: call a function
     FOPC_SETTRIE,
@@ -299,23 +321,7 @@ inline void vm_exec_addrcmp(filter_vm_t *vm, int kidx)
 
     stack_cell_t *a = vm_peek(vm);
     stack_cell_t *b = &vm->kp[kidx];
-    netaddr_t *na = &a->addr;
-    netaddr_t *nb = &b->addr;
-    if (na->family != nb->family) {
-        a->value = 0;
-        return;
-    }
-    switch (na->family) {
-    case AF_INET:
-        a->value = (memcmp(&na->sin, &nb->sin, sizeof(na->sin)) == 0);
-        break;
-    case AF_INET6:
-        a->value = (memcmp(&na->sin6, &nb->sin6, sizeof(na->sin6)) == 0);
-        break;
-    default:
-        vm_abort(vm, VM_SURPRISING_BYTES);
-        break;
-    }
+    a->value = naddreq(&a->addr, &b->addr);
 }
 
 inline void vm_exec_pfxcmp(filter_vm_t *vm, int kidx)
@@ -325,18 +331,7 @@ inline void vm_exec_pfxcmp(filter_vm_t *vm, int kidx)
 
     stack_cell_t *a = vm_peek(vm);
     stack_cell_t *b = &vm->kp[kidx];
-    netaddr_t *na = &a->addr;
-    netaddr_t *nb = &b->addr;
-    if (na->family != nb->family) {
-        a->value = 0;
-        return;
-    }
-    if (na->bitlen != nb->bitlen) {
-        a->value = 0;
-        return;
-    }
-
-    a->value = (memcmp(na->bytes, nb->bytes, naddrsize(na->bitlen)) == 0);
+    a->value = prefixeq(&a->addr, &b->addr);
 }
 
 void vm_exec_withdrawn_accumulate(filter_vm_t *vm);

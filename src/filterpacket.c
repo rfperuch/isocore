@@ -458,7 +458,7 @@ void vm_exec_exact(filter_vm_t *vm)
     vm_pushvalue(vm, false);
 }
 
-void vm_exec_subn(filter_vm_t *vm)
+void vm_exec_subnet(filter_vm_t *vm)
 {
     while (vm->si > 0) {
         stack_cell_t *cell = vm_pop(vm);
@@ -487,7 +487,7 @@ void vm_exec_subn(filter_vm_t *vm)
     vm_pushvalue(vm, false);
 }
 
-void vm_exec_supern(filter_vm_t *vm)
+void vm_exec_supernet(filter_vm_t *vm)
 {
     while (vm->si > 0) {
         stack_cell_t *cell = vm_pop(vm);
@@ -517,7 +517,7 @@ void vm_exec_supern(filter_vm_t *vm)
 }
 
 
-void vm_exec_reltd(filter_vm_t *vm)
+void vm_exec_related(filter_vm_t *vm)
 {
     while (vm->si > 0) {
         stack_cell_t *cell = vm_pop(vm);
@@ -540,6 +540,62 @@ void vm_exec_reltd(filter_vm_t *vm)
         default:
             vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
             break;
+        }
+    }
+
+    vm_pushvalue(vm, false);
+}
+
+void vm_exec_pfxcontains(filter_vm_t *vm, int kidx)
+{
+    if (unlikely((unsigned int) kidx >= vm->ksiz))
+        vm_abort(vm, VM_K_UNDEFINED);
+
+    stack_cell_t *a = &vm->kp[kidx];
+    while (vm->si > 0) {
+        stack_cell_t *b = vm_pop(vm);
+
+        if (prefixeq(&a->addr, &b->addr)) {
+            vm_clearstack(vm);
+            vm_pushvalue(vm, true);
+            return;
+        }
+    }
+
+    vm_pushvalue(vm, false);
+}
+
+void vm_exec_addrcontains(filter_vm_t *vm, int kidx)
+{
+    if (unlikely((unsigned int) kidx >= vm->ksiz))
+        vm_abort(vm, VM_K_UNDEFINED);
+
+    stack_cell_t *a = &vm->kp[kidx];
+    while (vm->si > 0) {
+        stack_cell_t *b = vm_pop(vm);
+
+        if (naddreq(&a->addr, &b->addr)) {
+            vm_clearstack(vm);
+            vm_pushvalue(vm, true);
+            return;
+        }
+    }
+
+    vm_pushvalue(vm, false);
+}
+
+void vm_exec_ascontains(filter_vm_t *vm, int kidx)
+{
+    if (unlikely((unsigned int) kidx >= vm->ksiz))
+        vm_abort(vm, VM_K_UNDEFINED);
+
+    stack_cell_t *a = &vm->kp[kidx];
+    while (vm->si > 0) {
+        stack_cell_t *b = vm_pop(vm);
+        if (a->as == b->as) {
+            vm_clearstack(vm);
+            vm_pushvalue(vm, true);
+            return;
         }
     }
 
@@ -710,27 +766,57 @@ static int filter_execute(filter_vm_t *vm)
 
         EXECUTE(EXACT):
             vm_exec_exact(vm);
-
             PREDICT(CPASS);
             PREDICT(CFAIL);
+            PREDICT(NOT);
             DISPATCH();
 
-        EXECUTE(SUBN):
-            vm_exec_subn(vm);
+        EXECUTE(SUBNET):
+            vm_exec_subnet(vm);
             PREDICT(CPASS);
             PREDICT(CFAIL);
+            PREDICT(NOT);
             DISPATCH();
 
-        EXECUTE(SUPERN):
-            vm_exec_supern(vm);
+        EXECUTE(SUPERNET):
+            vm_exec_supernet(vm);
             PREDICT(CPASS);
             PREDICT(CFAIL);
+            PREDICT(NOT);
             DISPATCH();
 
-        EXECUTE(RELTD):
-            vm_exec_reltd(vm);
+        EXECUTE(RELATED):
+            vm_exec_related(vm);
             PREDICT(CPASS);
             PREDICT(CFAIL);
+            PREDICT(NOT);
+            DISPATCH();
+
+        EXECUTE(PFXCONTAINS):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            vm_exec_pfxcontains(vm, arg);
+            exarg = 0;
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
+            DISPATCH();
+
+        EXECUTE(ADDRCONTAINS):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            vm_exec_addrcontains(vm, arg);
+            exarg = 0;
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
+            DISPATCH();
+
+        EXECUTE(ASCONTAINS):
+            arg = vm_extendarg(vm_getarg(ip), exarg);
+            vm_exec_ascontains(vm, arg);
+            exarg = 0;
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(SETTRIE):
