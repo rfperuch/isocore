@@ -72,6 +72,8 @@ void vm_growstack(filter_vm_t *vm)
     stk = realloc(stk, stacksiz * sizeof(*stk));
     if (unlikely(!stk))
         vm_abort(vm, VM_STACK_OVERFLOW);
+    if (vm->sp == vm->stackbuf)
+        memcpy(stk, vm->stackbuf, sizeof(vm->stackbuf));
 
     vm->sp       = stk;
     vm->stacksiz = stacksiz;
@@ -224,10 +226,9 @@ static void vm_accumulate_withdrawn(filter_vm_t *vm)
 static void vm_accumulate_nlri(filter_vm_t *vm)
 {
     netaddr_t *addr;
-    while ((addr = nextnlri_r(vm->bgp)) != NULL) {
+    while ((addr = nextnlri_r(vm->bgp)) != NULL)
         vm_pushaddr(vm, addr);
-        vm_exec_store(vm);
-    }
+
     if (unlikely(endnlri_r(vm->bgp) != BGP_ENOERR))
         vm_abort(vm, VM_BAD_PACKET);
 }
@@ -399,6 +400,7 @@ void *vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone)
 
     default:
         // should never happen
+        assert(false);
         return NULL;
     }
 }
@@ -664,8 +666,8 @@ static int filter_execute(filter_vm_t *vm)
         EXECUTE(NOT):
             cell = vm_pop(vm);
             vm_pushvalue(vm, !cell->value);
-            PREDICT(CPASS);
             PREDICT(CFAIL);
+            PREDICT(CPASS);
             DISPATCH();
 
         EXECUTE(CPASS):
