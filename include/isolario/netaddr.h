@@ -44,6 +44,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 #include <isolario/branch.h>
+#include <string.h>
 #include <stdint.h>
 
 /// @brief Address Family Identifier values.
@@ -140,6 +141,45 @@ inline sa_family_t saddrfamily(const char *s)
             return AF_UNSPEC;
     }
     return likely(*s == ':') ? AF_INET6 : AF_UNSPEC;
+}
+
+inline int prefixeqwithmask(const void *a, const void *b, unsigned int mask)
+{
+    unsigned int n = mask >> 3;
+
+    if (memcmp(a, b, n) == 0) {
+        unsigned int m = ~0u << (8 - (mask & 3));
+
+        const unsigned char *aptr = a;
+        const unsigned char *bptr = b;
+
+        return (mask & 0x7) == 0 || (aptr[n] & m) == (bptr[n] & m);
+    }
+
+    return 0;
+}
+
+inline int prefixeq(const netaddr_t *restrict a, const netaddr_t *b)
+{
+    return a->family == b->family
+        && a->bitlen == b->bitlen
+        && prefixeqwithmask(a->bytes, b->bytes, a->bitlen);
+}
+
+inline int naddreq(const netaddr_t *a, const netaddr_t *b)
+{
+    if (a->family != b->family)
+        return 0;
+
+    // TODO benchmark a branch-less option
+    switch (a->family) {
+    case AF_INET:
+        return memcmp(&a->sin, &b->sin, sizeof(a->sin)) == 0;
+    case AF_INET6:
+        return memcmp(&a->sin6, &b->sin6, sizeof(a->sin6)) == 0;
+    default:
+        return 1;  // both AF_UNSPEC...
+    }
 }
 
 /**
