@@ -42,6 +42,7 @@
 #define ISOLARIO_UINT128_T_H_
 
 #include <assert.h>
+#include <isolario/bits.h>
 #include <isolario/branch.h>
 #include <stdint.h>
 
@@ -404,8 +405,8 @@ inline int u128bits(uint128_t u)
     uint64_t lw = u128lower(u);
 
     // XXX improve, up != 0 and cup == 64 are redundant
-    int cup = (up != 0) ? __builtin_clzll(up) : 64;
-    int clw = (lw != 0) ? __builtin_clzll(lw) : 64;
+    int cup = (up != 0) ? clzll(up) : 64;
+    int clw = (lw != 0) ? clzll(lw) : 64;
     int lz = (cup == 64) ? cup + clw : cup;
     return 128 - lz;
 }
