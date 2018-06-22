@@ -182,7 +182,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
 
     while (n->prefix.bitlen < prefix->bitlen || ispnodeglue(n)) {
         int bit = (n->prefix.bitlen < maxbits) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> n->prefix.bitlen & 0x07));
-        if (n->children[bit] == NULL)
+        if (n->children[bit != 0] == NULL)
             break;
 
         n = n->children[bit != 0];
@@ -240,7 +240,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         setpnodeparent(newnode, n);
 
         int bit = (n->prefix.bitlen < maxbits) && (prefix->bytes[n->prefix.bitlen >> 3] & 0x80 >> (n->prefix.bitlen & 0x07));
-        n->children[bit] = newnode;
+        n->children[bit != 0] = newnode;
 
         *inserted = PREFIX_INSERTED;
 
@@ -530,7 +530,7 @@ trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix
 
     while (start && start->prefix.bitlen < prefix->bitlen) {
         int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen & 0x07));
-        start = start->children[bit];
+        start = start->children[bit != 0];
     }
 
     uint64_t n;
@@ -601,7 +601,7 @@ int patchecksubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 
     while (start && start->prefix.bitlen < prefix->bitlen) {
         int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen & 0x07));
-        start = start->children[bit];
+        start = start->children[bit != 0];
     }
 
     pnode_t *node;
@@ -676,7 +676,7 @@ trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix
         }
 
         int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen) & 0x07);
-        start = start->children[bit];
+        start = start->children[bit != 0];
     }
 
     pnode_t *node;
@@ -734,7 +734,7 @@ int patcheckrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
         }
 
         int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen) & 0x07);
-        start = start->children[bit];
+        start = start->children[bit != 0];
     }
 
     pnode_t *node;
@@ -818,7 +818,7 @@ trienode_t** patgetfirstsubnetsofn(const patricia_trie_t *pt, const netaddr_t *p
 
     while (node && node->prefix.bitlen < prefix->bitlen) {
         int bit = prefix->bytes[node->prefix.bitlen >> 3] & (0x80 >> (node->prefix.bitlen & 0x07));
-        node = node->children[bit];
+        node = node->children[bit != 0];
     }
 
     pnode_t *stack[patmaxbits(pt) + 1];
