@@ -465,14 +465,14 @@ void vm_exec_subnet(filter_vm_t *vm)
         netaddr_t *addr = &cell->addr;
         switch (addr->family) {
         case AF_INET:
-            if (patchecksubnetofn(vm->curtrie, addr)) {
+            if (patissubnetofn(vm->curtrie, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
             }
             break;
         case AF_INET6:
-            if (patchecksubnetofn(vm->curtrie6, addr)) {
+            if (patissubnetofn(vm->curtrie6, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
@@ -494,14 +494,14 @@ void vm_exec_supernet(filter_vm_t *vm)
         netaddr_t *addr = &cell->addr;
         switch (addr->family) {
         case AF_INET:
-            if (patchecksupernetofn(vm->curtrie, addr)) {
+            if (patissupernetofn(vm->curtrie, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
             }
             break;
         case AF_INET6:
-            if (patchecksupernetofn(vm->curtrie6, addr)) {
+            if (patissupernetofn(vm->curtrie6, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
@@ -524,14 +524,14 @@ void vm_exec_related(filter_vm_t *vm)
         netaddr_t *addr = &cell->addr;
         switch (addr->family) {
         case AF_INET:
-            if (patcheckrelatedofn(vm->curtrie, addr)) {
+            if (patisrelatedofn(vm->curtrie, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;
             }
             break;
         case AF_INET6:
-            if (patcheckrelatedofn(vm->curtrie6, addr)) {
+            if (patisrelatedofn(vm->curtrie6, addr)) {
                 vm_clearstack(vm);
                 vm_pushvalue(vm, true);
                 return;

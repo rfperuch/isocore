@@ -487,7 +487,7 @@ trienode_t** patgetsupernetsofc(const patricia_trie_t *pt, const char *cprefix)
     return patgetsupernetsofn(pt, &prefix);
 }
 
-int patchecksubnetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
+int patissubnetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
     if (!pt->head)
         return 0;
@@ -512,13 +512,13 @@ int patchecksubnetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
     return 0;
 }
 
-int patchecksubnetofc(const patricia_trie_t *pt, const char *cprefix)
+int patissubnetofc(const patricia_trie_t *pt, const char *cprefix)
 {
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return 0;
 
-    return patchecksubnetofn(pt, &prefix);
+    return patissubnetofn(pt, &prefix);
 }
 
 trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
@@ -592,7 +592,7 @@ trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix)
     return patgetsubnetsofn(pt, &prefix);
 }
 
-int patchecksupernetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
+int patissupernetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
     if (!pt->head)
         return 0;
@@ -634,13 +634,13 @@ int patchecksupernetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
     return 0;
 }
 
-int patchecksupernetofc(const patricia_trie_t *pt, const char *cprefix)
+int patissupernetofc(const patricia_trie_t *pt, const char *cprefix)
 {
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return 0;
 
-    return patchecksupernetofn(pt, &prefix);
+    return patissupernetofn(pt, &prefix);
 }
 
 trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
@@ -720,7 +720,7 @@ trienode_t** patgetrelatedofc(const patricia_trie_t *pt, const char *cprefix)
     return patgetrelatedofn(pt, &prefix);
 }
 
-int patcheckrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
+int patisrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
     if (!pt->head)
         return 0;
@@ -764,13 +764,13 @@ int patcheckrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
     return 0;
 }
 
-int patcheckrelatedofc(const patricia_trie_t *pt, const char *cprefix)
+int patisrelatedofc(const patricia_trie_t *pt, const char *cprefix)
 {
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return 0;
 
-    return patcheckrelatedofn(pt, &prefix);
+    return patisrelatedofn(pt, &prefix);
 }
 
 uint128_t patcoverage(const patricia_trie_t *pt)

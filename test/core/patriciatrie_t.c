@@ -107,12 +107,12 @@ void testpatcheckfuncs(void)
 
     patinsertc(&pt, "8.0.0.0/8", NULL);
     
-    CU_ASSERT(patchecksubnetofc(&pt, "8.2.2.1/32") == 1);
-    CU_ASSERT(patchecksupernetofc(&pt, "8.2.2.1/32") == 0);
+    CU_ASSERT(patissubnetofc(&pt, "8.2.2.1/32") == 1);
+    CU_ASSERT(patissupernetofc(&pt, "8.2.2.1/32") == 0);
 
     patinsertc(&pt, "9.2.0.0/16", NULL);
-    CU_ASSERT(patchecksupernetofc(&pt, "9.0.0.0/8") == 1);
-    CU_ASSERT(patchecksubnetofc(&pt, "9.2.2.0/24") == 1);
+    CU_ASSERT(patissupernetofc(&pt, "9.0.0.0/8") == 1);
+    CU_ASSERT(patissubnetofc(&pt, "9.2.2.0/24") == 1);
     
     patdestroy(&pt);
     

@@ -108,9 +108,9 @@ trienode_t** patgetsupernetsofc(const patricia_trie_t *pt, const char *cprefix);
  * 0 otherwise
  *
  */
-int patchecksupernetofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+int patissupernetofn(const patricia_trie_t *pt, const netaddr_t *prefix);
 
-int patchecksupernetofc(const patricia_trie_t *pt, const char *cprefix);
+int patissupernetofc(const patricia_trie_t *pt, const char *cprefix);
 
 /**
  * @brief Subnets of a prefix
@@ -132,9 +132,9 @@ trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix);
  * 0 otherwise
  *
  */
-int patchecksubnetofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+int patissubnetofn(const patricia_trie_t *pt, const netaddr_t *prefix);
 
-int patchecksubnetofc(const patricia_trie_t *pt, const char *cprefix);
+int patissubnetofc(const patricia_trie_t *pt, const char *cprefix);
 
 /**
  * @brief Related of a prefix
@@ -155,9 +155,9 @@ trienode_t** patgetrelatedofc(const patricia_trie_t *pt, const char *cprefix);
  * @return 1 if the provided prefix is related to any of the patricia prefixes,
  * 0 otherwise
  */
-int patcheckrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+int patisrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix);
 
-int patcheckrelatedofc(const patricia_trie_t *pt, const char *cprefix);
+int patisrelatedofc(const patricia_trie_t *pt, const char *cprefix);
 
 /**
  * @brief Coverage of prefixes
