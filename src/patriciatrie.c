@@ -487,7 +487,7 @@ trienode_t** patgetsupernetsofc(const patricia_trie_t *pt, const char *cprefix)
     return patgetsupernetsofn(pt, &prefix);
 }
 
-int patchecksupernetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
+int patchecksubnetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
     if (!pt->head)
         return 0;
@@ -512,13 +512,13 @@ int patchecksupernetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
     return 0;
 }
 
-int patchecksupernetsofc(const patricia_trie_t *pt, const char *cprefix)
+int patchecksubnetofc(const patricia_trie_t *pt, const char *cprefix)
 {
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return 0;
 
-    return patchecksupernetsofn(pt, &prefix);
+    return patchecksubnetofn(pt, &prefix);
 }
 
 trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
@@ -592,7 +592,7 @@ trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix)
     return patgetsubnetsofn(pt, &prefix);
 }
 
-int patchecksubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
+int patchecksupernetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
     if (!pt->head)
         return 0;
@@ -634,13 +634,13 @@ int patchecksubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix)
     return 0;
 }
 
-int patchecksubnetsofc(const patricia_trie_t *pt, const char *cprefix)
+int patchecksupernetofc(const patricia_trie_t *pt, const char *cprefix)
 {
     netaddr_t prefix;
     if (stonaddr(&prefix, cprefix) != 0)
         return 0;
 
-    return patchecksubnetsofn(pt, &prefix);
+    return patchecksupernetofn(pt, &prefix);
 }
 
 trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)

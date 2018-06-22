@@ -106,19 +106,14 @@ void testpatcheckfuncs(void)
     patinit(&pt, AF_INET);
 
     patinsertc(&pt, "8.0.0.0/8", NULL);
-    patinsertc(&pt, "8.2.0.0/16", NULL);
-    patinsertc(&pt, "8.2.2.0/24", NULL);
-    patinsertc(&pt, "8.2.2.1/32", NULL);
-    patinsertc(&pt, "9.2.2.1/32", NULL);
+    
+    CU_ASSERT(patchecksubnetofc(&pt, "8.2.2.1/32") == 1);
+    CU_ASSERT(patchecksupernetofc(&pt, "8.2.2.1/32") == 0);
 
-    CU_ASSERT(patchecksupernetsofc(&pt, "8.2.2.1/32") == 1);
-    CU_ASSERT(patchecksubnetsofc(&pt, "8.0.0.0/8") == 1);
-    CU_ASSERT(patcheckrelatedofc(&pt, "8.2.2.0/24") == 1);
-
-    CU_ASSERT(patchecksupernetsofc(&pt, "8.0.0.0/7") == 0);
-    CU_ASSERT(patchecksubnetsofc(&pt, "8.2.2.2/32") == 0);
-    CU_ASSERT(patcheckrelatedofc(&pt, "18.2.2.0/24") == 0);
-
+    patinsertc(&pt, "9.2.0.0/16", NULL);
+    CU_ASSERT(patchecksupernetofc(&pt, "9.0.0.0/8") == 1);
+    CU_ASSERT(patchecksubnetofc(&pt, "9.2.2.0/24") == 1);
+    
     patdestroy(&pt);
     
     
