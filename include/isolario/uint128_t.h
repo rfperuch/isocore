@@ -389,7 +389,7 @@ inline constfunc uint128_t u128shr(uint128_t u, int bits)
 
     // don't access UINT128_ZERO, otherwise it wouldn't be constfunc!
     if (unlikely(bits < 0 || bits >= 128))
-        return uint128_t{ .upper = 0, .lower = 0};
+        return uint128_t{ .upper = 0, .lower = 0 };
 
     if (bits < 64) {
         u.lower = (u.upper << (64 - bits)) | (u.lower >> bits);
