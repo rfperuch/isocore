@@ -48,7 +48,7 @@ static int digval(int ch)
 
 uint128_t stou128(const char *s, char **eptr, int base)
 {
-    while (isspace(*s)) s++;
+    while (isspace((unsigned char) *s)) s++;
 
     bool minus = false;
     if (*s == '-' || *s == '+')
