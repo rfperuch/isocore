@@ -28,11 +28,51 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+/**
+ * @file isolario/funcattribs.h
+ *
+ * @brief Compiler-specific optimization and diagnostic hints.
+ */
+
 #ifndef ISOLARIO_FUNCATTRIBS_H_
 #define ISOLARIO_FUNCATTRIBS_H_
 
 /**
- * @macro malloclike
+ * @defgroup Funcattribs Compiler-specific optimization and diagnostic hints
+ *
+ * @brief Function diagnostic and optimizing attributes.
+ *
+ * These additional attributes are intended to decorate function declarations with
+ * additional optimization and diagnostic hints, enabling the compiler to operate
+ * more aggressive optimizations and checks on code.
+ *
+ * @warning Placing wrong hints in a function declaration may produce unexpected bugs within
+ *          the compiled code, use these hints only when you know what you are doing!
+ *
+ * @see [The GCC manual](https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html#Common-Function-Attributes)
+ *
+ * @{
+ */
+
+/**
+ * @def sentinel(idx)
+ *
+ * @brief Check for the presence of a \a NULL sentinel in a variadic function.
+ *
+ * This function attribute ensures that a parameter in a function call is an explicit \a NULL.
+ * The attribute is only valid on variadic functions.
+ * When \a idx is 0, the sentinel must be present in the last parameter of the function call.
+ * Any other integer position signifies that the sentinel must be located at position \a idx
+ * counting backwards from the end of the argument list.
+ *
+ * A valid \a NULL in this context is defined as zero with any pointer type.
+ * If the \a NULL macro is defined with an integer type then you need to add an explicit cast.
+ * GCC replaces \a stddef.h with a copy that redefines \a NULL appropriately.
+ * In GCC, the warnings for missing or incorrect sentinels are enabled with \a -Wformat.
+ */
+
+/**
+ * @def malloclike
  *
  * @brief Mark function as malloc()-like.
  *
@@ -48,7 +88,7 @@
  */
 
 /**
- * @macro purefunc
+ * @def purefunc
  *
  * @brief Mark function as pure.
  *
@@ -75,7 +115,7 @@
  */
 
 /**
- * @macro constfunc
+ * @def constfunc
  *
  * @brief Mark function as const.
  *
@@ -83,7 +123,7 @@
  * and have no effects except to return a value.
  * Calls to such functions lend themselves to optimization such as common
  * subexpression elimination. The const attribute imposes greater restrictions on a function’s definition than
- * the similar pure attribute below because it prohibits the function from reading global variables.
+ * the similar pure attribute because it prohibits the function from reading global variables.
  * Consequently, the presence of the attribute on a function declaration allows GCC to emit more efficient code for some calls to the function.
  * Decorating the same function with both the const and the pure attribute is diagnosed.
  *
@@ -97,22 +137,28 @@
 
 #define printflike(fmtidx, argsidx) __attribute__((format(printf, fmtidx, argsidx)))
 #define scanflike(fmtidx, argsidx)  __attribute__((format(scanf, fmtidx, argsidx)))
+#define sentinel(idx)               __attribute__((sentinel(idx)))
 #define nonnull(...)                __attribute__((nonnull(__VA_ARGS__)))
 #define malloclike                  __attribute__((malloc))
 #define nonullreturn                __attribute__((returns_nonnull))
 #define purefunc                    __attribute__((pure))
 #define constfunc                   __attribute__((const))
+#define wur                         __attribute__((warn_unused_result))
 
 #else
 
 #define printflike(fmtidx, argsidx)
 #define scanflike(fmtidx, argsidx)
+#define sentinel(idx)
 #define nonnull(...)
 #define malloclike
 #define nonullreturn
 #define purefunc
 #define constfunc
+#define wur
 
 #endif
+
+/** @} */
 
 #endif
