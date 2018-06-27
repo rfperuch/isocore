@@ -80,9 +80,14 @@ int setmd5key(int sd, char *md5key)
         return -1;
 
     struct tcp_md5sig md5sig;
+
+    size_t n = strlen(md5key);
+    if (n > sizeof(md5sig.tcpm_key))
+        return -1;
+
     memset(&md5sig, 0, sizeof(md5sig));
     md5sig.tcpm_addr = addr;
-    strcpy(md5sig.tcpm_key, md5key);
+    memcpy(md5sig.tcpm_key, md5key, n);  // TODO test for n == sizeof(md5sig.tcpm_key)
 
     return setsockopt(sd, IPPROTO_TCP, TCP_MD5SIG, &md5sig, sizeof(md5sig));
 
