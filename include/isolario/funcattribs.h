@@ -46,8 +46,8 @@
  * additional optimization and diagnostic hints, enabling the compiler to operate
  * more aggressive optimizations and checks on code.
  *
- * @warning Placing wrong hints in a function declaration may produce unexpected bugs within
- *          the compiled code, use these hints only when you know what you are doing!
+ * @warning Misusing compiler hints in a function declaration may introduce surprising bugs and
+ *          compromize code compilation, use these hints only if you know what you are doing!
  *
  * @see [The GCC manual](https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html#Common-Function-Attributes)
  *

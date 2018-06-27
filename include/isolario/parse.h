@@ -42,6 +42,7 @@
 #ifndef ISOLARIO_PARSE_H_
 #define ISOLARIO_PARSE_H_
 
+#include <isolario/funcattribs.h>
 #include <stdio.h>
 
 /**
@@ -100,25 +101,25 @@ void startparsing(const char *name, unsigned int start_line);
 parse_err_callback_t setperrcallback(parse_err_callback_t cb);
 
 /// @brief Return next token, \a NULL on end of parse.
-char *parse(FILE *f);
+nonnull(1) char *parse(FILE *f);
 
 /// @brief Place token back into the stream.
 void ungettoken(const char *tok);
 
 /// @brief Expect a token (\a NULL to expect any token).
-char *expecttoken(FILE *f, const char *what);
+nonnull(1) char *expecttoken(FILE *f, const char *what);
 
 /// @brief Expect integer.
-int iexpecttoken(FILE *f);
+nonnull(1) int iexpecttoken(FILE *f);
 
 /// @brief Expect floating point value.
-double fexpecttoken(FILE *f);
+nonnull(1) double fexpecttoken(FILE *f);
 
 /// @brief Skip remaining tokens in this line.
-void skiptonextline(FILE *f);
+nonnull(1) void skiptonextline(FILE *f);
 
 /// @brief Trigger a parsing error at the current position.
-void parsingerr(const char *msg, ...);
+printflike(1, 2) nonnull(1) void parsingerr(const char *msg, ...);
 
 /** @} */
 

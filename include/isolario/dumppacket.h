@@ -31,25 +31,22 @@
 #ifndef ISOLARIO_DUMPPACKET_H_
 #define ISOLARIO_DUMPPACKET_H_
 
+#include <isolario/funcattribs.h>
 #include <isolario/bgp.h>
 #include <isolario/mrt.h>
 #include <stdarg.h>
 #include <stdio.h>
 
-void printbgpv_r(FILE *out, bgp_msg_t *pkt, const char *fmt, va_list va);
+nonnull(1, 2, 3) void printbgpv_r(FILE *out, bgp_msg_t *pkt, const char *fmt, va_list va);
 
-void printbgp_r(FILE *out, bgp_msg_t *pkt, const char *fmt, ...);
+nonnull(1, 2, 3) void printbgp_r(FILE *out, bgp_msg_t *pkt, const char *fmt, ...);
 
-void printbgpv(FILE *out, const char *fmt, va_list va);
+nonnull(1, 2) void printbgpv(FILE *out, const char *fmt, va_list va);
 
-void printbgp(FILE *out, const char *fmt, ...);
+nonnull(1, 2)void printbgp(FILE *out, const char *fmt, ...);
 
-void printmrtv_r(FILE *out, mrt_msg_t *pkt, const char *fmt, va_list va);
+nonnull(1, 2, 3) void printstatechangev(FILE *out, const bgp4mp_header_t *bgphdr, const char *fmt, va_list va);
 
-void printmrt_r(FILE *out, mrt_msg_t *pkt, const char *fmt, ...);
-
-void printmrtv(FILE *out, const char *fmt, va_list va);
-
-void printmrt(FILE *out, const char *fmt, ...);
+nonnull(1, 2, 3) void printstatechange(FILE *out, const bgp4mp_header_t *bgphdr, const char *fmt, ...);
 
 #endif

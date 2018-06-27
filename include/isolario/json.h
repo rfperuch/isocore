@@ -31,6 +31,7 @@
 #ifndef ISOLARIO_JSON_H_
 #define ISOLARIO_JSON_H_
 
+#include <isolario/funcattribs.h>
 #include <sys/types.h>  // for ssize_t and size_t
 
 enum {
@@ -72,48 +73,48 @@ typedef struct {
 
 // Encoding ====================================================================
 
-json_t *jsonalloc(size_t n);
+malloclike wur json_t *jsonalloc(size_t n);
 
-inline int jsonerror(json_t *json)
+purefunc nonnull(1) inline int jsonerror(json_t *json)
 {
     return json->len < 0;
 }
 
-inline void jsonclear(json_t *json)
+nonnull(1) inline void jsonclear(json_t *json)
 {
     json->len = 0;
     json->text[0] = '\0';
 }
 
-json_t *jsonensure(json_t **pjson, size_t n);
+wur nonnull(1) json_t *jsonensure(json_t **pjson, size_t n);
 
-void newjsonobj(json_t **pjson);
+nonnull(1) void newjsonobj(json_t **pjson);
 
-void newjsonarr(json_t **pjson);
+nonnull(1) void newjsonarr(json_t **pjson);
 
-void newjsonfield(json_t **pjson, const char *name);
+nonnull(1, 2) void newjsonfield(json_t **pjson, const char *name);
 
-void newjsonvals(json_t **pjson, const char *val);
+nonnull(1, 2) void newjsonvals(json_t **pjson, const char *val);
 
-void newjsonvalu(json_t **pjson, unsigned long val);
+nonnull(1) void newjsonvalu(json_t **pjson, unsigned long val);
 
-void newjsonvald(json_t **pjson, long val);
+nonnull(1) void newjsonvald(json_t **pjson, long val);
 
-void newjsonvalf(json_t **pjson, double val);
+nonnull(1) void newjsonvalf(json_t **pjson, double val);
 
-void newjsonvalb(json_t **pjson, int boolean);
+nonnull(1) void newjsonvalb(json_t **pjson, int boolean);
 
-void closejsonarr(json_t **pjson);
+nonnull(1) void closejsonarr(json_t **pjson);
 
-void closejsonobj(json_t **pjson);
+nonnull(1) void closejsonobj(json_t **pjson);
 
 // Pretty-print ================================================================
 
-int jsonprettyp(json_t **pjson, const char *restrict text);
+nonnull(1, 2) int jsonprettyp(json_t **pjson, const char *restrict text);
 
 // Parsing =====================================================================
 
-int jsonparse(const char *text, jsontok_t *tok);
+nonnull(1, 2) int jsonparse(const char *text, jsontok_t *tok);
 
 #endif
 

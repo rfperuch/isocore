@@ -31,6 +31,7 @@
 #ifndef ISOLARIO_IO_H_
 #define ISOLARIO_IO_H_
 
+#include <isolario/funcattribs.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -67,7 +68,7 @@ int    io_ferror(io_rw_t *io);
 int    io_fclose(io_rw_t *io);
 
 // convenience initialization for stdio FILE
-inline void io_file_init(io_rw_t *io, FILE *file)
+inline nonnull(1, 2) void io_file_init(io_rw_t *io, FILE *file)
 {
     io->file  = file;
     io->read  = io_fread;
@@ -92,7 +93,7 @@ int    io_fderror(io_rw_t *io);
 int    io_fdclose(io_rw_t *io);
 
 // convenience initialization for POSIX fd
-inline void io_fd_init(io_rw_t *io, int fd)
+inline nonnull(1) void io_fd_init(io_rw_t *io, int fd)
 {
     io->un.fd  = fd;
     io->un.err = 0;
@@ -112,9 +113,9 @@ inline void io_fd_init(io_rw_t *io, int fd)
 
 // compressed I/O (io_rw_t * structures are malloc()ed, but free()ed by their close() function)
 
-io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...);
-io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...);
-io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode, ...);
-io_rw_t *io_xzopen(int fd, size_t bufsiz, const char *mode, ...);
+malloclike wur nonnull(3) io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...);
+malloclike wur nonnull(3) io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...);
+malloclike wur nonnull(3) io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode, ...);
+malloclike wur nonnull(3) io_rw_t *io_xzopen(int fd, size_t bufsiz, const char *mode, ...);
 
 #endif

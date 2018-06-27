@@ -201,12 +201,6 @@ static uint64_t compile_term(FILE *f, filter_vm_t *vm, int kind, va_list va)
                 opcode = vm_makeop(FOPC_CALL, VM_ALL_NLRI_INSERT_FN);
 
             vm_emit(vm, opcode);
-        } else if (strcasecmp(field, "peer_addr") == 0) {
-            vm_emit(vm, vm_makeop(FOPC_LOADK, K_PEER_ADDR));
-            usage_mask = 1ull << K_PEER_ADDR;
-        } else if (strcasecmp(field, "peer_as") == 0) {
-            vm_emit(vm, vm_makeop(FOPC_LOADK, K_PEER_AS));
-            usage_mask = 1ull << K_PEER_AS;
         } else {
             parsingerr("unknown packet accessor '%s'", field);
         }

@@ -40,6 +40,7 @@
 #ifndef ISOLARIO_LOG_H_
 #define ISOLARIO_LOG_H_
 
+#include <isolario/funcattribs.h>
 #include <stdarg.h>
 
 /**
@@ -85,9 +86,9 @@ logsev_t loglevel(logsev_t sev);
 /** @brief Direct logging messages to other files. */
 int logopen(const char *logfile, int mode);
 /** @brief Log a message. */
-void logprintf(logsev_t sev, const char *fmt, ...);
+printflike(2, 3) nonnull(2) void logprintf(logsev_t sev, const char *fmt, ...);
 /** @brief Log a message, \a va_list variant. */
-void logvprintf(logsev_t sev, const char *fmt, va_list va);
+nonnull(2) void logvprintf(logsev_t sev, const char *fmt, va_list va);
 /** @brief Close logging system resources. */
 void logclose(void);
 

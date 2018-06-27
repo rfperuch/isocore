@@ -66,11 +66,10 @@ enum {
     F_VALID     = 1 << 0,
     F_AS32      = 1 << 1,
     F_NEEDS_PI  = 1 << 2,
-    F_IS_PI     = 1 << 3,
-    F_IS_EXT    = 1 << 4,
-    F_IS_BGP    = 1 << 5,
-    F_HAS_STATE = 1 << 6,
-    F_WRAPS_BGP = 1 << 7,
+    F_IS_EXT    = 1 << 3,
+    F_IS_BGP    = 1 << 4,
+    F_HAS_STATE = 1 << 5,
+    F_WRAPS_BGP = 1 << 6,
 
     F_RD   = 1 << 8,        ///< Packet opened for read
     F_WR   = 1 << (8 + 1),  ///< Packet opened for write
@@ -83,7 +82,7 @@ enum {
 #define SHIFT(idx) ((idx) - MRT_TABLE_DUMP)
 
 static const uint8_t masktab[][MAX_MRT_SUBTYPE + 1] = {
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]   = F_VALID | F_IS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]   = F_VALID,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC]        = F_VALID | F_NEEDS_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST]   = F_VALID | F_NEEDS_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST] = F_VALID | F_NEEDS_PI,
@@ -231,9 +230,19 @@ int isbgpwrapper_r(mrt_msg_t* msg)
     return (msg->flags & (F_RD | F_WRAPS_BGP)) == (F_RD | F_WRAPS_BGP);
 }
 
+int ismrtrib(void)
+{
+    return ismrtrib_r(&curmsg);
+}
+
+int ismrtrib_r(mrt_msg_t *msg)
+{
+    return msg->flags & (F_RD | F_NEEDS_PI);
+}
+
 int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi)
 {
-    if (likely((msg->flags & F_NEEDS_PI) && (pi->flags & F_IS_PI)))
+    if (likely((msg->flags & F_NEEDS_PI) && pi->hdr.type == MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
         return setuppitable(msg, pi);
 
     return MRT_EINVOP;
@@ -384,7 +393,9 @@ int mrtclose_r(mrt_msg_t *msg)
     if (unlikely(msg->buf != msg->fastbuf))
         free(msg->buf);
 
-    // memset(msg, 0, sizeof(*msg));  // XXX: optimize
+    if (msg == &curpimsg)
+        msg->flags = 0;  // special case to detect whether a static PI is active
+
     return err;
 }
 
@@ -399,8 +410,7 @@ struct in_addr getpicollector_r(mrt_msg_t *msg)
 {
     struct in_addr addr = {0};
 
-    int flags = mrtflags(&msg->hdr);
-    if (unlikely((flags & F_IS_PI) == 0))
+    if (unlikely(msg->hdr.type != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return addr;
@@ -416,8 +426,7 @@ size_t getpiviewname(char *buf, size_t n)
 
 size_t getpiviewname_r(mrt_msg_t *msg, char *buf, size_t n)
 {
-    int flags = mrtflags(&msg->hdr);
-    if (unlikely((flags & F_IS_PI) == 0))
+    if (unlikely(msg->hdr.type != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return 0;
@@ -446,8 +455,7 @@ void *getpeerents(size_t *pcount, size_t *pn)
 
 void *getpeerents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
 {
-    int flags = mrtflags(&msg->hdr);
-    if (unlikely((flags & F_IS_PI) == 0))
+    if (unlikely(msg->hdr.type != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return NULL;
@@ -481,8 +489,7 @@ int startpeerents(size_t *pcount)
 
 int startpeerents_r(mrt_msg_t *msg, size_t *pcount)
 {
-    int flags = mrtflags(&msg->hdr);
-    if (unlikely((flags & F_IS_PI) == 0))
+    if (unlikely(msg->hdr.type != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return msg->err;
@@ -565,7 +572,7 @@ int endpeerents_r(mrt_msg_t *msg)
 
 int setribpi(void)
 {
-    if (unlikely((curmsg.flags & F_IS_PI) == 0))
+    if (unlikely(curmsg.hdr.type != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
         return MRT_NOTPEERIDX;
 
     memcpy(&curpimsg, &curmsg, sizeof(curmsg));

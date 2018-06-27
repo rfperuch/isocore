@@ -44,9 +44,6 @@
 enum {
     K_MAX = 32,  // maximum user-defined filter constants
 
-    K_PEER_ADDR,
-    K_PEER_AS,
-
     KBASESIZ,  // base size for known variables
 
     KBUFSIZ = 64,
@@ -97,7 +94,6 @@ enum {
 
 typedef struct filter_vm_s {
     bgp_msg_t *bgp;
-    mrt_msg_t *mrt;
     patricia_trie_t *curtrie, *curtrie6;
     stack_cell_t *sp, *kp;  // stack and constant segment pointers
     patricia_trie_t *tries;
@@ -208,10 +204,6 @@ int filter_compilef(FILE *f, filter_vm_t *vm, ...);
 int filter_compilev(filter_vm_t *vm, const char *program, va_list va);
 
 int filter_compile(filter_vm_t *vm, const char *program, ...);
-
-int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm);
-
-int mrt_filter(filter_vm_t *vm);
 
 int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm);
 

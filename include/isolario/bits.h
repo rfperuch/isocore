@@ -37,7 +37,66 @@
 #ifndef ISOLARIO_BITS_H_
 #define ISOLARIO_BITS_H_
 
+#include <isolario/funcattribs.h>
 #include <limits.h>
+
+/**
+ * @defgroup BitTwiddling Optimized bit twiddling utilities
+ *
+ * @brief Offers optimized implementations for common low level bit operations.
+ *
+ * @see [Bit Twiddling Hacks by Sean Eron Anderson](https://graphics.stanford.edu/~seander/bithacks.html)
+ *
+ * @{
+ */
+
+/**
+ * @brief Find First Set.
+ *
+ * Find the first bit set to 1 inside a word.
+ *
+ * @param [in] bits Operation argument, may be any representable value.
+ *
+ * @return The position of the first bit set to 1 inside \a bits,
+ *         starting from the least significant bit. If \a bits is 1, this function returns 1.
+ *         If \a bits is 0, this function returns 0.
+ *
+ * @note This function is well defined even if \a bits if 0.
+ */
+inline constfunc unsigned int bitffs(unsigned int bits)
+{
+#ifdef __GNUC__
+
+    return __builtin_ffs(bits);
+
+#else
+
+#endif
+}
+
+/// @copydoc bitffs()
+inline constfunc unsigned long bitffsl(unsigned long bits)
+{
+#ifdef __GNUC__
+
+    return __builtin_ffsl(bits);
+
+#else
+
+#endif
+}
+
+/// @copydoc bitffs()
+inline constfunc unsigned long long bitffsll(unsigned long long bits)
+{
+#ifdef __GNUC__
+
+    return __builtin_ffsll(bits);
+
+#else
+
+#endif
+}
 
 /**
  * @brief Count Trailing Zeroes.
@@ -47,7 +106,7 @@
  *
  * @warning For performance reasons, result is undefined if \a bits is zero!
  */
-inline unsigned int ctz(unsigned int bits)
+inline constfunc unsigned int bitctz(unsigned int bits)
 {
 #ifdef __GNUC__
 
@@ -55,7 +114,7 @@ inline unsigned int ctz(unsigned int bits)
 
 #else
 
-    // https://graphics.stanford.edu/~seander/bithacks.html
+    // 
     unsigned int c;
 
     if (sizeof(bits) * CHAR_BIT == 32) {
@@ -96,8 +155,8 @@ inline unsigned int ctz(unsigned int bits)
 #endif
 }
 
-/// @copydoc ctz()
-inline unsigned long ctzl(unsigned long bits)
+/// @copydoc bitctz()
+inline constfunc unsigned long bitctzl(unsigned long bits)
 {
 #ifdef __GNUC__
 
@@ -107,8 +166,8 @@ inline unsigned long ctzl(unsigned long bits)
 #endif
 }
 
-/// @copydoc ctz()
-inline unsigned long long ctzll(unsigned long long bits)
+/// @copydoc bitctz()
+inline constfunc unsigned long long bitctzll(unsigned long long bits)
 {
 #ifdef __GNUC__
 
@@ -126,7 +185,7 @@ inline unsigned long long ctzll(unsigned long long bits)
  *
  * @warning For performance reasons, result is undefined if \a bits is zero!
  */
-inline unsigned int clz(unsigned int bits)
+inline constfunc unsigned int bitclz(unsigned int bits)
 {
 #ifdef __GNUC__
 
@@ -137,8 +196,8 @@ inline unsigned int clz(unsigned int bits)
 #endif
 }
 
-/// @copydoc clz()
-inline unsigned long clzl(unsigned long bits)
+/// @copydoc bitclz()
+inline constfunc unsigned long bitclzl(unsigned long bits)
 {
 #ifdef __GNUC__
 
@@ -149,8 +208,8 @@ inline unsigned long clzl(unsigned long bits)
 #endif
 }
 
-/// @copydoc clz()
-inline unsigned long long clzll(unsigned long long bits)
+/// @copydoc bitclz()
+inline constfunc unsigned long long bitclzll(unsigned long long bits)
 {
 #ifdef __GNUC__
 
@@ -170,7 +229,7 @@ inline unsigned long long clzll(unsigned long long bits)
  *
  * @note This function is defined even when \a bits is 0.
  */
-inline unsigned int popcount(unsigned int bits)
+inline constfunc unsigned int bitpopcnt(unsigned int bits)
 {
 #ifdef __GNUC__
 
@@ -179,7 +238,6 @@ inline unsigned int popcount(unsigned int bits)
 #else
 
     if (sizeof(bits) * CHAR_BIT == 32) {
-        // https://graphics.stanford.edu/~seander/bithacks.html
         bits = bits - ((bits >> 1) & 0x55555555);
         bits = (bits & 0x33333333) + ((bits >> 2) & 0x33333333);
         return ((bits + (bits >> 4) & 0xf0f0f0f) * 0x1010101) >> 24;
@@ -194,8 +252,8 @@ inline unsigned int popcount(unsigned int bits)
 #endif
 }
 
-/// @copydoc popcount()
-inline unsigned long long popcountll(unsigned long long bits)
+/// @copydoc bitpopcnt()
+inline constfunc unsigned long long bitpopcntll(unsigned long long bits)
 {
 #ifdef __GNUC__
 
@@ -204,7 +262,6 @@ inline unsigned long long popcountll(unsigned long long bits)
 #else
 
     if (sizeof(bits) * CHAR_BIT <= 128) {
-        // https://graphics.stanford.edu/~seander/bithacks.html
         bits = bits - ((bits >> 1) & (~0ull / 3ull));
         bits = (bits & (~0ull / 15ull * 3ull)) + ((bits >> 2) & (~0ull / 15ull * 3ull));
         bits = (bits + (bits >> 4)) & (~0ull / 255ull * 15ull);
@@ -220,13 +277,13 @@ inline unsigned long long popcountll(unsigned long long bits)
 #endif
 }
 
-/// @copydoc popcount()
-inline unsigned long popcountl(unsigned long bits)
+/// @copydoc bitpopcnt()
+inline constfunc unsigned long bitpopcntl(unsigned long bits)
 {
     if (sizeof(bits) == sizeof(unsigned int))
-        return popcount(bits);
+        return bitpopcnt(bits);
     if (sizeof(bits) == sizeof(unsigned long long))
-        return popcountll(bits);
+        return bitpopcntll(bits);
 
     unsigned long c;
     for (c = 0; bits != 0; c++)
@@ -234,5 +291,7 @@ inline unsigned long popcountl(unsigned long bits)
 
     return c;
 }
+
+/** @} */
 
 #endif

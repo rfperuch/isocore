@@ -42,12 +42,13 @@
 #define ISOLARIO_STRUTILS_H_
 
 #include <ctype.h>
+#include <isolario/funcattribs.h>
 #include <isolario/util.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
-inline unsigned long djb2(const char *s)
+inline purefunc nonnull(1) unsigned long djb2(const char *s)
 {
     unsigned long h = 5381;
     int c;
@@ -59,7 +60,7 @@ inline unsigned long djb2(const char *s)
     return h;
 }
 
-inline unsigned long memdjb2(const void *p, size_t n)
+inline purefunc nonnull(1) unsigned long memdjb2(const void *p, size_t n)
 {
     unsigned long h = 5381;
 
@@ -70,7 +71,7 @@ inline unsigned long memdjb2(const void *p, size_t n)
     return h;
 }
 
-inline unsigned long sdbm(const char *s)
+inline purefunc nonnull(1) unsigned long sdbm(const char *s)
 {
     unsigned long h = 0;
     int c;
@@ -82,7 +83,7 @@ inline unsigned long sdbm(const char *s)
     return h;
 }
 
-inline unsigned long memsdbm(const void *p, size_t n)
+inline purefunc nonnull(1) unsigned long memsdbm(const void *p, size_t n)
 {
     unsigned long h = 0;
 
@@ -93,7 +94,7 @@ inline unsigned long memsdbm(const void *p, size_t n)
     return h;
 }
 
-inline char *itoa(char *dst, char **endp, int i)
+inline nonullreturn nonnull(1) char *itoa(char *dst, char **endp, int i)
 {
     char buf[1 + digsof(i) + 1];
 
@@ -119,7 +120,7 @@ inline char *itoa(char *dst, char **endp, int i)
     return memcpy(dst, ptr, n + 1);
 }
 
-inline char *utoa(char *dst, char **endp, unsigned int u)
+inline nonullreturn nonnull(1) char *utoa(char *dst, char **endp, unsigned int u)
 {
     char buf[digsof(u) + 1];
 
@@ -141,7 +142,7 @@ inline char *utoa(char *dst, char **endp, unsigned int u)
 }
 
 
-inline char *ltoa(char *dst, char **endp, long l)
+inline nonullreturn nonnull(1) char *ltoa(char *dst, char **endp, long l)
 {
     char buf[1 + digsof(l) + 1];
 
@@ -167,7 +168,7 @@ inline char *ltoa(char *dst, char **endp, long l)
     return memcpy(dst, ptr, n + 1);
 }
 
-inline char *ultoa(char *dst, char **endp, unsigned long u)
+inline nonullreturn nonnull(1) char *ultoa(char *dst, char **endp, unsigned long u)
 {
     char buf[digsof(u) + 1];
 
@@ -188,7 +189,7 @@ inline char *ultoa(char *dst, char **endp, unsigned long u)
     return memcpy(dst, ptr, n + 1);
 }
 
-inline char *lltoa(char *dst, char **endp, long long ll)
+inline nonullreturn nonnull(1) char *lltoa(char *dst, char **endp, long long ll)
 {
     char buf[1 + digsof(ll) + 1];
 
@@ -214,7 +215,7 @@ inline char *lltoa(char *dst, char **endp, long long ll)
     return memcpy(dst, ptr, n + 1);
 }
 
-inline char *ulltoa(char *dst, char **endp, unsigned long long u)
+inline nonullreturn nonnull(1) char *ulltoa(char *dst, char **endp, unsigned long long u)
 {
     char buf[digsof(u) + 1];
 
@@ -257,21 +258,21 @@ inline char *ulltoa(char *dst, char **endp, unsigned long long u)
  *       in the buffer share the same memory and is consequently free()d by
  *       such call.
  */
-char **splitstr(const char *s, const char *delim, size_t *pn);
+malloclike wur nonnull(1) char **splitstr(const char *s, const char *delim, size_t *pn);
 
 /**
  * @brief Join a string buffer on a delimiter.
  *
  * @return A dynamically allocated string that must be free()d by the caller.
  */
-char *joinstr(const char *delim, char **strings, size_t n);
+malloclike wur char *joinstr(const char *delim, char **strings, size_t n);
 
 /**
  * @brief Join a \a va_list of strings on a delimiter.
  *
  * @return A dynamically allocated string that must be free()d by the caller.
  */
-char *joinstrvl(const char *delim, va_list va);
+malloclike wur char *joinstrvl(const char *delim, va_list va);
 
 /**
  * @brief Join a variable list of strings on a delimiter.
@@ -285,16 +286,16 @@ char *joinstrvl(const char *delim, va_list va);
  *
  * @return A dynamically allocated string that must be free()d by the caller.
  */
-char *joinstrv(const char *delim, ...);
+malloclike wur sentinel(0) char *joinstrv(const char *delim, ...);
 
 /// @brief Trim leading and trailing whitespaces from string, operates in-place.
-char *trimwhites(char *s);
+nonullreturn nonnull(1) char *trimwhites(char *s);
 
 /// @brief Return file extension, including leading '.', \a NULL if no extension is found.
-char *strpathext(const char *name);
+nonnull(1) char *strpathext(const char *name);
 
 /// @brief Check whether a string starts with a specific prefix.
-inline int startswith(const char *s, const char *prefix)
+inline purefunc nonnull(1, 2) int startswith(const char *s, const char *prefix)
 {
     size_t slen = strlen(s);
     size_t preflen = strlen(prefix);
@@ -302,7 +303,7 @@ inline int startswith(const char *s, const char *prefix)
 }
 
 /// @brief Check whether a string ends with a specific suffix.
-inline int endswith(const char *s, const char *suffix)
+inline purefunc nonnull(1, 2) int endswith(const char *s, const char *suffix)
 {
     size_t slen = strlen(s);
     size_t suflen = strlen(suffix);
@@ -310,7 +311,7 @@ inline int endswith(const char *s, const char *suffix)
 }
 
 /// @brief Make string uppercase, operates in-place.
-inline char *strupper(char *s)
+inline nonullreturn nonnull(1) char *strupper(char *s)
 {
     char c;
 
@@ -322,7 +323,7 @@ inline char *strupper(char *s)
 }
 
 /// @brief Make string lowercase, operates in-place.
-inline char *strlower(char *s)
+inline nonullreturn nonnull(1) char *strlower(char *s)
 {
     char c;
 

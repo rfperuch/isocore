@@ -276,6 +276,10 @@ int isbgpwrapper(void);
 
 int isbgpwrapper_r(mrt_msg_t *msg);
 
+int ismrtrib(void);
+
+int ismrtrib_r(mrt_msg_t *msg);
+
 int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi);
 
 int mrterror_r(mrt_msg_t *msg);

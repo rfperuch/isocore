@@ -199,20 +199,6 @@ extern void vm_exec_addrcmp(filter_vm_t *vm, int kidx);
 
 extern void vm_exec_pfxcmp(filter_vm_t *vm, int kidx);
 
-static void vm_require_bgp(filter_vm_t *vm)
-{
-    bgp_msg_t *msg = vm->bgp;
-    if (unlikely(!msg))
-        vm_abort(vm, VM_PACKET_MISMATCH);
-}
-
-static void vm_require_bgp_type(filter_vm_t *vm, int type)
-{
-    vm_require_bgp(vm);
-    if (unlikely(getbgptype_r(vm->bgp) != type))
-        vm_abort(vm, VM_PACKET_MISMATCH);
-}
-
 static void vm_accumulate_withdrawn(filter_vm_t *vm)
 {
     netaddr_t *addr;
@@ -235,7 +221,8 @@ static void vm_accumulate_nlri(filter_vm_t *vm)
 
 static void vm_insert_withdrawn(filter_vm_t *vm)
 {
-    vm_require_bgp_type(vm, BGP_UPDATE);
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     vm_exec_settrie(vm, VM_TMPTRIE);
     vm_exec_settrie6(vm, VM_TMPTRIE6);
@@ -251,7 +238,8 @@ static void vm_insert_withdrawn(filter_vm_t *vm)
 
 static void vm_insert_nlri(filter_vm_t *vm)
 {
-    vm_require_bgp_type(vm, BGP_UPDATE);
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     vm_exec_settrie(vm, VM_TMPTRIE);
     vm_exec_settrie6(vm, VM_TMPTRIE6);
@@ -267,7 +255,8 @@ static void vm_insert_nlri(filter_vm_t *vm)
 
 void vm_exec_all_withdrawn_accumulate(filter_vm_t *vm)
 {
-    vm_require_bgp_type(vm, BGP_UPDATE);
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     startallwithdrawn_r(vm->bgp);
     vm_accumulate_withdrawn(vm);
@@ -275,7 +264,8 @@ void vm_exec_all_withdrawn_accumulate(filter_vm_t *vm)
 
 void vm_exec_withdrawn_accumulate(filter_vm_t *vm)
 {
-    vm_require_bgp_type(vm, BGP_UPDATE);
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     startwithdrawn_r(vm->bgp);
     vm_accumulate_withdrawn(vm);
@@ -283,7 +273,8 @@ void vm_exec_withdrawn_accumulate(filter_vm_t *vm)
 
 void vm_exec_all_withdrawn_insert(filter_vm_t *vm)
 {
-    vm_require_bgp_type(vm, BGP_UPDATE);
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     startallwithdrawn_r(vm->bgp);
     vm_insert_withdrawn(vm);
@@ -291,7 +282,8 @@ void vm_exec_all_withdrawn_insert(filter_vm_t *vm)
 
 void vm_exec_withdrawn_insert(filter_vm_t *vm)
 {
-    vm_require_bgp_type(vm, BGP_UPDATE);
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     startwithdrawn_r(vm->bgp);
     vm_insert_withdrawn(vm);
@@ -299,7 +291,8 @@ void vm_exec_withdrawn_insert(filter_vm_t *vm)
 
 void vm_exec_all_nlri_accumulate(filter_vm_t *vm)
 {
-    vm_require_bgp_type(vm, BGP_UPDATE);
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     startallnlri_r(vm->bgp);
     vm_accumulate_nlri(vm);
@@ -307,7 +300,8 @@ void vm_exec_all_nlri_accumulate(filter_vm_t *vm)
 
 void vm_exec_nlri_accumulate(filter_vm_t *vm)
 {
-    vm_require_bgp_type(vm, BGP_UPDATE);
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     startnlri_r(vm->bgp);
     vm_accumulate_nlri(vm);
@@ -315,7 +309,8 @@ void vm_exec_nlri_accumulate(filter_vm_t *vm)
 
 void vm_exec_all_nlri_insert(filter_vm_t *vm)
 {
-    vm_require_bgp_type(vm, BGP_UPDATE);
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     startallnlri_r(vm->bgp);
     vm_insert_nlri(vm);
@@ -323,7 +318,8 @@ void vm_exec_all_nlri_insert(filter_vm_t *vm)
 
 void vm_exec_nlri_insert(filter_vm_t *vm)
 {
-    vm_require_bgp_type(vm, BGP_UPDATE);
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
     startnlri_r(vm->bgp);
     vm_insert_nlri(vm);
@@ -602,7 +598,7 @@ void vm_exec_ascontains(filter_vm_t *vm, int kidx)
     vm_pushvalue(vm, false);
 }
 
-static int filter_execute(filter_vm_t *vm)
+int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
 {
 // disable pedantic diagnostic about taking address label
 #pragma GCC diagnostic push
@@ -654,6 +650,7 @@ static int filter_execute(filter_vm_t *vm)
     int arg, exarg;
     stack_cell_t *cell;
 
+    vm->bgp    = msg;
     vm->pc     = 0;
     vm->curblk = 0;
     vm_clearstack(vm);
@@ -882,48 +879,6 @@ done:
 #undef EXECUTE
 #undef EXECUTE_SIGILL
 #pragma GCC diagnostic pop
-}
-
-int mrt_filter_r(mrt_msg_t *msg, filter_vm_t *vm)
-{
-    bgp_msg_t bgp;
-
-    vm->bgp = NULL;
-    vm->mrt = msg;
-
-    if (isbgpwrapper_r(msg)) {
-        // MRT wraps a BGP packet, extract it to enable BGP filtering
-        void *data;
-        size_t n;
-
-        data = unwrapbgp4mp_r(msg, &n);
-        setbgpread_r(&bgp, data, n, BGPF_NOCOPY);
-
-        // populate feeder utility constants
-        const bgp4mp_header_t *bgphdr = getbgp4mpheader();
-        vm->kp[K_PEER_ADDR].addr = bgphdr->peer_addr;
-        vm->kp[K_PEER_AS].as     = bgphdr->peer_as;
-
-        vm->bgp = &bgp;
-    }
-
-    int result = filter_execute(vm);
-    if (vm->bgp)
-        bgpclose_r(vm->bgp);
-
-    return result;
-}
-
-int mrt_filter(filter_vm_t *vm)
-{
-    return mrt_filter_r(getmrt(), vm);
-}
-
-int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
-{
-    vm->bgp = msg;
-    vm->mrt = NULL;
-    return filter_execute(vm);
 }
 
 int bgp_filter(filter_vm_t *vm)

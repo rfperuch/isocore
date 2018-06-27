@@ -41,6 +41,7 @@
 #ifndef ISOLARIO_ENDIAN_H_
 #define ISOLARIO_ENDIAN_H_
 
+#include <isolario/funcattribs.h>
 #include <stdint.h>
 
 /**
@@ -98,7 +99,7 @@ typedef union {
  *
  * @return The resulting byte-swapped word.
  */
-inline uint16_t byteswap16(uint16_t w)
+inline constfunc uint16_t byteswap16(uint16_t w)
 {
 #ifdef __GNUC__
     return __builtin_bswap16(w);
@@ -114,7 +115,7 @@ inline uint16_t byteswap16(uint16_t w)
  *
  * @return The resulting byte-swapped longword.
  */
-inline uint32_t byteswap32(uint32_t l)
+inline constfunc uint32_t byteswap32(uint32_t l)
 {
 #ifdef __GNUC__
     return __builtin_bswap32(l);
@@ -131,7 +132,7 @@ inline uint32_t byteswap32(uint32_t l)
  *
  * @return The resulting byte-swapped quadword.
  */
-inline uint64_t byteswap64(uint64_t q)
+inline constfunc uint64_t byteswap64(uint64_t q)
 {
 #ifdef __GNUC__
     return __builtin_bswap64(q);
@@ -367,7 +368,7 @@ typedef enum {
  *
  * @see tolittle16()
  */
-inline uint16_t fromlittle16(uint16_t w)
+inline constfunc uint16_t fromlittle16(uint16_t w)
 {
     if (ENDIAN_NATIVE != ENDIAN_LITTLE)
         w = byteswap16(w);
@@ -384,7 +385,7 @@ inline uint16_t fromlittle16(uint16_t w)
  *
  * @see tolittle32()
  */
-inline uint32_t fromlittle32(uint32_t l)
+inline constfunc uint32_t fromlittle32(uint32_t l)
 {
     if (ENDIAN_NATIVE != ENDIAN_LITTLE)
         l = byteswap32(l);
@@ -401,7 +402,7 @@ inline uint32_t fromlittle32(uint32_t l)
  *
  * @see tolittle64()
  */
-inline uint64_t fromlittle64(uint64_t q)
+inline constfunc uint64_t fromlittle64(uint64_t q)
 {
     if (ENDIAN_NATIVE != ENDIAN_LITTLE)
         q = byteswap64(q);
@@ -418,7 +419,7 @@ inline uint64_t fromlittle64(uint64_t q)
  *
  * @see tolittle16()
  */
-inline uint16_t tolittle16(uint16_t w)
+inline constfunc uint16_t tolittle16(uint16_t w)
 {
     if (ENDIAN_NATIVE != ENDIAN_LITTLE)
         w = byteswap16(w);
@@ -435,7 +436,7 @@ inline uint16_t tolittle16(uint16_t w)
  *
  * @see fromlittle32()
  */
-inline uint32_t tolittle32(uint32_t l)
+inline constfunc uint32_t tolittle32(uint32_t l)
 {
     if (ENDIAN_NATIVE != ENDIAN_LITTLE)
         l = byteswap32(l);
@@ -452,7 +453,7 @@ inline uint32_t tolittle32(uint32_t l)
  *
  * @see fromlittle64()
  */
-inline uint64_t tolittle64(uint64_t q)
+inline constfunc uint64_t tolittle64(uint64_t q)
 {
     if (ENDIAN_NATIVE != ENDIAN_LITTLE)
         q = byteswap64(q);
@@ -470,7 +471,7 @@ inline uint64_t tolittle64(uint64_t q)
  *
  * @see tobig16()
  */
-inline uint16_t frombig16(uint16_t w)
+inline constfunc uint16_t frombig16(uint16_t w)
 {
     if (ENDIAN_NATIVE != ENDIAN_BIG)
         w = byteswap16(w);
@@ -487,7 +488,7 @@ inline uint16_t frombig16(uint16_t w)
  *
  * @see tobig32()
  */
-inline uint32_t frombig32(uint32_t l)
+inline constfunc uint32_t frombig32(uint32_t l)
 {
     if (ENDIAN_NATIVE != ENDIAN_BIG)
         l = byteswap32(l);
@@ -504,7 +505,7 @@ inline uint32_t frombig32(uint32_t l)
  *
  * @see tolittle64()
  */
-inline uint64_t frombig64(uint64_t q)
+inline constfunc uint64_t frombig64(uint64_t q)
 {
     if (ENDIAN_NATIVE != ENDIAN_BIG)
         q = byteswap64(q);
@@ -521,7 +522,7 @@ inline uint64_t frombig64(uint64_t q)
  *
  * @see tobig16()
  */
-inline uint16_t tobig16(uint16_t w)
+inline constfunc uint16_t tobig16(uint16_t w)
 {
     if (ENDIAN_NATIVE != ENDIAN_BIG)
         w = byteswap16(w);
@@ -538,7 +539,7 @@ inline uint16_t tobig16(uint16_t w)
  *
  * @see frombig32()
  */
-inline uint32_t tobig32(uint32_t l)
+inline constfunc uint32_t tobig32(uint32_t l)
 {
     if (ENDIAN_NATIVE != ENDIAN_BIG)
         l = byteswap32(l);
@@ -555,7 +556,7 @@ inline uint32_t tobig32(uint32_t l)
  *
  * @see frombig64()
  */
-inline uint64_t tobig64(uint64_t q)
+inline constfunc uint64_t tobig64(uint64_t q)
 {
     if (ENDIAN_NATIVE != ENDIAN_BIG)
         q = byteswap64(q);

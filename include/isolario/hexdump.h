@@ -42,6 +42,7 @@
 #ifndef ISOLARIO_HEXDUMP_H_
 #define ISOLARIO_HEXDUMP_H_
 
+#include <isolario/funcattribs.h>
 #include <stdio.h>
 
 /**
@@ -219,7 +220,7 @@
  *         exceed \a n and may only be less than \a n in presence of an I/O
  *         error.
  */
-size_t hexdump(FILE *out, const void *data, size_t n, const char *mode, ...);
+nonnull(1, 4) size_t hexdump(FILE *out, const void *data, size_t n, const char *mode, ...);
 
 /**
  * @brief Hexadecimal dump to char string.
@@ -265,7 +266,7 @@ size_t hexdump(FILE *out, const void *data, size_t n, const char *mode, ...);
  *       formatting and has the obvious advantage of not requiring careful
  *       thinking on caller's behalf.
  */
-size_t hexdumps(char *dst, size_t size, const void *data, size_t n, const char *mode, ...);
+nonnull(5) size_t hexdumps(char *dst, size_t size, const void *data, size_t n, const char *mode, ...);
 
 /** @} */
 

@@ -30,20 +30,26 @@
 
 #include <isolario/bits.h>
 
-extern unsigned int ctz(unsigned int bits);
+extern unsigned int bitffs(unsigned int bits);
 
-extern unsigned long ctzl(unsigned long bits);
+extern unsigned long bitffsl(unsigned long bits);
 
-extern unsigned long long ctzll(unsigned long long bits);
+extern unsigned long long bitffsll(unsigned long long bits);
 
-extern unsigned int clz(unsigned int bits);
+extern unsigned int bitctz(unsigned int bits);
 
-extern unsigned long clzl(unsigned long bits);
+extern unsigned long bitctzl(unsigned long bits);
 
-extern unsigned long long clzll(unsigned long long bits);
+extern unsigned long long bitctzll(unsigned long long bits);
 
-extern unsigned int popcount(unsigned int bits);
+extern unsigned int bitclz(unsigned int bits);
 
-extern unsigned long popcountl(unsigned long bits);
+extern unsigned long bitclzl(unsigned long bits);
 
-extern unsigned long long popcountll(unsigned long long bits);
+extern unsigned long long bitclzll(unsigned long long bits);
+
+extern unsigned int bitpopcnt(unsigned int bits);
+
+extern unsigned long bitpopcntl(unsigned long bits);
+
+extern unsigned long long bitpopcntll(unsigned long long bits);

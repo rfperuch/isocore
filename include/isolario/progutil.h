@@ -28,6 +28,16 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+/**
+ * @file isolario/progutil.h
+ *
+ * @brief Optimized bit twiddling utility functions.
+ *
+ * @note This header is guaranteed to include standard \a stdarg.h and \a stdnoreturn.h,
+ *       it may include other standard, POSIX or isolario-specific headers, but includers
+ *       should not rely on it.
+ */
+
 #ifndef ISOLARIO_PROGUTIL_H_
 #define ISOLARIO_PROGUTIL_H_
 
