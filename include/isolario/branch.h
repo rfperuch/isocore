@@ -28,9 +28,43 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+/**
+ * @file isolario/branch.h
+ *
+ * @brief Compiler-specific branch hints.
+ */
+
 #ifndef ISOLARIO_BRANCH_H_
 #define ISOLARIO_BRANCH_H_
 
+/**
+ * @defgroup Branching Compiler-specific branching hints
+ *
+ * @brief Macros to mark code branches as likely or unlikely.
+ *
+ * Correct use of this macros give an opportunity to the compiler of optimizing
+ * instruction cache usage.
+ *
+ * @warning Misusing these compiler hints may produce suboptimal code, when in doubt
+ *          leave the task to the compiler!
+ *
+ * @{
+ */
+
+/**
+ * @def likely(guard)
+ * @brief Marks a branch as highly likely.
+ *
+ * If the compiler honors the hint, generated assembly is optimized for
+ * the case in which \a guard is true.
+ */
+/**
+ * @def unlikely(guard)
+ * @brief Marks a branch as highly unlikely.
+ *
+ * If the compiler honors the hint, generated assembly is optimized
+ * for the case in which \a guard is false.
+ */
 #ifdef __GNUC__
 
 #ifndef likely
@@ -52,5 +86,7 @@
 #endif
 
 #endif
+
+/** @} */
 
 #endif
