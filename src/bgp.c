@@ -262,6 +262,191 @@ int setbgpwrite(int type)
     return setbgpwrite_r(&curmsg, type);
 }
 
+int rebuildbgpfrommrt(const netaddr_t *nlri, size_t as_size, const void *data, size_t n, int flags)
+{
+    return rebuildbgpfrommrt_r(&curmsg, nlri, as_size, data, n, flags);
+}
+
+static int ismrttruncated(const void *mp_reach, size_t n)
+{
+    (void) n; // unused for now
+
+    const unsigned char *data = mp_reach;
+
+    return data[0] != 0 || data[1] != AFI_IPV6 || data[2] != SAFI_UNICAST;
+}
+
+int rebuildbgpfrommrt_r(bgp_msg_t *msg, const netaddr_t *nlri, size_t as_size, const void *data, size_t n, int flags)
+{
+    setbgpwrite_r(msg, BGP_UPDATE);
+
+    const bgpattr_t *attr = data;
+    unsigned char *dst    = &msg->buf[BASE_PACKET_LENGTH];
+    int seen_mp_reach     = false;
+
+    // no withdrawn, zero-out 2 bytes
+    *dst++ = 0;
+    *dst++ = 0;
+
+    // leave 2 bytes for attributes length
+    dst += sizeof(uint16_t);
+
+    unsigned char *attrptr = dst;
+
+    // copy over BGP attributes
+    while (n > 0) {
+        const unsigned char *src = &attr->len;
+
+        // bound check header
+        if (unlikely(n < ATTR_HEADER_SIZE))
+            goto error;
+
+        size_t len     = *src++;
+        size_t hdrsize = ATTR_HEADER_SIZE;
+        if (attr->flags & ATTR_EXTENDED_LENGTH) {
+            if (unlikely(n < ATTR_EXTENDED_HEADER_SIZE))
+                goto error;
+
+            len <<= 8;
+            len |= *src++;
+
+            hdrsize++;
+        }
+
+        size_t size = hdrsize + len;
+        if (unlikely(n < size))
+            goto error;
+
+        int truncated = true;
+        switch (attr->code) {
+        case MP_REACH_NLRI_CODE:
+            // in v6 case, MP_REACH lacks NLRI and removes reserved field
+            seen_mp_reach = true;
+
+            if (nlri->family == AF_INET6) {
+                if (flags & BGPF_GUESSMRT && !ismrttruncated(src, len))
+                    truncated = false;
+                if (flags & BGPF_FULLMPREACH)
+                    truncated = false;
+
+                if (truncated) {
+                    // rebuild MP_REACH_NLRI
+                    size_t addrlen = naddrsize(nlri->bitlen);
+                    size_t n = sizeof(uint16_t) + sizeof(uint8_t) + len + 1 + 1 + addrlen;
+
+                    *dst++ = (n > 0xff) ? EXTENDED_MP_REACH_NLRI_FLAGS : DEFAULT_MP_REACH_NLRI_FLAGS;
+                    *dst++ = MP_REACH_NLRI_CODE;
+                    *dst++ = n & 0xff;
+                    if (n > 0xff)
+                        *dst++ = n >> 8;
+
+                    uint16_t afi = tobig16(AFI_IPV6);
+                    memcpy(dst, &afi, sizeof(afi));
+                    dst += sizeof(afi);
+
+                    *dst++ = SAFI_UNICAST;
+
+                    memcpy(dst, src, len);
+                    dst += len;
+
+                    *dst++ = 0; // reserved field
+
+                    *dst++ = nlri->bitlen;
+                    memcpy(dst, nlri->bytes, addrlen);
+                    dst += addrlen;
+                    break;
+                }
+
+                // fallthrough to common case
+            }
+
+            memcpy(dst, attr, size);
+            dst += size;
+            break;
+        case AS_PATH_CODE:
+            if (as_size == sizeof(uint16_t)) {
+                // truncate ASes to 16-bits
+                unsigned char *start = dst;
+
+                memcpy(dst, src, hdrsize);
+                dst += hdrsize;
+
+                const unsigned char *end = src + len;
+                while (src < end) {
+                    if (unlikely(end - src < AS_SEGMENT_HEADER_SIZE))
+                        goto error;
+
+                    int segtype  = *src++;
+                    int segcount = *src++;
+
+                    *dst++ = segtype;
+                    *dst++ = segcount;
+                    if (unlikely((size_t) (end - src) != segcount * sizeof(uint32_t)))
+                        goto error;
+
+                    for (int i = 0; i < segcount; i++) {
+                        uint32_t as;
+                        memcpy(&as, src, sizeof(as));
+
+                        uint16_t as16 = tobig16(frombig32(as));
+                        memcpy(dst, &as16, sizeof(as16));
+
+                        src += sizeof(as);
+                        dst += sizeof(as16);
+                    }
+
+                    // rewrite length
+                    start += 2;
+
+                    size_t total = (dst - start) - hdrsize;
+
+                    *start++ = total & 0xff;
+                    if (attr->flags & ATTR_EXTENDED_LENGTH)
+                        *start++ = total >> 8;
+                }
+                break;
+            }
+            // fallthrough
+        default:
+            memcpy(dst, attr, size);
+            dst += size;
+            break;
+        }
+
+        src += len;
+        attr = (const bgpattr_t *) src;
+
+        n -= size;
+    }
+
+    // write out attributes length
+    uint16_t attrlen = dst - attrptr;
+    attrlen = tobig16(attrlen);
+    memcpy(attrptr - sizeof(attrlen), &attrlen, sizeof(attrlen));
+
+    // MP_REACH must exist in case of a v6 address
+    if (unlikely(nlri->family == AF_INET6 && !seen_mp_reach))
+        goto error;
+
+    // add NLRI if it wasn't v6
+    if (nlri->family == AF_INET) {
+        size_t n = naddrsize(nlri->bitlen);
+
+        *dst++ = nlri->bitlen;
+        memcpy(dst, nlri->bytes, n);
+        dst += n;
+    }
+
+    // finalize packet
+    msg->pktlen = dst - msg->buf;
+    bgpfinish_r(msg, NULL);
+    return BGP_ENOERR;
+
+error:
+    bgpclose_r(msg);
+    return BGP_EBADATTR;
+}
+
 int setbgpwrite_r(bgp_msg_t *msg, int type)
 {
     if (unlikely(type < 0 || (unsigned int) type >= nelems(bgp_minlengths)))
@@ -346,6 +531,7 @@ void *bgpfinish_r(bgp_msg_t *msg, size_t *pn)
 
     msg->flags &= ~F_WR;
     msg->flags |= F_RD; //allow reading from this message in the future
+    memset(msg->offtab, 0, sizeof(msg->offtab));
 
     return msg->buf;
 }

@@ -65,11 +65,12 @@ enum {
 
     F_VALID     = 1 << 0,
     F_AS32      = 1 << 1,
-    F_NEEDS_PI  = 1 << 2,
-    F_IS_EXT    = 1 << 3,
-    F_IS_BGP    = 1 << 4,
-    F_HAS_STATE = 1 << 5,
-    F_WRAPS_BGP = 1 << 6,
+    F_IS_PI     = 1 << 2,
+    F_NEEDS_PI  = 1 << 3,
+    F_IS_EXT    = 1 << 4,
+    F_IS_BGP    = 1 << 5,
+    F_HAS_STATE = 1 << 6,
+    F_WRAPS_BGP = 1 << 7,
 
     F_RD   = 1 << 8,        ///< Packet opened for read
     F_WR   = 1 << (8 + 1),  ///< Packet opened for write
@@ -82,7 +83,7 @@ enum {
 #define SHIFT(idx) ((idx) - MRT_TABLE_DUMP)
 
 static const uint8_t masktab[][MAX_MRT_SUBTYPE + 1] = {
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]   = F_VALID,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]   = F_VALID | F_IS_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC]        = F_VALID | F_NEEDS_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST]   = F_VALID | F_NEEDS_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST] = F_VALID | F_NEEDS_PI,
@@ -143,6 +144,38 @@ int mrterror_r(mrt_msg_t *msg)
 
 // read section
 
+static int setuppitable(mrt_msg_t *msg, mrt_msg_t *pi)
+{
+    // FIXME: this invalidates pi's peer entry iterator, it would be wise not doing this...
+    msg->peer_index = pi;
+    if (likely(pi->pitab))
+        return MRT_ENOERR;
+
+    size_t count;
+
+    int err = startpeerents_r(pi, &count);
+    if (unlikely(err != MRT_ENOERR))
+        return MRT_EBADPEERIDX;
+
+    pi->pitab = pi->fastpitab;
+    if (unlikely(count > nelems(msg->fastpitab))) {
+        pi->pitab = malloc(count * sizeof(*pi->pitab));
+        if (unlikely(!pi->pitab))
+            return MRT_ENOMEM;
+    }
+    for (size_t i = 0; i < count; i++) {
+        pi->pitab[i] = (pi->peptr - pi->buf) - MESSAGE_OFFSET;
+        nextpeerent_r(pi);
+    }
+
+    err = endpeerents_r(pi);
+    if (unlikely(err != MRT_ENOERR))
+        return MRT_EBADPEERIDX;
+
+    pi->picount = count;
+    return MRT_ENOERR;
+}
+
 static int readmrtheader(mrt_msg_t *msg, const unsigned char *hdr)
 {
     uint32_t time;
@@ -186,30 +219,6 @@ static int endpending(mrt_msg_t *msg)
     return endpeerents_r(msg);
 }
 
-static int setuppitable(mrt_msg_t *msg, mrt_msg_t *pi)
-{
-    // FIXME: this invalidates pi's peer entry iterator, it would be wise not doing this...
-    msg->peer_index = pi;
-    if (likely(pi->pitab))
-        return MRT_ENOERR;
-
-    size_t n = startpeerents_r(pi, &n);
-
-    pi->pitab = pi->fastpitab;
-    if (unlikely(n > nelems(msg->fastpitab))) {
-        pi->pitab = malloc(n * sizeof(*pi->pitab));
-        if (unlikely(!pi->pitab))
-            return MRT_ENOMEM;
-    }
-    for (size_t i = 0; i < n; i++) {
-        msg->pitab[i] = (msg->peptr - msg->buf) - MESSAGE_OFFSET;
-        nextpeerent_r(pi);
-    }
-
-    endpeerents_r(pi);
-    return MRT_ENOERR;
-}
-
 int ismrtext(void)
 {
     return ismrtext_r(&curmsg);
@@ -242,7 +251,7 @@ int ismrtrib_r(mrt_msg_t *msg)
 
 int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi)
 {
-    if (likely((msg->flags & F_NEEDS_PI) && pi->hdr.type == MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
+    if (likely((msg->flags & F_NEEDS_PI) && (pi->flags & F_IS_PI)))
         return setuppitable(msg, pi);
 
     return MRT_EINVOP;
@@ -275,6 +284,7 @@ int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
     msg->err = MRT_ENOERR;
     msg->bufsiz = n;
     msg->peer_index = NULL;
+    msg->pitab      = NULL;
     memcpy(msg->buf, data, n);
     return MRT_ENOERR;
 }
@@ -298,7 +308,7 @@ int setmrtreadfrom(io_rw_t *io)
         return res;
 
     if ((curmsg.flags & F_NEEDS_PI) && (curpimsg.flags & F_RD))
-        curmsg.peer_index = &curpimsg;
+        return setuppitable(&curmsg, &curpimsg);
 
     return res;
 }
@@ -392,10 +402,10 @@ int mrtclose_r(mrt_msg_t *msg)
     int err = mrterror_r(msg);
     if (unlikely(msg->buf != msg->fastbuf))
         free(msg->buf);
+    if (msg->flags & F_IS_PI && msg->pitab != msg->fastpitab)
+        free(msg->pitab);
 
-    if (msg == &curpimsg)
-        msg->flags = 0;  // special case to detect whether a static PI is active
-
+    msg->flags = 0;  // useful if msg == &curpimsg, detects whether a static PI is active
     return err;
 }
 
@@ -410,7 +420,7 @@ struct in_addr getpicollector_r(mrt_msg_t *msg)
 {
     struct in_addr addr = {0};
 
-    if (unlikely(msg->hdr.type != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
+    if (unlikely((msg->flags & F_IS_PI) == 0))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return addr;
@@ -426,7 +436,7 @@ size_t getpiviewname(char *buf, size_t n)
 
 size_t getpiviewname_r(mrt_msg_t *msg, char *buf, size_t n)
 {
-    if (unlikely(msg->hdr.type != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
+    if (unlikely((msg->flags & F_IS_PI) == 0))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return 0;
@@ -455,7 +465,7 @@ void *getpeerents(size_t *pcount, size_t *pn)
 
 void *getpeerents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
 {
-    if (unlikely(msg->hdr.type != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
+    if (unlikely((msg->flags & F_IS_PI) == 0))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return NULL;
@@ -489,7 +499,7 @@ int startpeerents(size_t *pcount)
 
 int startpeerents_r(mrt_msg_t *msg, size_t *pcount)
 {
-    if (unlikely(msg->hdr.type != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
+    if (unlikely((msg->flags & F_IS_PI) == 0))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return msg->err;
@@ -511,6 +521,37 @@ enum {
     PT_AS32 = 1 << 1
 };
 
+static unsigned char *decodepeerent(peer_entry_t *dst, const unsigned char *ptr)
+{
+    int flags = *ptr++;
+
+    memcpy(&dst->id, ptr, sizeof(dst->id));
+    ptr += sizeof(dst->id);
+    if (flags & PT_IPV6) {
+        dst->afi = AFI_IPV6;
+        memcpy(&dst->in6, ptr, sizeof(dst->in6));
+        ptr += sizeof(dst->in6);
+    } else {
+        dst->afi = AFI_IPV4;
+        memcpy(&dst->in, ptr, sizeof(dst->in));
+        ptr += sizeof(dst->in);
+    }
+    if (flags & PT_AS32) {
+        uint32_t as;
+
+        dst->as_size = sizeof(as);
+        memcpy(&as, ptr, sizeof(as));
+        dst->as = frombig32(as);
+    } else {
+        uint16_t as;
+
+        dst->as_size = sizeof(as);
+        memcpy(&as, ptr, sizeof(as));
+        dst->as = frombig16(as);
+    }
+    return (unsigned char *) ptr + dst->as_size;
+}
+
 peer_entry_t *nextpeerent_r(mrt_msg_t *msg)
 {
     if (unlikely((msg->flags & F_PE) == 0))
@@ -523,32 +564,7 @@ peer_entry_t *nextpeerent_r(mrt_msg_t *msg)
     if (msg->peptr == end)
         return NULL;
 
-    uint8_t flags = *msg->peptr++;
-    memcpy(&msg->pe.id, msg->peptr, sizeof(msg->pe.id));
-    msg->peptr += sizeof(msg->pe.id);
-    if (flags & PT_IPV6) {
-        msg->pe.afi = AFI_IPV6;
-        memcpy(&msg->pe.in6, msg->peptr, sizeof(msg->pe.in6));
-        msg->peptr += sizeof(msg->pe.in6);
-    } else {
-        msg->pe.afi = AFI_IPV4;
-        memcpy(&msg->pe.in, msg->peptr, sizeof(msg->pe.in));
-        msg->peptr += sizeof(msg->pe.in);
-    }
-    if (flags & PT_AS32) {
-        uint32_t as;
-
-        msg->pe.as_size = sizeof(as);
-        memcpy(&as, msg->peptr, sizeof(as));
-        msg->pe.as = frombig32(as);
-    } else {
-        uint16_t as;
-
-        msg->pe.as_size = sizeof(as);
-        memcpy(&as, msg->peptr, sizeof(as));
-        msg->pe.as = frombig16(as);
-    }
-    msg->peptr += msg->pe.as_size;
+    msg->peptr = decodepeerent(&msg->pe, msg->peptr);
     return &msg->pe;
 }
 
@@ -572,11 +588,19 @@ int endpeerents_r(mrt_msg_t *msg)
 
 int setribpi(void)
 {
-    if (unlikely(curmsg.hdr.type != MRT_TABLE_DUMPV2_PEER_INDEX_TABLE))
+    if (unlikely(curmsg.err != MRT_ENOERR))
+        return MRT_EINVOP;
+    if (unlikely((curmsg.flags & F_IS_PI) == 0))
         return MRT_NOTPEERIDX;
 
+    // FIXME
     memcpy(&curpimsg, &curmsg, sizeof(curmsg));
-    return MRT_ENOERR;
+    if (curpimsg.buf == curmsg.fastbuf)
+        curpimsg.buf = curpimsg.fastbuf;
+    if (curpimsg.pitab == curmsg.fastpitab)
+        curpimsg.pitab = curpimsg.fastpitab;
+
+    return endpending(&curpimsg);
 }
 
 void *getribents(size_t *pcount, size_t *pn)
@@ -713,7 +737,8 @@ rib_entry_t *nextribent(void)
 
 rib_entry_t *nextribent_r(mrt_msg_t *msg)
 {
-    if (unlikely(!msg->peer_index))
+    mrt_msg_t *pi = msg->peer_index;
+    if (unlikely(!pi))
         msg->err = MRT_EINVOP;
     if (unlikely(msg->err))
         return NULL;
@@ -725,6 +750,11 @@ rib_entry_t *nextribent_r(mrt_msg_t *msg)
     uint16_t idx;
     memcpy(&idx, msg->reptr, sizeof(idx));
     idx = frombig16(idx);
+    if (idx >= pi->picount) {
+        msg->err = MRT_EBADPEERIDX;
+        return NULL;
+    }
+
     msg->reptr += sizeof(idx);
 
     uint32_t originated;
@@ -743,6 +773,11 @@ rib_entry_t *nextribent_r(mrt_msg_t *msg)
     msg->ribent.attrs = (bgpattr_t *) msg->reptr;
 
     msg->reptr += attr_len;
+
+    // decode peer entry
+    unsigned char *peer_ent = &pi->buf[msg->peer_index->pitab[idx] + MESSAGE_OFFSET];
+    decodepeerent(&msg->ribpe, peer_ent);
+    msg->ribent.peer = &msg->ribpe;
     return &msg->ribent;
 }
 

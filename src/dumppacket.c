@@ -285,12 +285,12 @@ static void parse_varargs(bgp_formatter_t *dst, const char *fmt, va_list va)
 
     switch (*fmt) {
     case 'r':
-        dst->dumpbgp = printbgp_row;
+        dst->dumpbgp         = printbgp_row;
         dst->dumpstatechange = printstatechange_row;
         fmt++;
         break;
     default:
-        dst->dumpbgp = printbgp_row;
+        dst->dumpbgp         = printbgp_row;
         dst->dumpstatechange = printstatechange_row;
         break;
     }

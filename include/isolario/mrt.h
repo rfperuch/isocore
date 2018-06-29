@@ -249,6 +249,7 @@ typedef struct mrt_msg_s {
         struct {
             rib_header_t ribhdr;
             rib_entry_t ribent;
+            peer_entry_t ribpe;
             unsigned char *reptr; ///< Raw RIB entry pointer in current packet
         };
 
@@ -256,7 +257,10 @@ typedef struct mrt_msg_s {
     };
 
     unsigned char *buf;  ///< Packet buffer base.
+
     uint32_t *pitab;
+    uint16_t picount;
+
     unsigned char fastbuf[MRTBUFSIZ];  ///< Fast buffer to avoid malloc()s.
     union {
         uint32_t fastpitab[MRTPRESRVBUFSIZ / sizeof(uint32_t)];

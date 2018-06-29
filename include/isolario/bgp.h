@@ -45,6 +45,7 @@
 #include <arpa/inet.h>
 #include <isolario/bgpparams.h>
 #include <isolario/bgpattribs.h>
+#include <isolario/funcattribs.h>
 #include <isolario/netaddr.h>
 #include <isolario/io.h>  // also includes stddef.h
 #include <stdint.h>
@@ -103,7 +104,7 @@ enum {
     BGP_EBADNLRI       ///< Update message has invalid NLRI field.
 };
 
-inline const char *bgpstrerror(int err)
+inline purefunc nonullreturn const char *bgpstrerror(int err)
 {
     switch (err) {
     case BGP_ENOERR:
@@ -143,24 +144,32 @@ int setbgpread(const void *data, size_t n, int flags);
 
 int setbgpreadfd(int fd);
 
-int setbgpreadfrom(io_rw_t *io);
+nonnull(1) int setbgpreadfrom(io_rw_t *io);
 
 /**
  * @brief Initialize a BGP packet for writing a new packet of type \a type from scratch.
  */
 int setbgpwrite(int type);
 
+enum {
+    BGPF_GUESSMRT    = 0,
+    BGPF_STDMRT      = 1 << 0,
+    BGPF_FULLMPREACH = 1 << 1
+};
+
+nonnull(1) int rebuildbgpfrommrt(const netaddr_t *nlri, size_t as_size, const void *data, size_t n, int flags);
+
 /**
  * @brief Get BGP packet type from header.
  */
-int getbgptype(void);
+wur int getbgptype(void);
 
 /**
  * @brief Get BGP packet length from header.
  */
-size_t getbgplength(void);
+wur size_t getbgplength(void);
 
-int bgperror(void);
+wur int bgperror(void);
 
 void *bgpfinish(size_t *pn);
 
@@ -183,7 +192,7 @@ typedef struct {
 
 bgp_open_t *getbgpopen(void);
 
-int setbgpopen(const bgp_open_t *open);
+nonnull(1) int setbgpopen(const bgp_open_t *open);
 
 void *getbgpparams(size_t *pn);
 
@@ -203,7 +212,7 @@ int startbgpcaps(void);
 bgpcap_t *nextbgpcap(void);
 
 /** @brief Write a capability into a BGP open packet, length is in bytes, header included. */
-int putbgpcap(const bgpcap_t *cap);
+nonnull(1) int putbgpcap(const bgpcap_t *cap);
 
 int endbgpcaps(void);
 
@@ -225,7 +234,7 @@ int startallwithdrawn(void);
 
 netaddr_t *nextwithdrawn(void);
 
-int putwithdrawn(const netaddr_t *p);
+nonnull(1) int putwithdrawn(const netaddr_t *p);
 
 int endwithdrawn(void);
 
@@ -237,7 +246,7 @@ int startbgpattribs(void);
 
 bgpattr_t *nextbgpattrib(void);
 
-int putbgpattrib(const bgpattr_t *attr);
+nonnull(1) int putbgpattrib(const bgpattr_t *attr);
 
 int endbgpattribs(void);
 
@@ -249,7 +258,7 @@ int startnlri(void);
 
 int startallnlri(void);
 
-int putnlri(const netaddr_t *p);
+nonnull(1) int putnlri(const netaddr_t *p);
 
 netaddr_t *nextnlri(void);
 
@@ -276,12 +285,6 @@ int startnhop(void);
 netaddr_t *nextnhop(void);
 
 int endnhop(void);
-
-int startcommunities(void);
-
-void *nextcommunity(void);
-
-int endcommunities(void);
 
 /** @} */
 
@@ -379,177 +382,140 @@ typedef struct {
 /**
  * @brief Retrieve a pointer to the thread local BGP message structure.
  */
-bgp_msg_t *getbgp(void);
+nonullreturn wur bgp_msg_t *getbgp(void);
 
-int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n, int flags);
+nonnull(1) int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n, int flags);
 
-int setbgpreadfd_r(bgp_msg_t *msg, int fd);
+nonnull(1) int setbgpreadfd_r(bgp_msg_t *msg, int fd);
 
-int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io);
+nonnull(1, 2) int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io);
 
-int setbgpwrite_r(bgp_msg_t *msg, int type);
+nonnull(1) int setbgpwrite_r(bgp_msg_t *msg, int type);
 
-int getbgptype_r(bgp_msg_t *msg);
+nonnull(1) wur int getbgptype_r(bgp_msg_t *msg);
+
+nonnull(1, 2) int rebuildbgpfrommrt_r(bgp_msg_t *msg, const netaddr_t *nlri, size_t as_size, const void *data, size_t n, int flags);
 
 size_t getbgplength_r(bgp_msg_t *msg);
 
-int bgperror_r(bgp_msg_t *msg);
+nonnull(1) wur int bgperror_r(bgp_msg_t *msg);
 
-void *bgpfinish_r(bgp_msg_t *msg, size_t *pn);
+nonnull(1) void *bgpfinish_r(bgp_msg_t *msg, size_t *pn);
 
-int bgpclose_r(bgp_msg_t *msg);
+nonnull(1) int bgpclose_r(bgp_msg_t *msg);
 
-bgp_open_t *getbgpopen_r(bgp_msg_t *msg);
+nonnull(1) bgp_open_t *getbgpopen_r(bgp_msg_t *msg);
 
-int setbgpopen_r(bgp_msg_t *msg, const bgp_open_t *open);
+nonnull(1) int setbgpopen_r(bgp_msg_t *msg, const bgp_open_t *open);
 
-void *getbgpparams_r(bgp_msg_t *msg, size_t *pn);
+nonnull(1) void *getbgpparams_r(bgp_msg_t *msg, size_t *pn);
 
-int setbgpparams_r(bgp_msg_t *msg, const void *params, size_t n);
+nonnull(1) int setbgpparams_r(bgp_msg_t *msg, const void *params, size_t n);
 
-int startbgpcaps_r(bgp_msg_t *msg);
+nonnull(1) int startbgpcaps_r(bgp_msg_t *msg);
 
-bgpcap_t *nextbgpcap_r(bgp_msg_t *msg);
+nonnull(1) bgpcap_t *nextbgpcap_r(bgp_msg_t *msg);
 
-int putbgpcap_r(bgp_msg_t *msg, const bgpcap_t *cap);
+nonnull(1, 2) int putbgpcap_r(bgp_msg_t *msg, const bgpcap_t *cap);
 
-int endbgpcaps_r(bgp_msg_t *msg);
+nonnull(1) int endbgpcaps_r(bgp_msg_t *msg);
 
-int setwithdrawn_r(bgp_msg_t *msg, const void *data, size_t n);
+nonnull(1) int setwithdrawn_r(bgp_msg_t *msg, const void *data, size_t n);
 
-void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn);
+nonnull(1) void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn);
 
-int startallwithdrawn_r(bgp_msg_t *msg);
+nonnull(1) int startallwithdrawn_r(bgp_msg_t *msg);
 
-int startwithdrawn_r(bgp_msg_t *msg);
+nonnull(1) int startwithdrawn_r(bgp_msg_t *msg);
 
-netaddr_t *nextwithdrawn_r(bgp_msg_t *msg);
+nonnull(1) netaddr_t *nextwithdrawn_r(bgp_msg_t *msg);
 
-int putwithdrawn_r(bgp_msg_t *msg, const netaddr_t *p);
+nonnull(1, 2) int putwithdrawn_r(bgp_msg_t *msg, const netaddr_t *p);
 
-int endwithdrawn_r(bgp_msg_t *msg);
+nonnull(1) int endwithdrawn_r(bgp_msg_t *msg);
 
-int setbgpattribs_r(bgp_msg_t *msg, const void *data, size_t n);
+nonnull(1) int setbgpattribs_r(bgp_msg_t *msg, const void *data, size_t n);
 
-void *getbgpattribs_r(bgp_msg_t *msg, size_t *pn);
+nonnull(1) void *getbgpattribs_r(bgp_msg_t *msg, size_t *pn);
 
-int startbgpattribs_r(bgp_msg_t *msg);
+nonnull(1) int startbgpattribs_r(bgp_msg_t *msg);
 
-bgpattr_t *nextbgpattrib_r(bgp_msg_t *msg);
+nonnull(1) bgpattr_t *nextbgpattrib_r(bgp_msg_t *msg);
 
-int putbgpattrib_r(bgp_msg_t *msg, const bgpattr_t *attr);
+nonnull(1, 2) int putbgpattrib_r(bgp_msg_t *msg, const bgpattr_t *attr);
 
-int endbgpattribs_r(bgp_msg_t *msg);
+nonnull(1) int endbgpattribs_r(bgp_msg_t *msg);
 
-int setnlri_r(bgp_msg_t *msg, const void *data, size_t n);
+nonnull(1) int setnlri_r(bgp_msg_t *msg, const void *data, size_t n);
 
-void *getnlri_r(bgp_msg_t *msg, size_t *pn);
+nonnull(1) void *getnlri_r(bgp_msg_t *msg, size_t *pn);
 
-int startallnlri_r(bgp_msg_t *msg);
+nonnull(1) int startallnlri_r(bgp_msg_t *msg);
 
-int startnlri_r(bgp_msg_t *msg);
+nonnull(1) int startnlri_r(bgp_msg_t *msg);
 
-int putnlri_r(bgp_msg_t *msg, const netaddr_t *p);
+nonnull(1, 2) int putnlri_r(bgp_msg_t *msg, const netaddr_t *p);
 
-netaddr_t *nextnlri_r(bgp_msg_t *msg);
+nonnull(1) netaddr_t *nextnlri_r(bgp_msg_t *msg);
 
-int endnlri_r(bgp_msg_t *msg);
+nonnull(1) int endnlri_r(bgp_msg_t *msg);
 
-int startaspath_r(bgp_msg_t *msg, size_t as_size);
+nonnull(1) int startaspath_r(bgp_msg_t *msg, size_t as_size);
 
-int startas4path_r(bgp_msg_t *msg);
+nonnull(1) int startas4path_r(bgp_msg_t *msg);
 
-int startrealaspath_r(bgp_msg_t *msg, size_t as_size);
+nonnull(1) int startrealaspath_r(bgp_msg_t *msg, size_t as_size);
 
-as_pathent_t *nextaspath_r(bgp_msg_t *msg);
+nonnull(1) as_pathent_t *nextaspath_r(bgp_msg_t *msg);
 
-int endaspath_r(bgp_msg_t *msg);
+nonnull(1) int endaspath_r(bgp_msg_t *msg);
 
-int startnhop_r(bgp_msg_t *msg);
+nonnull(1) int startnhop_r(bgp_msg_t *msg);
 
-netaddr_t *nextnhop_r(bgp_msg_t *msg);
+nonnull(1) netaddr_t *nextnhop_r(bgp_msg_t *msg);
 
-int endnhop_r(bgp_msg_t *msg);
-
-int startcommunities_r(bgp_msg_t *msg);
-
-bgpattr_t *nextcommunity_r(bgp_msg_t *msg);
-
-int endcommunities_r(bgp_msg_t *msg);
+nonnull(1) int endnhop_r(bgp_msg_t *msg);
 
 // utility functions for update packages, direct access to notable attributes
 
-bgpattr_t *getbgporigin(void);
-bgpattr_t *getbgporigin_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgporigin(void);
+nonnull(1) wur bgpattr_t *getbgporigin_r(bgp_msg_t *msg);
 
-bgpattr_t *getbgpnexthop(void);
-bgpattr_t *getbgpnexthop_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgpnexthop(void);
+nonnull(1) wur bgpattr_t *getbgpnexthop_r(bgp_msg_t *msg);
 
-bgpattr_t *getbgpaggregator(void);
-bgpattr_t *getbgpaggregator_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgpaggregator(void);
+nonnull(1) wur bgpattr_t *getbgpaggregator_r(bgp_msg_t *msg);
 
-bgpattr_t *getbgpatomicaggregate(void);
-bgpattr_t *getbgpatomicaggregate_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgpatomicaggregate(void);
+nonnull(1) wur bgpattr_t *getbgpatomicaggregate_r(bgp_msg_t *msg);
 
-bgpattr_t *getbgpas4aggregator(void);
-bgpattr_t *getbgpas4aggregator_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgpas4aggregator(void);
+nonnull(1) wur bgpattr_t *getbgpas4aggregator_r(bgp_msg_t *msg);
 
-bgpattr_t *getrealbgpaggregator(size_t as_size);
-bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg, size_t as_size);
+wur bgpattr_t *getrealbgpaggregator(size_t as_size);
+nonnull(1) wur bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg, size_t as_size);
 
-bgpattr_t *getbgpaspath(void);
-bgpattr_t *getbgpaspath_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgpaspath(void);
+nonnull(1) wur bgpattr_t *getbgpaspath_r(bgp_msg_t *msg);
 
-bgpattr_t *getbgpas4path(void);
-bgpattr_t *getbgpas4path_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgpas4path(void);
+nonnull(1) wur bgpattr_t *getbgpas4path_r(bgp_msg_t *msg);
 
-bgpattr_t *getbgpmpreach(void);
-bgpattr_t *getbgpmpreach_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgpmpreach(void);
+nonnull(1) wur bgpattr_t *getbgpmpreach_r(bgp_msg_t *msg);
 
-bgpattr_t *getbgpmpunreach(void);
-bgpattr_t *getbgpmpunreach_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgpmpunreach(void);
+nonnull(1) wur bgpattr_t *getbgpmpunreach_r(bgp_msg_t *msg);
 
-bgpattr_t *getbgpcommunities(void);
-bgpattr_t *getbgpcommunities_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgpcommunities(void);
+nonnull(1) wur bgpattr_t *getbgpcommunities_r(bgp_msg_t *msg);
 
-bgpattr_t *getbgpexcommunities(void);
-bgpattr_t *getbgpexcommunities_r(bgp_msg_t *msg);
+wur bgpattr_t *getbgpexcommunities(void);
+nonnull(1) wur bgpattr_t *getbgpexcommunities_r(bgp_msg_t *msg);
 
-bgpattr_t *getbgplargecommunities(void);
-bgpattr_t *getbgplargecommunities_r(bgp_msg_t *msg);
-
-/*
-    From RFC 4893
-
-   A NEW BGP speaker should also be prepared to receive the
-   AS4_AGGREGATOR attribute along with the AGGREGATOR attribute from an
-   OLD BGP speaker.  When both the attributes are received, if the AS
-   number in the AGGREGATOR attribute is not AS_TRANS, then:
-
-      -  the AS4_AGGREGATOR attribute and the AS4_PATH attribute SHALL
-         be ignored,
-
-      -  the AGGREGATOR attribute SHALL be taken as the information
-         about the aggregating node, and
-
-      -  the AS_PATH attribute SHALL be taken as the AS path
-         information.
-
-   Otherwise,
-
-      -  the AGGREGATOR attribute SHALL be ignored,
-
-      -  the AS4_AGGREGATOR attribute SHALL be taken as the information
-         about the aggregating node, and
-
-      -  the AS path information would need to be constructed, as in all
-         other cases.
-
-   In order to construct the AS path information, it would be necessary
-   to first calculate the number of AS numbers in the AS_PATH and
-   AS4_PATH attributes using the method specified in Section 9.1.2.2
-   [BGP] and [RFC3065] for route selection.
-*/
+wur bgpattr_t *getbgplargecommunities(void);
+nonnull(1) wur bgpattr_t *getbgplargecommunities_r(bgp_msg_t *msg);
 
 /** @} */
 
