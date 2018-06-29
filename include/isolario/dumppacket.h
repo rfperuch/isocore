@@ -43,7 +43,11 @@ nonnull(1, 2, 3) void printbgp_r(FILE *out, bgp_msg_t *pkt, const char *fmt, ...
 
 nonnull(1, 2) void printbgpv(FILE *out, const char *fmt, va_list va);
 
-nonnull(1, 2)void printbgp(FILE *out, const char *fmt, ...);
+nonnull(1, 2) void printbgp(FILE *out, const char *fmt, ...);
+
+nonnull(1, 2, 3) void printpeerentv(FILE *out, const peer_entry_t *ent, const char *fmt, va_list va);
+
+nonnull(1, 2, 3) void printpeerent(FILE *out, const peer_entry_t *ent, const char *fmt, ...);
 
 nonnull(1, 2, 3) void printstatechangev(FILE *out, const bgp4mp_header_t *bgphdr, const char *fmt, va_list va);
 

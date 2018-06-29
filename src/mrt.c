@@ -528,13 +528,15 @@ static unsigned char *decodepeerent(peer_entry_t *dst, const unsigned char *ptr)
     memcpy(&dst->id, ptr, sizeof(dst->id));
     ptr += sizeof(dst->id);
     if (flags & PT_IPV6) {
-        dst->afi = AFI_IPV6;
-        memcpy(&dst->in6, ptr, sizeof(dst->in6));
-        ptr += sizeof(dst->in6);
+        dst->addr.family = AF_INET6;
+        dst->addr.bitlen = 128;
+        memcpy(&dst->addr.sin6, ptr, sizeof(dst->addr.sin6));
+        ptr += sizeof(dst->addr.sin6);
     } else {
-        dst->afi = AFI_IPV4;
-        memcpy(&dst->in, ptr, sizeof(dst->in));
-        ptr += sizeof(dst->in);
+        dst->addr.family = AF_INET;
+        dst->addr.bitlen = 32;
+        memcpy(&dst->addr.sin, ptr, sizeof(dst->addr.sin));
+        ptr += sizeof(dst->addr.sin);
     }
     if (flags & PT_AS32) {
         uint32_t as;

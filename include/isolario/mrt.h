@@ -103,14 +103,10 @@ enum {
 };
 
 typedef struct {
-    afi_t afi;
     size_t as_size;
     uint32_t as;
     struct in_addr id;
-    union {
-        struct in_addr  in;
-        struct in6_addr in6;
-    };
+    netaddr_t addr;
 } peer_entry_t;
 
 typedef struct {

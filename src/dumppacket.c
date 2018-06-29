@@ -233,27 +233,28 @@ static void printbgp_row(FILE *out, bgp_msg_t *pkt, const bgp_formatter_t *fmt)
         putc_unlocked('\n', out);
     }
 
-    if ((fmt->flags & BGPF_ISRIB) == 0) {
-        idx = 0;
+    if (fmt->flags & BGPF_ISRIB)
+        return; // ignore withdrawn
 
-        startallwithdrawn_r(pkt);
-        while ((addr = nextwithdrawn_r(pkt)) != NULL) {
-            if (idx == 0) {
-                putc_unlocked('-', out);
-                putc_unlocked('|', out);
-            } else {
-                putc_unlocked(' ', out);
-            }
-            writestr_unlocked(naddrtos(addr, NADDR_CIDR), out);
-            idx++;
-        }
-        endwithdrawn_r(pkt);
+    idx = 0;
 
-        if (idx > 0) {
-            writestr_unlocked("|||||||", out);
-            printbgp_row_trailer(out, fmt);
-            putc_unlocked('\n', out);
+    startallwithdrawn_r(pkt);
+    while ((addr = nextwithdrawn_r(pkt)) != NULL) {
+        if (idx == 0) {
+            putc_unlocked('-', out);
+            putc_unlocked('|', out);
+        } else {
+            putc_unlocked(' ', out);
         }
+        writestr_unlocked(naddrtos(addr, NADDR_CIDR), out);
+        idx++;
+    }
+    endwithdrawn_r(pkt);
+
+    if (idx > 0) {
+        writestr_unlocked("|||||||", out);
+        printbgp_row_trailer(out, fmt);
+        putc_unlocked('\n', out);
     }
 }
 
@@ -401,6 +402,44 @@ void printbgp_r(FILE *out, bgp_msg_t *msg, const char *fmt, ...)
     printbgpv_r(out, msg, fmt, va);
     va_end(va);
 }
+
+void printpeerentv(FILE *out, const peer_entry_t *ent, const char *fmt, va_list va)
+{
+    char buf[digsof(uint32_t) + 1];
+
+    (void) va; // unused for now
+
+    switch (*fmt) {
+    case 'h':
+        // human readable
+        writestr_unlocked(naddrtos(&ent->addr, NADDR_PLAIN), out);
+        writestr_unlocked(" AS(", out);
+        writestr_unlocked(ultoa(buf, NULL, ent->as), out);
+        putc_unlocked(')', out);
+        break;
+
+    case 'r':
+    default:
+        // row format
+        writestr_unlocked(naddrtos(&ent->addr, NADDR_PLAIN), out);
+        putc_unlocked(' ', out);
+        writestr_unlocked(ultoa(buf, NULL, ent->as), out);
+        putc_unlocked('|', out);
+        putc_unlocked((ent->as_size == sizeof(uint32_t)) ? '1' : '0', out);
+        break;
+    }
+    putc_unlocked('\n', out);
+}
+
+void printpeerent(FILE* out, const peer_entry_t* ent, const char *fmt, ...)
+{
+    va_list va;
+
+    va_start(va, fmt);
+    printpeerentv(out, ent, fmt, va);
+    va_end(va);
+}
+
 
 void printstatechangev(FILE *out, const bgp4mp_header_t *bgphdr, const char *fmt, va_list va)
 {
