@@ -44,6 +44,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 #include <isolario/branch.h>
+#include <isolario/funcattribs.h>
 #include <string.h>
 #include <stdint.h>
 
@@ -96,16 +97,16 @@ typedef struct {
 } netaddr_t;
 
 /// @brief Make a network address from an IPv4 address.
-void makenaddr(netaddr_t *ip, const void *sin, int bitlen);
+nonnull(1) void makenaddr(netaddr_t *ip, const void *sin, int bitlen);
 
 /// @brief Make a network address from an IPv6 address.
-void makenaddr6(netaddr_t *ip, const void *sin6, int bitlen);
+nonnull(1) void makenaddr6(netaddr_t *ip, const void *sin6, int bitlen);
 
 /// @brief String to network address.
-int stonaddr(netaddr_t *ip, const char *s);
+nonnull(1, 2) int stonaddr(netaddr_t *ip, const char *s);
 
 /// @brief Return the network size in bytes, given the size in bits.
-inline int naddrsize(int bitlen)
+inline constfunc int naddrsize(int bitlen)
 {
     assert(bitlen >= 0);
     return (bitlen >> 3) + ((bitlen & 7) != 0);
@@ -126,7 +127,7 @@ inline int naddrsize(int bitlen)
  *         \a AF_INET6 if address is a candidate to be an IPv6 address,
  *         \a AF_UNSPEC if string is definitely a bad address.
  */
-inline sa_family_t saddrfamily(const char *s)
+inline purefunc sa_family_t saddrfamily(const char *s)
 {
     if (unlikely(!s))
         return AF_UNSPEC;
@@ -143,7 +144,7 @@ inline sa_family_t saddrfamily(const char *s)
     return likely(*s == ':') ? AF_INET6 : AF_UNSPEC;
 }
 
-inline int prefixeqwithmask(const void *a, const void *b, unsigned int mask)
+inline purefunc nonnull(1, 2) int prefixeqwithmask(const void *a, const void *b, unsigned int mask)
 {
     unsigned int n = mask >> 3;
 
@@ -159,14 +160,14 @@ inline int prefixeqwithmask(const void *a, const void *b, unsigned int mask)
     return 0;
 }
 
-inline int prefixeq(const netaddr_t *restrict a, const netaddr_t *b)
+inline purefunc nonnull(1, 2) int prefixeq(const netaddr_t *a, const netaddr_t *b)
 {
     return a->family == b->family
         && a->bitlen == b->bitlen
         && prefixeqwithmask(a->bytes, b->bytes, a->bitlen);
 }
 
-inline int naddreq(const netaddr_t *a, const netaddr_t *b)
+inline purefunc nonnull(1, 2) int naddreq(const netaddr_t *a, const netaddr_t *b)
 {
     if (a->family != b->family)
         return 0;
@@ -190,6 +191,6 @@ inline int naddreq(const netaddr_t *a, const netaddr_t *b)
  * @note The returned pointer refers to a possibly statically allocated
  *       zone managed by the library and must not be free()d.
  */
-char *naddrtos(const netaddr_t *ip, int mode);
+nonullreturn char *naddrtos(const netaddr_t *ip, int mode);
 
 #endif
