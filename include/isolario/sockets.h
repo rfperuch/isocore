@@ -31,6 +31,7 @@
 #ifndef ISOLARIO_SOCKETS_H_
 #define ISOLARIO_SOCKETS_H_
 
+#include <isolario/funcattribs.h>
 #include <string.h>
 #include <sys/socket.h>
 
@@ -48,14 +49,14 @@
 #define UNIX_CONNECT_SOCKET "uc"
 #define UNIX_NONBLOCK_CONNECT_SOCKET "ucn"
 
-int fsockopen(const struct sockaddr *addr, socklen_t addrlen, const char *mode, ...);
+nonnull(1, 3) wur int fsockopen(const struct sockaddr *addr, socklen_t addrlen, const char *mode, ...);
 
-inline int hashv4(const struct in_addr *addr)
+nonnull(1) purefunc inline int hashv4(const struct in_addr *addr)
 {
     return addr->s_addr;
 }
 
-inline int hashv6(const struct in6_addr *addr6)
+nonnull(1) purefunc inline int hashv6(const struct in6_addr *addr6)
 {
     uint64_t hi, lo;
     memcpy(&hi, &addr6->s6_addr[0], sizeof(hi));
@@ -64,19 +65,19 @@ inline int hashv6(const struct in6_addr *addr6)
     return ((hi << 5) + hi + lo);
 }
 
-inline int sockaddrincmp(const struct sockaddr *a, const struct sockaddr *b)
+nonnull(1, 2) purefunc inline int sockaddrincmp(const struct sockaddr *a, const struct sockaddr *b)
 {
     const struct sockaddr_in *first = (const struct sockaddr_in *)a;
     const struct sockaddr_in *second = (const struct sockaddr_in *)b;
-    
+
     return (first->sin_addr.s_addr > second->sin_addr.s_addr) - (second->sin_addr.s_addr > first->sin_addr.s_addr);
 }
 
-inline int sockaddrin6cmp(const struct sockaddr *a, const struct sockaddr *b)
+nonnull(1, 2) purefunc inline int sockaddrin6cmp(const struct sockaddr *a, const struct sockaddr *b)
 {
     const struct sockaddr_in6 *first = (const struct sockaddr_in6 *)a;
     const struct sockaddr_in6 *second = (const struct sockaddr_in6 *)b;
-    
+
     return memcmp(first->sin6_addr.s6_addr, second->sin6_addr.s6_addr, sizeof(first->sin6_addr.s6_addr));
 }
 

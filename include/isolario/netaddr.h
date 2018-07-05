@@ -92,9 +92,15 @@ typedef struct {
     union {
         struct in_addr sin;
         struct in6_addr sin6;
+        uint32_t u32[sizeof(struct in6_addr) / sizeof(uint32_t)];
         unsigned char bytes[sizeof(struct in6_addr)];
     };
 } netaddr_t;
+
+typedef struct {
+    netaddr_t pfx;
+    uint32_t pathid;
+} netaddrap_t;
 
 /// @brief Make a network address from an IPv4 address.
 nonnull(1) void makenaddr(netaddr_t *ip, const void *sin, int bitlen);

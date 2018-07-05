@@ -71,24 +71,30 @@ enum {
     F_IS_BGP    = 1 << 5,
     F_HAS_STATE = 1 << 6,
     F_WRAPS_BGP = 1 << 7,
+    F_ADDPATH   = 1 << 8,
 
-    F_RD   = 1 << 8,        ///< Packet opened for read
-    F_WR   = 1 << (8 + 1),  ///< Packet opened for write
-    F_RDWR = F_RD | F_WR,   ///< Shorthand for \a (F_RD | F_WR).
+    F_RD   = 1 << 10,        ///< Packet opened for read
+    F_WR   = 1 << (10 + 1),  ///< Packet opened for write
+    F_RDWR = F_RD | F_WR,    ///< Shorthand for \a (F_RD | F_WR).
 
-    F_PE = 1 << (8 + 2),
-    F_RE = 1 << (8 + 3)
+    F_PE = 1 << (10 + 2),
+    F_RE = 1 << (10 + 3)
 };
 
 #define SHIFT(idx) ((idx) - MRT_TABLE_DUMP)
 
-static const uint8_t masktab[][MAX_MRT_SUBTYPE + 1] = {
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]   = F_VALID | F_IS_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC]        = F_VALID | F_NEEDS_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST]   = F_VALID | F_NEEDS_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST] = F_VALID | F_NEEDS_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST]   = F_VALID | F_NEEDS_PI,
-    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST] = F_VALID | F_NEEDS_PI,
+static const uint16_t masktab[][MAX_MRT_SUBTYPE + 1] = {
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]           = F_VALID | F_IS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC]                = F_VALID | F_NEEDS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC_ADDPATH]        = F_VALID | F_NEEDS_PI | F_ADDPATH,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST]           = F_VALID | F_NEEDS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST_ADDPATH]   = F_VALID | F_NEEDS_PI | F_ADDPATH,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST]         = F_VALID | F_NEEDS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST_ADDPATH] = F_VALID | F_NEEDS_PI | F_ADDPATH,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST]           = F_VALID | F_NEEDS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST_ADDPATH]   = F_VALID | F_NEEDS_PI | F_ADDPATH,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST]         = F_VALID | F_NEEDS_PI,
+    [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST_ADDPATH] = F_VALID | F_NEEDS_PI | F_ADDPATH,
 
     [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE]              = F_VALID | F_IS_BGP | F_HAS_STATE,
     [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE]                   = F_VALID | F_IS_BGP | F_WRAPS_BGP,
@@ -246,7 +252,17 @@ int ismrtrib(void)
 
 int ismrtrib_r(mrt_msg_t *msg)
 {
-    return msg->flags & (F_RD | F_NEEDS_PI);
+    return (msg->flags & (F_RD | F_NEEDS_PI)) == (F_RD | F_NEEDS_PI);
+}
+
+int ismrtaddpath(void)
+{
+    return ismrtaddpath_r(&curmsg);
+}
+
+int ismrtaddpath_r(mrt_msg_t *msg)
+{
+    return (msg->flags & F_ADDPATH) != 0;
 }
 
 int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi)
@@ -583,7 +599,7 @@ int endpeerents_r(mrt_msg_t *msg)
         return msg->err;
 
     msg->flags &= ~F_PE;
-    return msg->err;  // TODO;
+    return MRT_ENOERR;
 }
 
 // RIB entries
@@ -628,24 +644,29 @@ void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
     uint8_t safi;
     switch (msg->hdr.subtype) {
     case MRT_TABLE_DUMPV2_RIB_GENERIC:
+    case MRT_TABLE_DUMPV2_RIB_GENERIC_ADDPATH:
         memcpy(&afi, ptr, sizeof(afi));
         afi = frombig16(afi);
         ptr += sizeof(afi);
         safi = *ptr++;
         break;
     case MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST:
+    case MRT_TABLE_DUMPV2_RIB_IPV4_UNICAST_ADDPATH:
         afi = AFI_IPV4;
         safi = SAFI_UNICAST;
         break;
     case MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST:
+    case MRT_TABLE_DUMPV2_RIB_IPV4_MULTICAST_ADDPATH:
         afi = AFI_IPV4;
         safi = SAFI_MULTICAST;
         break;
     case MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST:
+    case MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST_ADDPATH:
         afi = AFI_IPV6;
         safi = SAFI_UNICAST;
         break;
     case MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST:
+    case MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST_ADDPATH:
         afi = AFI_IPV6;
         safi = SAFI_MULTICAST;
         break;
@@ -764,6 +785,18 @@ rib_entry_t *nextribent_r(mrt_msg_t *msg)
     originated = frombig32(originated);
     msg->reptr += sizeof(originated);
 
+    uint32_t pathid = 0;
+    if (msg->flags & F_ADDPATH) {
+        if (unlikely(msg->reptr + sizeof(pathid) > end)) {
+            msg->err = MRT_EBADRIBENT;
+            return NULL;
+        }
+
+        memcpy(&pathid, msg->reptr, sizeof(pathid));
+        pathid = frombig32(pathid);
+        msg->reptr += sizeof(pathid);
+    }
+
     uint16_t attr_len;
     memcpy(&attr_len, msg->reptr, sizeof(attr_len));
     attr_len = frombig16(attr_len);
@@ -771,6 +804,7 @@ rib_entry_t *nextribent_r(mrt_msg_t *msg)
 
     msg->ribent.peer_idx = idx;
     msg->ribent.originated = (time_t) originated;
+    msg->ribent.pathid = pathid;
     msg->ribent.attr_length = attr_len;
     msg->ribent.attrs = (bgpattr_t *) msg->reptr;
 

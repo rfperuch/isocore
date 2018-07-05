@@ -43,7 +43,7 @@ void bupdategen(cbench_state_t *state)
     const uint32_t asset[] = { 22, 0x11111, 93495 };
 
     while (cbench_next_iteration(state)) {
-        setbgpwrite(BGP_UPDATE);
+        setbgpwrite(BGP_UPDATE, BGPF_DEFAULT);
 
         startbgpattribs();
         {

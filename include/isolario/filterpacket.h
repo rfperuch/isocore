@@ -89,7 +89,7 @@ typedef struct filter_vm_s filter_vm_t;
 typedef void (*filter_func_t)(filter_vm_t *vm);
 
 enum {
-    VM_SHORTCIRCUIT_FORCE_FLAG = 1 << 0
+    VM_SHORTCIRCUIT_FORCE_FLAG = 1 << 2
 };
 
 typedef struct filter_vm_s {

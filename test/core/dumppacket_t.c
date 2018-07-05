@@ -10,7 +10,7 @@
 
 void testbgpdumppacketrow(void)
 {
-    setbgpwrite(BGP_UPDATE);
+    setbgpwrite(BGP_UPDATE, BGPF_DEFAULT);
 
     unsigned char buf[255];
 

@@ -53,7 +53,7 @@ void testopencreate(void)
     };
 
     // start writing a BGP open
-    setbgpwrite(BGP_OPEN);
+    setbgpwrite(BGP_OPEN, BGPF_DEFAULT);
     // write relevant BGP open data
     setbgpopen(&op);
 

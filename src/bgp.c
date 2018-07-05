@@ -58,14 +58,16 @@ enum {
     F_PM = 1 << 3,  ///< Reading/writing BGP open parameters
 
     // Update packet flags
-    F_WITHDRN    = 1 << 4,    ///< Reading/writing Withdrawn field
+    F_WITHDRN    = 1 << 4,  ///< Reading/writing Withdrawn field
     F_ALLWITHDRN = 1 << 5,
     F_PATTR      = 1 << 6,  ///< Reading/writing Path Attributes field
     F_NLRI       = 1 << 7,  ///< Reading/writing NLRI field
     F_ALLNLRI    = 1 << 8,
     F_ASPATH     = 1 << 9,
     F_REALASPATH = 1 << 10,
-    F_NHOP       = 1 << 11
+    F_NHOP       = 1 << 11,
+    F_ADDPATH    = 1 << 12,
+    F_ASN32BIT   = 1 << 13
 };
 
 /// @brief Offsets for various BGP packet fields
@@ -185,6 +187,11 @@ int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n, int flags)
     assert(n <= UINT16_MAX);
 
     msg->flags = F_RD;
+    if (flags & BGPF_ASN32BIT)
+        msg->flags |= F_ASN32BIT;
+    if (flags & BGPF_ADDPATH)
+        msg->flags |= F_ADDPATH;
+
     msg->err = BGP_ENOERR;
     msg->pktlen = n;
     msg->bufsiz = n;
@@ -207,23 +214,23 @@ int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n, int flags)
     return BGP_ENOERR;
 }
 
-int setbgpreadfd(int fd)
+int setbgpreadfd(int fd, int flags)
 {
-    return setbgpreadfd_r(&curmsg, fd);
+    return setbgpreadfd_r(&curmsg, fd, flags);
 }
 
-int setbgpreadfd_r(bgp_msg_t *msg, int fd)
+int setbgpreadfd_r(bgp_msg_t *msg, int fd, int flags)
 {
     io_rw_t io = IO_FD_INIT(fd);
-    return setbgpreadfrom_r(msg, &io);
+    return setbgpreadfrom_r(msg, &io, flags);
 }
 
-int setbgpreadfrom(io_rw_t *io)
+int setbgpreadfrom(io_rw_t *io, int flags)
 {
-    return setbgpreadfrom_r(&curmsg, io);
+    return setbgpreadfrom_r(&curmsg, io, flags);
 }
 
-int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io)
+int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io, int flags)
 {
     unsigned char hdr[BASE_PACKET_LENGTH];
     if (io->read(io, hdr, sizeof(hdr)) != sizeof(hdr))
@@ -250,6 +257,11 @@ int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io)
         return BGP_EIO;
 
     msg->flags = F_RD;
+    if (flags & BGPF_ASN32BIT)
+        msg->flags |= F_ASN32BIT;
+    if (flags & BGPF_ADDPATH)
+        msg->flags |= F_ADDPATH;
+
     msg->err = BGP_ENOERR;
     msg->pktlen = len;
     msg->bufsiz = len;
@@ -257,14 +269,14 @@ int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io)
     return BGP_ENOERR;
 }
 
-int setbgpwrite(int type)
+int setbgpwrite(int type, int flags)
 {
-    return setbgpwrite_r(&curmsg, type);
+    return setbgpwrite_r(&curmsg, type, flags);
 }
 
-int rebuildbgpfrommrt(const netaddr_t *nlri, size_t as_size, const void *data, size_t n, int flags)
+int rebuildbgpfrommrt(const void *nlri, const void *data, size_t n, int flags)
 {
-    return rebuildbgpfrommrt_r(&curmsg, nlri, as_size, data, n, flags);
+    return rebuildbgpfrommrt_r(&curmsg, nlri, data, n, flags);
 }
 
 static int ismrttruncated(const void *mp_reach, size_t n)
@@ -276,11 +288,13 @@ static int ismrttruncated(const void *mp_reach, size_t n)
     return data[0] != 0 || data[1] != AFI_IPV6 || data[2] != SAFI_UNICAST;
 }
 
-int rebuildbgpfrommrt_r(bgp_msg_t *msg, const netaddr_t *nlri, size_t as_size, const void *data, size_t n, int flags)
+int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size_t n, int flags)
 {
-    setbgpwrite_r(msg, BGP_UPDATE);
+    setbgpwrite_r(msg, BGP_UPDATE, flags);
 
     const bgpattr_t *attr = data;
+    const netaddr_t *addr     = nlri;
+    const netaddrap_t *addrap = nlri;  // only read if flags & BGPF_ADDPATH
     unsigned char *dst    = &msg->buf[BASE_PACKET_LENGTH];
     int seen_mp_reach     = false;
 
@@ -323,7 +337,7 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const netaddr_t *nlri, size_t as_size, c
             // in v6 case, MP_REACH lacks NLRI and removes reserved field
             seen_mp_reach = true;
 
-            if (nlri->family == AF_INET6) {
+            if (addr->family == AF_INET6) {
                 if (flags & BGPF_GUESSMRT && !ismrttruncated(src, len))
                     truncated = false;
                 if (flags & BGPF_FULLMPREACH)
@@ -331,7 +345,7 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const netaddr_t *nlri, size_t as_size, c
 
                 if (truncated) {
                     // rebuild MP_REACH_NLRI
-                    size_t addrlen = naddrsize(nlri->bitlen);
+                    size_t addrlen = naddrsize(addr->bitlen);
                     size_t n = sizeof(uint16_t) + sizeof(uint8_t) + len + 1 + 1 + addrlen;
 
                     *dst++ = (n > 0xff) ? EXTENDED_MP_REACH_NLRI_FLAGS : DEFAULT_MP_REACH_NLRI_FLAGS;
@@ -351,8 +365,14 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const netaddr_t *nlri, size_t as_size, c
 
                     *dst++ = 0; // reserved field
 
-                    *dst++ = nlri->bitlen;
-                    memcpy(dst, nlri->bytes, addrlen);
+                    if (msg->flags & F_ADDPATH) {
+                        uint32_t pathid = tobig32(addrap->pathid);
+                        memcpy(dst, &pathid, sizeof(pathid));
+                        dst += sizeof(pathid);
+                    }
+
+                    *dst++ = addr->bitlen;
+                    memcpy(dst, addr->bytes, addrlen);
                     dst += addrlen;
                     break;
                 }
@@ -363,8 +383,14 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const netaddr_t *nlri, size_t as_size, c
             memcpy(dst, attr, size);
             dst += size;
             break;
+        case MP_UNREACH_NLRI_CODE:
+            if ((flags & BGPF_STRIPUNREACH) == 0) {
+                memcpy(dst, attr, size);
+                dst += size;
+            }
+            break;
         case AS_PATH_CODE:
-            if (as_size == sizeof(uint16_t)) {
+            if ((msg->flags & F_ASN32BIT) == 0) {
                 // truncate ASes to 16-bits
                 unsigned char *start = dst;
 
@@ -425,15 +451,21 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const netaddr_t *nlri, size_t as_size, c
     memcpy(attrptr - sizeof(attrlen), &attrlen, sizeof(attrlen));
 
     // MP_REACH must exist in case of a v6 address
-    if (unlikely(nlri->family == AF_INET6 && !seen_mp_reach))
+    if (unlikely(addr->family == AF_INET6 && !seen_mp_reach))
         goto error;
 
     // add NLRI if it wasn't v6
-    if (nlri->family == AF_INET) {
-        size_t n = naddrsize(nlri->bitlen);
+    if (addr->family == AF_INET) {
+        if (msg->flags & F_ADDPATH) {
+            uint32_t pathid = tobig32(addrap->pathid);
+            memcpy(dst, &pathid, sizeof(pathid));
+            dst += sizeof(pathid);
+        }
 
-        *dst++ = nlri->bitlen;
-        memcpy(dst, nlri->bytes, n);
+        size_t n = naddrsize(addr->bitlen);
+
+        *dst++ = addr->bitlen;
+        memcpy(dst, addr->bytes, n);
         dst += n;
     }
 
@@ -447,7 +479,7 @@ error:
     return BGP_EBADATTR;
 }
 
-int setbgpwrite_r(bgp_msg_t *msg, int type)
+int setbgpwrite_r(bgp_msg_t *msg, int type, int flags)
 {
     if (unlikely(type < 0 || (unsigned int) type >= nelems(bgp_minlengths)))
         return BGP_EBADTYPE;
@@ -457,6 +489,11 @@ int setbgpwrite_r(bgp_msg_t *msg, int type)
         return BGP_EBADTYPE;
 
     msg->flags = F_WR;
+    if (flags & BGPF_ASN32BIT)
+        msg->flags |= F_ASN32BIT;
+    if (flags & BGPF_ADDPATH)
+        msg->flags |= F_ADDPATH;
+
     msg->pktlen = min_len;
     msg->bufsiz = sizeof(msg->fastbuf);
     msg->err = BGP_ENOERR;
@@ -496,6 +533,27 @@ size_t getbgplength_r(bgp_msg_t *msg)
     uint16_t len;
     memcpy(&len, &msg->buf[LENGTH_OFFSET], sizeof(len));
     return frombig16(len);
+}
+
+
+int isbgpasn32bit(void)
+{
+    return isbgpasn32bit_r(&curmsg);
+}
+
+int isbgpaddpath(void)
+{
+    return isbgpaddpath_r(&curmsg);
+}
+
+int isbgpasn32bit_r(bgp_msg_t* msg)
+{
+    return (msg->flags & F_ASN32BIT) != 0;
+}
+
+int isbgpaddpath_r(bgp_msg_t *msg)
+{
+    return (msg->flags & F_ADDPATH) != 0;
 }
 
 int bgperror(void)
@@ -548,6 +606,8 @@ int bgpclose_r(bgp_msg_t *msg)
         free(msg->buf);
 
     // memset(msg, 0, sizeof(*msg) - BGPBUFSIZ); XXX: optimize
+    msg->err = 0;
+    msg->flags = 0;
     return err;
 }
 
@@ -855,7 +915,7 @@ static int dostartwithdrawn(bgp_msg_t *msg, int flags)
 
         msg->pktlen -= n;
     } else {
-        msg->pfxbuf.family = AF_INET;
+        msg->pfxbuf.pfx.family = AF_INET;
     }
 
     msg->uptr   = ptr;
@@ -942,18 +1002,18 @@ void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn)
     return ptr;
 }
 
-netaddr_t *nextwithdrawn(void)
+void *nextwithdrawn(void)
 {
     return nextwithdrawn_r(&curmsg);
 }
 
-netaddr_t *nextwithdrawn_r(bgp_msg_t *msg)
+void *nextwithdrawn_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_UPDATE, F_RD | F_WITHDRN))
         return NULL;
 
+    netaddr_t *addr = &msg->pfxbuf.pfx;
     while (msg->uptr == msg->uend) {  // this loop handles empty MP_UNREACH
-
         if ((msg->flags & F_ALLWITHDRN) == 0)
             return NULL;  // we're done
 
@@ -969,12 +1029,13 @@ netaddr_t *nextwithdrawn_r(bgp_msg_t *msg)
             msg->err = BGP_EBADWDRWN;  // FIXME
             return NULL;
         }
+
         switch (afi) {
         case AFI_IPV4:
-            msg->pfxbuf.family = AF_INET;
+            addr->family = AF_INET;
             break;
         case AFI_IPV6:
-            msg->pfxbuf.family = AF_INET6;
+            addr->family = AF_INET6;
             break;
         default:
             msg->err = BGP_EBADWDRWN; // FIXME;
@@ -987,7 +1048,21 @@ netaddr_t *nextwithdrawn_r(bgp_msg_t *msg)
         msg->uend   = msg->ustart + len;
     }
 
-    memset(msg->pfxbuf.bytes, 0, sizeof(msg->pfxbuf.bytes));
+    memset(addr->bytes, 0, sizeof(addr->bytes));
+    if (msg->flags & F_ADDPATH) {
+        uint32_t pathid;
+
+        if (unlikely(msg->uptr + sizeof(pathid) > msg->uend)) {
+            msg->err = BGP_EBADWDRWN;
+            return NULL;
+        }
+
+        memcpy(&pathid, msg->uptr, sizeof(pathid));
+        pathid = frombig32(pathid);
+        msg->uptr += sizeof(pathid);
+
+        msg->pfxbuf.pathid = pathid;
+    }
 
     size_t bitlen = *msg->uptr++;  // TODO validate value
     size_t n = naddrsize(bitlen);
@@ -996,29 +1071,40 @@ netaddr_t *nextwithdrawn_r(bgp_msg_t *msg)
         return NULL;
     }
 
-    msg->pfxbuf.bitlen = bitlen;
-    memcpy(msg->pfxbuf.bytes, msg->uptr, n);
+    addr->bitlen = bitlen;
+    memcpy(addr->bytes, msg->uptr, n);
 
     msg->uptr += n;
     return &msg->pfxbuf;
 }
 
-int putwithdrawn(const netaddr_t *p)
+int putwithdrawn(const void *p)
 {
     return putwithdrawn_r(&curmsg, p);
 }
 
-int putwithdrawn_r(bgp_msg_t *msg, const netaddr_t *p)
+int putwithdrawn_r(bgp_msg_t *msg, const void *p)
 {
     if (checktype(msg, BGP_UPDATE, F_WR | F_WITHDRN))
         return msg->err;
 
-    size_t len = naddrsize(p->bitlen);
+    if (msg->flags & F_ADDPATH) {
+        uint32_t ap = ((const netaddrap_t *) p)->pathid;
+        if (unlikely(!bgpensure(msg, sizeof(ap))))
+            return msg->err;
+
+        ap = tobig32(ap);
+        memcpy(msg->uptr, &ap, sizeof(ap));
+        msg->uptr += sizeof(ap);
+    }
+
+    const netaddr_t *addr = p;
+    size_t len = naddrsize(addr->bitlen);
     if (unlikely(!bgpensure(msg, len + 1)))
         return msg->err;
 
-    *msg->uptr++ = p->bitlen;
-    memcpy(msg->uptr, p->bytes, len);
+    *msg->uptr++ = addr->bitlen;
+    memcpy(msg->uptr, addr->bytes, len);
     msg->uptr   += len;
     msg->pktlen += len + 1;
     return BGP_ENOERR;
@@ -1263,7 +1349,7 @@ int startallnlri(void)
     return startallnlri_r(&curmsg);
 }
 
-static int dostartnlri(bgp_msg_t *msg, int flags)
+static int dostartnlri(bgp_msg_t *msg, int internal_flags)
 {
     endpending(msg);
 
@@ -1272,12 +1358,12 @@ static int dostartnlri(bgp_msg_t *msg, int flags)
     if (msg->flags & F_WR)
         msg->pktlen -= n;  // forget any previous NLRI field
     else
-        msg->pfxbuf.family = AF_INET; // NLRI field definitely has AF_INET prefixes
+        msg->pfxbuf.pfx.family = AF_INET; // NLRI field definitely has AF_INET prefixes
 
     msg->uptr = ptr;
     msg->ustart = ptr; // this is not strictly necessary because nlri does not have a summary length
     msg->uend = ptr + n;
-    msg->flags |= flags;
+    msg->flags |= internal_flags;
     return msg->err;
 }
 
@@ -1297,16 +1383,17 @@ int startallnlri_r(bgp_msg_t *msg)
     return dostartnlri(msg, F_NLRI | F_ALLNLRI);
 }
 
-netaddr_t *nextnlri(void)
+void *nextnlri(void)
 {
     return nextnlri_r(&curmsg);
 }
 
-netaddr_t *nextnlri_r(bgp_msg_t *msg)
+void *nextnlri_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_UPDATE, F_RD | F_NLRI))
         return NULL;
 
+    netaddr_t *addr = &msg->pfxbuf.pfx;
     while (msg->uptr == msg->uend) {  // this handles empty MP_REACH attributes
         if ((msg->flags & F_ALLNLRI) == 0)
             return NULL;
@@ -1325,10 +1412,10 @@ netaddr_t *nextnlri_r(bgp_msg_t *msg)
         }
         switch (afi) {
         case AFI_IPV4:
-            msg->pfxbuf.family = AF_INET;
+            addr->family = AF_INET;
             break;
         case AFI_IPV6:
-            msg->pfxbuf.family = AF_INET6;
+            addr->family = AF_INET6;
             break;
         default:
             msg->err = BGP_EBADNLRI; // FIXME;
@@ -1341,36 +1428,58 @@ netaddr_t *nextnlri_r(bgp_msg_t *msg)
         msg->uend   = msg->uptr + len;
     }
 
-    memset(msg->pfxbuf.bytes, 0, sizeof(msg->pfxbuf.bytes));
+    memset(addr->bytes, 0, sizeof(addr->bytes));
+    if (msg->flags & F_ADDPATH) {
+        uint32_t pathid;
+        if (unlikely(msg->uptr + sizeof(pathid) > msg->uend)) {
+            msg->err = BGP_EBADNLRI;
+            return NULL;
+        }
 
-    msg->pfxbuf.bitlen = *msg->uptr++;
-    size_t n = naddrsize(msg->pfxbuf.bitlen);
+        memcpy(&pathid, msg->uptr, sizeof(pathid));
+        msg->pfxbuf.pathid = frombig32(pathid);
+        msg->uptr += sizeof(pathid);
+    }
+
+    addr->bitlen = *msg->uptr++;
+    size_t n = naddrsize(addr->bitlen);
     if (unlikely(msg->uptr + n > msg->uend)) {
         msg->err = BGP_EBADNLRI;
         return NULL;
     }
 
-    memcpy(msg->pfxbuf.bytes, msg->uptr, n);
+    memcpy(addr->bytes, msg->uptr, n);
     msg->uptr += n;
     return &msg->pfxbuf;
 }
 
-int putnlri(const netaddr_t *p)
+int putnlri(const void *p)
 {
     return putnlri_r(&curmsg, p);
 }
 
-int putnlri_r(bgp_msg_t *msg, const netaddr_t *p)
+int putnlri_r(bgp_msg_t *msg, const void *p)
 {
     if (checktype(msg, BGP_UPDATE, F_WR | F_NLRI))
         return msg->err;
 
-    size_t len = naddrsize(p->bitlen);
+    if (msg->flags & F_ADDPATH) {
+        uint32_t pathid = ((const netaddrap_t *) p)->pathid;
+        if (!bgpensure(msg, sizeof(pathid)))
+            return msg->err;
+
+        pathid = tobig32(pathid);
+        memcpy(msg->uptr, &pathid, sizeof(pathid));
+        msg->uptr += sizeof(pathid);
+    }
+
+    const netaddr_t *addr = p;
+    size_t len = naddrsize(addr->bitlen);
     if (!bgpensure(msg, len + 1))
         return msg->err;
 
-    *msg->uptr++ = p->bitlen;
-    memcpy(msg->uptr, p->bytes, len);
+    *msg->uptr++ = addr->bitlen;
+    memcpy(msg->uptr, addr->bytes, len);
     msg->uptr   += len;
     msg->pktlen += len + 1;
     return BGP_ENOERR;
@@ -1413,20 +1522,17 @@ static int dostartaspath(bgp_msg_t *msg, bgpattr_t *attr, size_t as_size)
     return BGP_ENOERR;
 }
 
-int startaspath(size_t as_size)
+int startaspath(void)
 {
-    return startaspath_r(&curmsg, as_size);
+    return startaspath_r(&curmsg);
 }
 
-int startaspath_r(bgp_msg_t *msg, size_t as_size)
+int startaspath_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_UPDATE, F_RD))
         return msg->err;
-    if (unlikely(as_size != sizeof(uint16_t) && as_size != sizeof(uint32_t))) {
-        msg->err = BGP_EINVOP;
-        return BGP_EINVOP;
-    }
 
+    size_t as_size = (msg->flags & F_ASN32BIT) ? sizeof(uint32_t) : sizeof(uint16_t);
     return dostartaspath(msg, getbgpaspath_r(msg), as_size);
 }
 
@@ -1443,19 +1549,15 @@ int startas4path_r(bgp_msg_t *msg)
     return dostartaspath(msg, getbgpas4path_r(msg), sizeof(uint32_t));
 }
 
-int startrealaspath(size_t as_size)
+int startrealaspath(void)
 {
-    return startrealaspath_r(&curmsg, as_size);
+    return startrealaspath_r(&curmsg);
 }
 
-int startrealaspath_r(bgp_msg_t *msg, size_t as_size)
+int startrealaspath_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_UPDATE, F_RD))
         return msg->err;
-    if (unlikely(as_size != sizeof(uint16_t) && as_size != sizeof(uint32_t))) {
-        msg->err = BGP_EINVOP;
-        return BGP_EINVOP;
-    }
 
     endpending(msg);
 
@@ -1463,7 +1565,7 @@ int startrealaspath_r(bgp_msg_t *msg, size_t as_size)
     msg->seglen       = 0;
     msg->segi         = 0;
     msg->ascount      = -1;
-    msg->asp.as_size  = as_size;
+    msg->asp.as_size  = (msg->flags & F_ASN32BIT) ? sizeof(uint32_t) : sizeof(uint16_t);;
     msg->asp.segno    = -1;
 
     bgpattr_t *asp = getbgpaspath_r(msg);
@@ -1475,7 +1577,7 @@ int startrealaspath_r(bgp_msg_t *msg, size_t as_size)
     size_t len;
     msg->asptr = getaspath(asp, &len);
     msg->asend = msg->asptr + len;
-    if (as_size == sizeof(uint32_t))
+    if (msg->asp.as_size == sizeof(uint32_t))
         return BGP_ENOERR;
 
     bgpattr_t *aggr  = getbgpaggregator_r(msg);
@@ -1629,14 +1731,15 @@ int startnhop_r(bgp_msg_t *msg)
     msg->mpnhptr = msg->mpnhend = NULL;
 
     bgpattr_t *attr = getbgpnexthop_r(msg);
+    netaddr_t *addr = &msg->pfxbuf.pfx;
     if (attr) {
         // setup iterator to return the IPv4 NEXT_HOP
         msg->nhbuf = getnexthop(attr);
         msg->nhptr = (unsigned char *) &msg->nhbuf;
         msg->nhend = msg->nhptr + sizeof(msg->nhbuf);
 
-        msg->pfxbuf.family = AF_INET;
-        msg->pfxbuf.bitlen = 32;
+        addr->family = AF_INET;
+        addr->bitlen = 32;
     }
 
     attr = getbgpmpreach_r(msg);
@@ -1681,6 +1784,8 @@ netaddr_t *nextnhop_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_NHOP))
         return NULL;
 
+    // FIXME bound check
+    netaddr_t *addr = &msg->pfxbuf.pfx;
     if (msg->nhptr == msg->nhend) {
         if (!msg->mpnhptr)
             return NULL;  // done iterating
@@ -1689,16 +1794,16 @@ netaddr_t *nextnhop_r(bgp_msg_t *msg)
         msg->nhptr = msg->mpnhptr;
         msg->nhend = msg->mpnhend;
 
-        msg->pfxbuf.family = msg->mpfamily;
-        msg->pfxbuf.bitlen = msg->mpbitlen;
+        addr->family = msg->mpfamily;
+        addr->bitlen = msg->mpbitlen;
 
         msg->mpnhptr = msg->mpnhend = NULL;
     }
 
-    size_t n = (msg->pfxbuf.bitlen >> 3);
-    memcpy(msg->pfxbuf.bytes, msg->nhptr, n);
+    size_t n = naddrsize(addr->bitlen);
+    memcpy(addr->bytes, msg->nhptr, n);
     msg->nhptr += n;
-    return &msg->pfxbuf;
+    return addr;
 }
 
 int endnhop(void)
@@ -1804,12 +1909,12 @@ bgpattr_t *getbgpatomicaggregate_r(bgp_msg_t *msg)
     return seekbgpattr(msg, ATOMIC_AGGREGATE_CODE);
 }
 
-bgpattr_t *getrealbgpaggregator(size_t as_size)
+bgpattr_t *getrealbgpaggregator(void)
 {
-    return getrealbgpaggregator_r(&curmsg, as_size);
+    return getrealbgpaggregator_r(&curmsg);
 }
 
-bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg, size_t as_size)
+bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_UPDATE, F_RD))
         return NULL;

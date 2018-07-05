@@ -1,3 +1,4 @@
+#include <alloca.h>
 #include <ctype.h>
 #include <inttypes.h>
 #include <isolario/bgp.h>
@@ -13,9 +14,10 @@
 #include <time.h>
 
 enum {
-    BGPF_ISRIB   = 1 << 0,
-    BGPF_HASFDR  = 1 << 1,
-    BGPF_HASTIME = 1 << 2
+    BGPF_ISRIB      = 1 << 0,
+    BGPF_HASFDR     = 1 << 1,
+    BGPF_HASTIME    = 1 << 2,
+    BGPF_HASADDPATH = 1 << 3
 };
 
 typedef struct bgp_formatter_s bgp_formatter_t;
@@ -28,6 +30,7 @@ struct bgp_formatter_s {
     struct timespec stamp;
     netaddr_t fdrip;
     uint32_t fdras;
+    uint32_t pathid;
     int comm_mode;
     unsigned int flags;
     unsigned int attr_mask[0xff / sizeof(unsigned int) + 1];  // interesting attributes mask (TODO)
@@ -59,7 +62,7 @@ static void printbgp_row_attribs(FILE *out, bgp_msg_t *pkt, const bgp_formatter_
 
     // real AS path
     int idx = 0;
-    startrealaspath_r(pkt, fmt->assiz);
+    startrealaspath_r(pkt);
     while ((p = nextaspath_r(pkt)) != NULL) {
         if (segno != p->segno) {
             if (type == AS_SEGMENT_SET)
@@ -87,6 +90,7 @@ static void printbgp_row_attribs(FILE *out, bgp_msg_t *pkt, const bgp_formatter_
     endaspath_r(pkt);
 
     putc_unlocked('|', out);
+
     // NEXT_HOP attributes
     idx = 0;
 
@@ -133,7 +137,7 @@ static void printbgp_row_attribs(FILE *out, bgp_msg_t *pkt, const bgp_formatter_
     putc_unlocked('|', out);
 
     // Aggregator
-    attr = getrealbgpaggregator_r(pkt, fmt->assiz);
+    attr = getrealbgpaggregator_r(pkt);
     if (attr) {
         char asbuf[INET_ADDRSTRLEN + 1];
 
@@ -174,7 +178,7 @@ static void printbgp_row_attribs(FILE *out, bgp_msg_t *pkt, const bgp_formatter_
     }
 }
 
-static void printbgp_row_trailer(FILE *out, const bgp_formatter_t *fmt)
+static void printbgp_row_trailer(FILE *out, uint32_t pathid, const bgp_formatter_t *fmt)
 {
     char buf[digsof(unsigned long long) + 1];
 
@@ -183,6 +187,12 @@ static void printbgp_row_trailer(FILE *out, const bgp_formatter_t *fmt)
         writestr_unlocked(naddrtos(&fmt->fdrip, NADDR_PLAIN), out);
         putc_unlocked(' ', out);
         writestr_unlocked(ultoa(buf, NULL, fmt->fdras), out);
+
+        // Path id
+        if (fmt->flags & BGPF_HASADDPATH) {
+            putc_unlocked(' ', out);
+            writestr_unlocked(ultoa(buf, NULL, pathid), out);
+        }
     }
 
     putc_unlocked('|', out);
@@ -203,58 +213,151 @@ static void printbgp_row_trailer(FILE *out, const bgp_formatter_t *fmt)
     putc_unlocked((fmt->assiz == sizeof(uint32_t)) ? '1' : '0', out);
 }
 
+typedef struct addrtree_s {
+    uint32_t key;
+    netaddrap_t addr;
+    struct addrtree_s *next;
+    struct addrtree_s *children[2];
+} addrtree_t;
+
+typedef struct {
+    int   (*start)(bgp_msg_t *pkt);
+    void *(*nextaddr)(bgp_msg_t *pkt);
+    int   (*end)(bgp_msg_t *pkt);
+    void  (*trailer)(FILE *out, bgp_msg_t *pkt, uint32_t pathid, const bgp_formatter_t *fmt);
+} row_formatter_table_t;
+
+static addrtree_t *addr_tree_insert(addrtree_t *root, addrtree_t *node)
+{
+    if (!root) {
+        node->next = NULL;
+        node->children[0] = node->children[1] = NULL;
+        return node;
+    }
+
+    addrtree_t *p = NULL;
+    addrtree_t *i = root;
+    int idx = 0;
+    while (i && node->key != i->key) {
+        idx = node->key > i->key;
+        p = i;
+        i = i->children[idx];
+    }
+
+    if (i) {
+        // collision
+        node->next = i->next;
+        i->next = node;
+        return root;
+    }
+
+    // no previous node with this key
+    node->next = NULL;
+    node->children[0] = node->children[1] = NULL;
+    p->children[idx] = node;
+    return root;
+}
+
+static void addr_tree_print(FILE *out, char firstchar, const addrtree_t *tree, bgp_msg_t *pkt, const bgp_formatter_t *fmt, const row_formatter_table_t *tab)
+{
+    if (tree->children[0])
+        addr_tree_print(out, firstchar, tree->children[0], pkt, fmt, tab);
+
+    // print address list
+    putc_unlocked(firstchar, out);
+    putc_unlocked('|', out);
+
+    const addrtree_t *i = tree;
+    do {
+        if (i != tree)
+            putc_unlocked(' ', out);
+
+        writestr_unlocked(naddrtos(&i->addr.pfx, NADDR_CIDR), out);
+        i = i->next;
+    } while (i);
+
+    tab->trailer(out, pkt, tree->addr.pathid, fmt);
+
+    if (tree->children[1])
+        addr_tree_print(out, firstchar, tree->children[1], pkt, fmt, tab);
+}
+
+static void printbgp_addrs_row(FILE *out, char firstchar, bgp_msg_t *pkt, const bgp_formatter_t *fmt, const row_formatter_table_t *tab)
+{
+    const void *addr;
+
+    uint32_t key = 0;
+    addrtree_t *tree = NULL;
+    tab->start(pkt);
+    while ((addr = tab->nextaddr(pkt)) != NULL) {
+        addrtree_t *node = alloca(sizeof(*node));
+
+        if (fmt->flags & BGPF_HASADDPATH) {
+            memcpy(&node->addr, addr, sizeof(node->addr));
+            node->key = node->addr.pathid;
+        } else {
+            memcpy(&node->addr.pfx, addr, sizeof(node->addr.pfx));
+            node->key = key;
+        }
+
+        tree = addr_tree_insert(tree, node);
+    }
+    tab->end(pkt);
+
+    if (tree)
+        addr_tree_print(out, firstchar, tree, pkt, fmt, tab);
+}
+
+static void printbgp_nlri_trailer(FILE *out, bgp_msg_t *pkt, uint32_t pathid, const bgp_formatter_t *fmt)
+{
+    putc_unlocked('|', out);
+    printbgp_row_attribs(out, pkt, fmt);
+    putc_unlocked('|', out);
+    printbgp_row_trailer(out, pathid, fmt);
+    putc_unlocked('\n', out);
+}
+
+static void printbgp_withdrawn_trailer(FILE *out, bgp_msg_t *pkt, uint32_t pathid, const bgp_formatter_t *fmt)
+{
+    (void) pkt;
+
+    writestr_unlocked("|||||||", out);
+    printbgp_row_trailer(out, pathid, fmt);
+    putc_unlocked('\n', out);
+}
+
 static void printbgp_row(FILE *out, bgp_msg_t *pkt, const bgp_formatter_t *fmt)
 {
-    char c = '+';
-    if (fmt->flags & BGPF_ISRIB)
-        c = '=';
+    row_formatter_table_t tab;
+    char c;
 
-    int idx = 0;
-    netaddr_t *addr;
+    switch (getbgptype_r(pkt)) {
+    case BGP_OPEN:
+        // ignore inside RIBs
+        if (fmt->flags & BGPF_ISRIB)
+            break;
 
-    startallnlri_r(pkt);
-    while ((addr = nextnlri_r(pkt)) != NULL) {
-        if (idx == 0) {
-            putc_unlocked(c, out);
-            putc_unlocked('|', out);
-        } else {
-            putc_unlocked(' ', out);
-        }
-        writestr_unlocked(naddrtos(addr, NADDR_CIDR), out);
-        idx++;
-    }
-    endnlri_r(pkt);
+        
+        break;
+    case BGP_UPDATE:
+        c = '+';
+        if (fmt->flags & BGPF_ISRIB)
+            c = '=';
 
-    if (idx > 0) {
-        putc_unlocked('|', out);
-        printbgp_row_attribs(out, pkt, fmt);
-        putc_unlocked('|', out);
-        printbgp_row_trailer(out, fmt);
-        putc_unlocked('\n', out);
-    }
+        tab.start    = startallnlri_r;
+        tab.nextaddr = nextnlri_r;
+        tab.end      = endnlri_r;
+        tab.trailer  = printbgp_nlri_trailer;
+        printbgp_addrs_row(out, c, pkt, fmt, &tab);
+        if (fmt->flags & BGPF_ISRIB)
+            return; // ignore withdrawn
 
-    if (fmt->flags & BGPF_ISRIB)
-        return; // ignore withdrawn
-
-    idx = 0;
-
-    startallwithdrawn_r(pkt);
-    while ((addr = nextwithdrawn_r(pkt)) != NULL) {
-        if (idx == 0) {
-            putc_unlocked('-', out);
-            putc_unlocked('|', out);
-        } else {
-            putc_unlocked(' ', out);
-        }
-        writestr_unlocked(naddrtos(addr, NADDR_CIDR), out);
-        idx++;
-    }
-    endwithdrawn_r(pkt);
-
-    if (idx > 0) {
-        writestr_unlocked("|||||||", out);
-        printbgp_row_trailer(out, fmt);
-        putc_unlocked('\n', out);
+        tab.start    = startallwithdrawn_r;
+        tab.nextaddr = nextwithdrawn_r;
+        tab.end      = endwithdrawn_r;
+        tab.trailer  = printbgp_withdrawn_trailer;
+        printbgp_addrs_row(out, '-', pkt, fmt, &tab);
+        break;
     }
 }
 
@@ -270,13 +373,12 @@ static void printstatechange_row(FILE *out, const bgp4mp_header_t *bgphdr, const
     utoa(ptr, NULL, bgphdr->new_state);
     writestr_unlocked(buf, out);
     writestr_unlocked("|||||||", out);
-    printbgp_row_trailer(out, fmt);
+    printbgp_row_trailer(out, 0, fmt);
     putc_unlocked('\n', out);
 }
 
 static void parse_varargs(bgp_formatter_t *dst, const char *fmt, va_list va)
 {
-
     memset(dst, 0, sizeof(*dst));
     if (*fmt == '#') {
         // BGP from RIB snapshot
@@ -300,7 +402,7 @@ static void parse_varargs(bgp_formatter_t *dst, const char *fmt, va_list va)
     while ((c = *fmt++) != '\0') {
         switch (c) {
         case 'A':
-            // AS size
+            // AS size (only meaningful for printstatechange)
             if (isdigit((unsigned char) *fmt)) {
                 dst->assiz = (unsigned long long) atoll(fmt);
                 do fmt++; while (isdigit((unsigned char) *fmt));
@@ -316,7 +418,7 @@ static void parse_varargs(bgp_formatter_t *dst, const char *fmt, va_list va)
             }
 
             if (dst->assiz != sizeof(uint16_t) && dst->assiz != sizeof(uint32_t))
-                dst->assiz = sizeof(uint16_t);
+                dst->assiz = sizeof(uint16_t);  // ignore junk sizes
 
             break;
         case 'F':
@@ -391,6 +493,12 @@ void printbgpv_r(FILE *out, bgp_msg_t *pkt, const char *fmt, va_list va)
     bgp_formatter_t bgpfmt;
 
     parse_varargs(&bgpfmt, fmt, va);
+
+    // force assiz to reflect actual packet ASN32BIT (ignore A* format flag)
+    bgpfmt.assiz = isbgpasn32bit_r(pkt) ? sizeof(uint32_t) : sizeof(uint16_t);
+    if (isbgpaddpath_r(pkt))
+        bgpfmt.flags |= BGPF_HASADDPATH;
+
     bgpfmt.dumpbgp(out, pkt, &bgpfmt);
 }
 

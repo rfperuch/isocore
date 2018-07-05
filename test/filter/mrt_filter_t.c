@@ -31,7 +31,7 @@ void testmrtfilter(void)
     netaddr_t addr;
     stonaddr(&addr, "127.0.0.1");
 
-    setbgpwrite(BGP_UPDATE);
+    setbgpwrite(BGP_UPDATE, BGPF_DEFAULT);
     startnlri();
     putnlri(&addr);
     endnlri();

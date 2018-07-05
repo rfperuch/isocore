@@ -68,8 +68,16 @@ enum {
 
     BGP_HOLD_SECS = 180,
 
-    BGPF_DEFAULT = 0,     /// @brief Default flags for \a setbgpread(), copy the buffer.
-    BGPF_NOCOPY = 1 << 0  /// @brief A flag for \a setbgpread(), does not copy the read-buffer.
+    // BGP flags
+
+    BGPF_DEFAULT      = 0,       /// @brief Default flags for \a setbgpread(), copy the buffer.
+    BGPF_NOCOPY       = 1 << 0,  /// @brief A flag for \a setbgpread(), does not copy the read-buffer.
+    BGPF_ADDPATH      = 1 << 1,
+    BGPF_ASN32BIT     = 1 << 2,
+    BGPF_GUESSMRT     = 0,
+    BGPF_STDMRT       = 1 << 3,
+    BGPF_FULLMPREACH  = 1 << 4,
+    BGPF_STRIPUNREACH = 1 << 5
 };
 
 /**
@@ -133,31 +141,23 @@ inline purefunc nonullreturn const char *bgpstrerror(int err)
 }
 
 /**
- * @brief Read BGP from Unix file descriptor.
- */
-int setbgpreadfd(int fd);
-
-/**
  * @brief Initialize a BGP packet for read from pre-existing data.
  */
 int setbgpread(const void *data, size_t n, int flags);
 
-int setbgpreadfd(int fd);
+/**
+ * @brief Read BGP from Unix file descriptor.
+ */
+int setbgpreadfd(int fd, int flags);
 
-nonnull(1) int setbgpreadfrom(io_rw_t *io);
+nonnull(1) int setbgpreadfrom(io_rw_t *io, int flags);
 
 /**
  * @brief Initialize a BGP packet for writing a new packet of type \a type from scratch.
  */
-int setbgpwrite(int type);
+int setbgpwrite(int type, int flags);
 
-enum {
-    BGPF_GUESSMRT    = 0,
-    BGPF_STDMRT      = 1 << 0,
-    BGPF_FULLMPREACH = 1 << 1
-};
-
-nonnull(1) int rebuildbgpfrommrt(const netaddr_t *nlri, size_t as_size, const void *data, size_t n, int flags);
+nonnull(1) int rebuildbgpfrommrt(const void *nlri, const void *data, size_t n, int flags);
 
 /**
  * @brief Get BGP packet type from header.
@@ -168,6 +168,10 @@ wur int getbgptype(void);
  * @brief Get BGP packet length from header.
  */
 wur size_t getbgplength(void);
+
+int isbgpasn32bit(void);
+
+int isbgpaddpath(void);
 
 wur int bgperror(void);
 
@@ -231,10 +235,17 @@ void *getwithdrawn(size_t *pn);
 int startwithdrawn(void);
 
 int startallwithdrawn(void);
-
-netaddr_t *nextwithdrawn(void);
-
-nonnull(1) int putwithdrawn(const netaddr_t *p);
+/**
+ * @warning This function returns either a \a netaddr_t or a \a netaddrap_t,
+ *          depending on the package being ADDPATH enabled.
+ *          The returned pointer may always be used as \a netaddr_t.
+ */
+void *nextwithdrawn(void);
+/**
+ * @warning \a p may be either a \a netaddr_t or a \a netaddrap_t, depending on
+ *          the package being ADDPATH enabled.
+ */
+nonnull(1) int putwithdrawn(const void *p);
 
 int endwithdrawn(void);
 
@@ -257,10 +268,17 @@ void *getnlri(size_t *pn);
 int startnlri(void);
 
 int startallnlri(void);
-
-nonnull(1) int putnlri(const netaddr_t *p);
-
-netaddr_t *nextnlri(void);
+/**
+ * @warning \a p may be either a \a netaddr_t or a \a netaddrap_t, depending on
+ *          the package being ADDPATH enabled.
+ */
+nonnull(1) int putnlri(const void *p);
+/**
+ * @warning This function returns either a \a netaddr_t or a \a netaddrap_t,
+ *          depending on the package being ADDPATH enabled.
+ *          The returned pointer may always be used as \a netaddr_t.
+ */
+void *nextnlri(void);
 
 int endnlri(void);
 
@@ -270,11 +288,11 @@ typedef struct {
     uint32_t as;
 } as_pathent_t;
 
-int startaspath(size_t as_size);
+int startaspath(void);
 
 int startas4path(void);
 
-int startrealaspath(size_t as_size);
+int startrealaspath(void);
 
 as_pathent_t *nextaspath(void);
 
@@ -344,7 +362,7 @@ typedef struct {
             union {
                 /// @private read-specific fields.
                 struct {
-                    netaddr_t pfxbuf;     ///< @private Convenience field for reading prefixes.
+                    netaddrap_t pfxbuf;     ///< @private Convenience field for reading prefixes.
                     union {
                         struct {
                             unsigned char *asptr, *asend;
@@ -384,19 +402,23 @@ typedef struct {
  */
 nonullreturn wur bgp_msg_t *getbgp(void);
 
+int isbgpasn32bit_r(bgp_msg_t *msg);
+
+int isbgpaddpath_r(bgp_msg_t *msg);
+
 nonnull(1) int setbgpread_r(bgp_msg_t *msg, const void *data, size_t n, int flags);
 
-nonnull(1) int setbgpreadfd_r(bgp_msg_t *msg, int fd);
+nonnull(1) int setbgpreadfd_r(bgp_msg_t *msg, int fd, int flags);
 
-nonnull(1, 2) int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io);
+nonnull(1, 2) int setbgpreadfrom_r(bgp_msg_t *msg, io_rw_t *io, int flags);
 
-nonnull(1) int setbgpwrite_r(bgp_msg_t *msg, int type);
+nonnull(1) int setbgpwrite_r(bgp_msg_t *msg, int type, int flags);
 
 nonnull(1) wur int getbgptype_r(bgp_msg_t *msg);
 
-nonnull(1, 2) int rebuildbgpfrommrt_r(bgp_msg_t *msg, const netaddr_t *nlri, size_t as_size, const void *data, size_t n, int flags);
+nonnull(1, 2) int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size_t n, int flags);
 
-size_t getbgplength_r(bgp_msg_t *msg);
+nonnull(1) size_t getbgplength_r(bgp_msg_t *msg);
 
 nonnull(1) wur int bgperror_r(bgp_msg_t *msg);
 
@@ -427,10 +449,17 @@ nonnull(1) void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn);
 nonnull(1) int startallwithdrawn_r(bgp_msg_t *msg);
 
 nonnull(1) int startwithdrawn_r(bgp_msg_t *msg);
-
-nonnull(1) netaddr_t *nextwithdrawn_r(bgp_msg_t *msg);
-
-nonnull(1, 2) int putwithdrawn_r(bgp_msg_t *msg, const netaddr_t *p);
+/**
+ * @warning This function returns either a \a netaddr_t or a \a netaddrap_t,
+ *          depending on the package being ADDPATH enabled.
+ *          The returned pointer may always be used as \a netaddr_t.
+ */
+nonnull(1) void *nextwithdrawn_r(bgp_msg_t *msg);
+/**
+ * @warning \a p may be either a \a netaddr_t or a \a netaddrap_t, depending on
+ *          the package being ADDPATH enabled.
+ */
+nonnull(1, 2) int putwithdrawn_r(bgp_msg_t *msg, const void *p);
 
 nonnull(1) int endwithdrawn_r(bgp_msg_t *msg);
 
@@ -454,17 +483,26 @@ nonnull(1) int startallnlri_r(bgp_msg_t *msg);
 
 nonnull(1) int startnlri_r(bgp_msg_t *msg);
 
-nonnull(1, 2) int putnlri_r(bgp_msg_t *msg, const netaddr_t *p);
+/**
+ * @warning \a p may be either a \a netaddr_t or a \a netaddrap_t, depending on
+ *          the package being ADDPATH enabled.
+ */
+nonnull(1, 2) int putnlri_r(bgp_msg_t *msg, const void *p);
 
-nonnull(1) netaddr_t *nextnlri_r(bgp_msg_t *msg);
+/**
+ * @warning This function returns either a \a netaddr_t or a \a netaddrap_t,
+ *          depending on the package being ADDPATH enabled.
+ *          The returned pointer may always be used as \a netaddr_t.
+ */
+nonnull(1) void *nextnlri_r(bgp_msg_t *msg);
 
 nonnull(1) int endnlri_r(bgp_msg_t *msg);
 
-nonnull(1) int startaspath_r(bgp_msg_t *msg, size_t as_size);
+nonnull(1) int startaspath_r(bgp_msg_t *msg);
 
 nonnull(1) int startas4path_r(bgp_msg_t *msg);
 
-nonnull(1) int startrealaspath_r(bgp_msg_t *msg, size_t as_size);
+nonnull(1) int startrealaspath_r(bgp_msg_t *msg);
 
 nonnull(1) as_pathent_t *nextaspath_r(bgp_msg_t *msg);
 
@@ -493,8 +531,8 @@ nonnull(1) wur bgpattr_t *getbgpatomicaggregate_r(bgp_msg_t *msg);
 wur bgpattr_t *getbgpas4aggregator(void);
 nonnull(1) wur bgpattr_t *getbgpas4aggregator_r(bgp_msg_t *msg);
 
-wur bgpattr_t *getrealbgpaggregator(size_t as_size);
-nonnull(1) wur bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg, size_t as_size);
+wur bgpattr_t *getrealbgpaggregator(void);
+nonnull(1) wur bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg);
 
 wur bgpattr_t *getbgpaspath(void);
 nonnull(1) wur bgpattr_t *getbgpaspath_r(bgp_msg_t *msg);

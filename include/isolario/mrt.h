@@ -120,6 +120,7 @@ typedef struct {
     uint16_t peer_idx;
     uint16_t attr_length;  // in bytes
     time_t originated;
+    uint32_t pathid;       // only meaningful for ADDPATH subtypes, 0 otherwise
     peer_entry_t *peer;
     bgpattr_t *attrs;
 } rib_entry_t;
@@ -159,6 +160,7 @@ enum {
     MRT_ERIBNOTSUP,     ///< Unsupported RIB entry encountered, according to RFC6396:
                         ///  "An implementation that does not recognize particular AFI and SAFI
                         ///  values SHOULD discard the remainder of the MRT record."
+    MRT_EBADRIBENT,     ///< Corrupted or truncated RIB entry
     MRT_EAFINOTSUP
 };
 
@@ -185,6 +187,8 @@ inline const char *mrtstrerror(int err)
         return "Unsupported RIB entry";
     case MRT_EAFINOTSUP:
         return "Unsupported AFI";
+    case MRT_EBADRIBENT:
+        return "Corrupted or truncated RIB entry";
     default:
         return "Unknown error";
     }
@@ -275,6 +279,10 @@ int ismrtext_r(mrt_msg_t *msg);
 int isbgpwrapper(void);
 
 int isbgpwrapper_r(mrt_msg_t *msg);
+
+int ismrtaddpath(void);
+
+int ismrtaddpath_r(mrt_msg_t *msg);
 
 int ismrtrib(void);
 
