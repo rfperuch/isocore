@@ -169,6 +169,11 @@ wur int getbgptype(void);
  */
 wur size_t getbgplength(void);
 
+/**
+ * @brief Get BGP length and raw data.
+ */
+wur void *getbgpdata(size_t *pn);
+
 int isbgpasn32bit(void);
 
 int isbgpaddpath(void);
@@ -418,7 +423,9 @@ nonnull(1) wur int getbgptype_r(bgp_msg_t *msg);
 
 nonnull(1, 2) int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size_t n, int flags);
 
-nonnull(1) size_t getbgplength_r(bgp_msg_t *msg);
+nonnull(1) wur size_t getbgplength_r(bgp_msg_t *msg);
+
+nonnull(1) wur void *getbgpdata_r(bgp_msg_t *msg, size_t *pn);
 
 nonnull(1) wur int bgperror_r(bgp_msg_t *msg);
 

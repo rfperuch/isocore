@@ -347,6 +347,8 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
                     // rebuild MP_REACH_NLRI
                     size_t addrlen = naddrsize(addr->bitlen);
                     size_t n = sizeof(uint16_t) + sizeof(uint8_t) + len + 1 + 1 + addrlen;
+                    if (msg->flags & F_ADDPATH)
+                        n += sizeof(uint32_t);
 
                     *dst++ = (n > 0xff) ? EXTENDED_MP_REACH_NLRI_FLAGS : DEFAULT_MP_REACH_NLRI_FLAGS;
                     *dst++ = MP_REACH_NLRI_CODE;
@@ -535,6 +537,27 @@ size_t getbgplength_r(bgp_msg_t *msg)
     return frombig16(len);
 }
 
+void *getbgpdata(size_t *pn)
+{
+    return getbgpdata_r(&curmsg, pn);
+}
+
+void *getbgpdata_r(bgp_msg_t *msg, size_t *pn)
+{
+    if (unlikely(msg->flags & F_RD) == 0)
+        return NULL;  // only return NULL when not reading the packet
+
+    // NOTE this function *DOES NOT* return NULL on error,
+    // it always return packet raw contents!
+
+    if (pn) {
+        uint16_t len;
+        memcpy(&len, &msg->buf[LENGTH_OFFSET], sizeof(len));
+        *pn = frombig16(len);
+    }
+
+    return msg->buf;
+}
 
 int isbgpasn32bit(void)
 {

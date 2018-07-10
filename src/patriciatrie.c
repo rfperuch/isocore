@@ -1,6 +1,9 @@
+#include <isolario/bits.h>
 #include <isolario/branch.h>
+#include <isolario/endian.h>
 #include <isolario/patriciatrie.h>
 #include <isolario/util.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -27,7 +30,7 @@ union pnode_s {
 
 struct nodepage_s {
     struct nodepage_s *next;
-    pnode_t block[256];
+    pnode_t block[128];
 };
 
 static void pnodeinit(pnode_t *n, const netaddr_t *prefix)
@@ -188,9 +191,10 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         n = n->children[bit != 0];
     }
 
-    int check_bit = (n->prefix.bitlen < prefix->bitlen) ? n->prefix.bitlen : prefix->bitlen;
+    int check_bit = min(n->prefix.bitlen, prefix->bitlen);
     int differ_bit = 0;
 
+#if 0
     int r;
     for (int i = 0, z = 0; z < check_bit; i++, z += 8) {
         // XXX: optimize!
@@ -208,6 +212,22 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         differ_bit = z + j;
         break;
     }
+#else
+
+    for (int i = 0, z = 0; z < check_bit; i++, z += 32) {
+        // XXX: optimize!
+        uint32_t r;
+        if ((r = (prefix->u32[i] ^ n->prefix.u32[i])) == 0) {
+            differ_bit = z + 32;
+            continue;
+        }
+
+        int j = bitclz(frombig32(r));
+        differ_bit = z + j;
+        break;
+    }
+
+#endif
 
     if (differ_bit > check_bit)
         differ_bit = check_bit;
@@ -308,7 +328,6 @@ trienode_t* patsearchexactn(const patricia_trie_t *pt, const netaddr_t *prefix)
     while (n->prefix.bitlen < prefix->bitlen) {
         int bit = (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
         n = n->children[bit != 0];
-
         if (!n)
             return NULL;
     }
@@ -489,27 +508,16 @@ trienode_t** patgetsupernetsofc(const patricia_trie_t *pt, const char *cprefix)
 
 int patissubnetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
-    if (!pt->head)
-        return 0;
-
     pnode_t *n = pt->head;
-
     while (n && n->prefix.bitlen < prefix->bitlen) {
-        if (!ispnodeglue(n)) {
-            if (n->prefix.bitlen < patmaxbits(pt) && patcompwithmask(&n->prefix, prefix, n->prefix.bitlen))
-                return 1;
-            else
-                return 0;
-        }
+        if (!ispnodeglue(n))
+           return n->prefix.bitlen < patmaxbits(pt) && patcompwithmask(&n->prefix, prefix, n->prefix.bitlen);
 
         int bit = (n->prefix.bitlen < patmaxbits(pt)) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
-        n = n->children[bit != 0];
+        n = n->children[bit];
     }
 
-    if (n && !ispnodeglue(n) && n->prefix.bitlen <= prefix->bitlen && patcompwithmask(&n->prefix, prefix, prefix->bitlen))
-        return 1;
-
-    return 0;
+    return n && !ispnodeglue(n) && n->prefix.bitlen <= prefix->bitlen && patcompwithmask(&n->prefix, prefix, prefix->bitlen);
 }
 
 int patissubnetofc(const patricia_trie_t *pt, const char *cprefix)
@@ -557,17 +565,16 @@ trienode_t** patgetsubnetsofn(const patricia_trie_t *pt, const netaddr_t *prefix
     pnode_t *next = start;
     while ((node = next)) {
         if (!ispnodeglue(node)) {
-            if (patcompwithmask(&node->prefix, prefix, prefix->bitlen)) {
+            if (patcompwithmask(&node->prefix, prefix, prefix->bitlen))
                 res[i++] = &node->pub;
-            } else {
+            else
                 break;
-            }
         }
 
         if (next->children[0]) {
-            if (next->children[1]) {
+            if (next->children[1])
                 *sp++ = next->children[1];
-            }
+
             next = next->children[0];
         } else if (next->children[1]) {
             next = next->children[1];
@@ -594,11 +601,7 @@ trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix)
 
 int patissupernetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
-    if (!pt->head)
-        return 0;
-
     pnode_t *start = pt->head;
-
     while (start && start->prefix.bitlen < prefix->bitlen) {
         int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen & 0x07));
         start = start->children[bit != 0];
@@ -618,9 +621,9 @@ int patissupernetofn(const patricia_trie_t *pt, const netaddr_t *prefix)
         }
 
         if (next->children[0]) {
-            if (next->children[1]) {
+            if (next->children[1])
                 *sp++ = next->children[1];
-            }
+
             next = next->children[0];
         } else if (next->children[1]) {
             next = next->children[1];
@@ -668,11 +671,10 @@ trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix
     int i = 0;
     while (start && start->prefix.bitlen < prefix->bitlen) {
         if (!ispnodeglue(start)) {
-            if (patcompwithmask(&start->prefix, prefix, start->prefix.bitlen)) {
+            if (patcompwithmask(&start->prefix, prefix, start->prefix.bitlen))
                 res[i++] = &start->pub;
-            } else {
+            else
                 return res;
-            }
         }
 
         int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen) & 0x07);
@@ -685,17 +687,16 @@ trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix
     pnode_t *next = start;
     while ((node = next)) {
         if (!ispnodeglue(node)) {
-            if (patcompwithmask(&node->prefix, prefix, prefix->bitlen)) {
+            if (patcompwithmask(&node->prefix, prefix, prefix->bitlen))
                 res[i++] = &node->pub;
-            } else {
+            else
                 break;
-            }
         }
 
         if (next->children[0]) {
-            if (next->children[1]) {
+            if (next->children[1])
                 *sp++ = next->children[1];
-            }
+
             next = next->children[0];
         } else if (next->children[1]) {
             next = next->children[1];
@@ -722,16 +723,10 @@ trienode_t** patgetrelatedofc(const patricia_trie_t *pt, const char *cprefix)
 
 int patisrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
 {
-    if (!pt->head)
-        return 0;
-
     pnode_t *start = pt->head;
-
     while (start && start->prefix.bitlen < prefix->bitlen) {
-        if (!ispnodeglue(start)) {
-            if (patcompwithmask(&start->prefix, prefix, start->prefix.bitlen))
-                return 1;
-        }
+        if (!ispnodeglue(start) && patcompwithmask(&start->prefix, prefix, start->prefix.bitlen))
+            return true;
 
         int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen) & 0x07);
         start = start->children[bit != 0];
@@ -742,15 +737,13 @@ int patisrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
     pnode_t **sp = stack;
     pnode_t *next = start;
     while ((node = next)) {
-        if (!ispnodeglue(node)) {
-            if (patcompwithmask(&node->prefix, prefix, prefix->bitlen))
-                return 1;
-        }
+        if (!ispnodeglue(node) && patcompwithmask(&node->prefix, prefix, prefix->bitlen))
+            return true;
 
         if (next->children[0]) {
-            if (next->children[1]) {
+            if (next->children[1])
                 *sp++ = next->children[1];
-            }
+
             next = next->children[0];
         } else if (next->children[1]) {
             next = next->children[1];
@@ -761,7 +754,7 @@ int patisrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
         }
     }
 
-    return 0;
+    return false;
 }
 
 int patisrelatedofc(const patricia_trie_t *pt, const char *cprefix)
@@ -887,9 +880,9 @@ void patiteratormovenext(patiterator_t *state)
     pnode_t *r = state->curr->children[1];
 
     if (l) {
-        if (r) {
+        if (r)
             *state->sp++ = r;
-        }
+
         state->curr = l;
     } else if (r) {
         state->curr = r;

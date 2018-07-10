@@ -117,13 +117,40 @@ static const uint16_t masktab[][MAX_MRT_SUBTYPE + 1] = {
     [SHIFT(MRT_BGP4MP_ET)][BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH] = F_VALID | F_IS_EXT | F_AS32 | F_IS_BGP | F_WRAPS_BGP
 };
 
+#define CHECKBOUNDSR(ptr, end, size, errcode, retval) do { \
+    if (unlikely(((ptr) + (size)) > (end))) {              \
+        (msg)->err = (errcode);                            \
+        return (retval);                                   \
+    }                                                      \
+} while (false)
+
+#define CHECKBOUNDS(ptr, end, size, errcode) CHECKBOUNDSR(ptr, end, size, errcode, errcode)
+
+#define CHECKFLAGSR(which, retval) do {                \
+    if (unlikely(((msg)->flags & (which)) != (which))) \
+        (msg)->err = MRT_EINVOP;                       \
+    if (unlikely((msg)->err))                          \
+        return (retval);                               \
+} while(false)
+
+#define CHECKFLAGS(which) CHECKFLAGSR(which, (msg)->err)
+
+#define CHECKPEERIDXR(retval) do {       \
+    if (unlikely(!(msg)->peer_index))    \
+        (msg)->err = MRT_ENEEDSPEERIDX;  \
+    if (unlikely((msg)->err))            \
+        return (retval);                 \
+} while (false)
+
+#define CHECKPEERIDX() CHECKPEERIDXR((msg)->err)
+
 /// @brief Packet reader/writer instance
 static _Thread_local mrt_msg_t curmsg, curpimsg;
 
 // extern version of inline function
 extern const char *mrtstrerror(int err);
 
-static int mrtflags(mrt_header_t *hdr)
+static int mrtflags(const mrt_header_t *hdr)
 {
     return masktab[SHIFT(hdr->type)][hdr->subtype];
 }
@@ -285,6 +312,8 @@ int setmrtread(const void *data, size_t n)
 int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
 {
     assert(n <= UINT32_MAX);
+    if (unlikely(n < MRT_HDRSIZ))
+        return MRT_EBADHDR;
 
     int res = readmrtheader(msg, data);
     if (unlikely(res != MRT_ENOERR))
@@ -336,7 +365,7 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
         return MRT_EIO;
 
     readmrtheader(msg, hdr);
- 
+
     msg->buf = msg->fastbuf;
     size_t n = msg->hdr.len + sizeof(hdr);
     if (unlikely(n > sizeof(msg->fastbuf)))
@@ -395,10 +424,7 @@ int setmrtheader_r(mrt_msg_t *msg, const mrt_header_t *hdr, ...)
 
 mrt_header_t *getmrtheader_r(mrt_msg_t *msg)
 {
-    if (unlikely((msg->flags & F_RD) == 0))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return NULL;
+    CHECKFLAGSR(F_RD, NULL);
 
     return &msg->hdr;
 }
@@ -435,11 +461,7 @@ struct in_addr getpicollector(void)
 struct in_addr getpicollector_r(mrt_msg_t *msg)
 {
     struct in_addr addr = {0};
-
-    if (unlikely((msg->flags & F_IS_PI) == 0))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return addr;
+    CHECKFLAGSR(F_IS_PI, addr);
 
     memcpy(&addr, &msg->buf[MESSAGE_OFFSET], sizeof(addr));
     return addr;
@@ -452,21 +474,24 @@ size_t getpiviewname(char *buf, size_t n)
 
 size_t getpiviewname_r(mrt_msg_t *msg, char *buf, size_t n)
 {
-    if (unlikely((msg->flags & F_IS_PI) == 0))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return 0;
+    CHECKFLAGS(F_IS_PI);
 
     unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
-    ptr += sizeof(uint32_t);
+    unsigned char *end = ptr + msg->hdr.len;
+    CHECKBOUNDS(ptr, end, sizeof(struct in_addr) + sizeof(uint16_t), MRT_EBADPEERIDXHDR);
+
+    ptr += sizeof(struct in_addr);
 
     uint16_t len;
     memcpy(&len, ptr, sizeof(len));
     len = frombig16(len);
+    ptr += sizeof(len);
+
+    CHECKBOUNDS(ptr, end, len, MRT_EBADPEERIDXHDR);
+
     if (n > (size_t)len + 1)
         n = (size_t)len + 1;
 
-    ptr += sizeof(len);
     if (n > 0) {
         memcpy(buf, ptr, n - 1);
         buf[n - 1] = '\0';
@@ -481,19 +506,24 @@ void *getpeerents(size_t *pcount, size_t *pn)
 
 void *getpeerents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
 {
-    if (unlikely((msg->flags & F_IS_PI) == 0))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return NULL;
+    CHECKFLAGSR(F_IS_PI, NULL);
 
     unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
+    unsigned char *end = ptr + msg->hdr.len;
+
+    CHECKBOUNDSR(ptr, end, sizeof(struct in_addr) + sizeof(uint16_t), MRT_EBADPEERIDXHDR, NULL);
+
     ptr += sizeof(struct in_addr);  // collector id
 
     // view name
     uint16_t len;
     memcpy(&len, ptr, sizeof(len));
+    len = frombig16(len);
     ptr += sizeof(len);
-    ptr += frombig16(len);
+
+    CHECKBOUNDSR(ptr, end, len + sizeof(uint16_t), MRT_EBADPEERIDXHDR, NULL);
+
+    ptr += len;
 
     // peer count
     if (pcount) {
@@ -503,7 +533,7 @@ void *getpeerents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
     ptr += sizeof(len);
 
     if (pn)
-        *pn = msg->hdr.len - (ptr - msg->buf);
+        *pn = end - ptr;
 
     return ptr;
 }
@@ -515,16 +545,13 @@ int startpeerents(size_t *pcount)
 
 int startpeerents_r(mrt_msg_t *msg, size_t *pcount)
 {
-    if (unlikely((msg->flags & F_IS_PI) == 0))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return msg->err;
+    CHECKFLAGS(F_IS_PI);
 
     endpending(msg);
 
     msg->peptr = getpeerents_r(msg, pcount, NULL);
     msg->flags |= F_PE;
-    return msg->err;
+    return MRT_ENOERR;
 }
 
 peer_entry_t *nextpeerent(void)
@@ -572,10 +599,7 @@ static unsigned char *decodepeerent(peer_entry_t *dst, const unsigned char *ptr)
 
 peer_entry_t *nextpeerent_r(mrt_msg_t *msg)
 {
-    if (unlikely((msg->flags & F_PE) == 0))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return NULL;
+    CHECKFLAGSR(F_PE, NULL);
 
     // NOTE: RFC 6396 "The Length field does not include the length of the MRT Common Header."
     unsigned char *end = msg->buf + msg->hdr.len + MESSAGE_OFFSET;
@@ -593,10 +617,7 @@ int endpeerents(void)
 
 int endpeerents_r(mrt_msg_t *msg)
 {
-    if (unlikely((msg->flags & F_PE) == 0))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return msg->err;
+    CHECKFLAGS(F_PE);
 
     msg->flags &= ~F_PE;
     return MRT_ENOERR;
@@ -628,12 +649,13 @@ void *getribents(size_t *pcount, size_t *pn)
 
 void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
 {
-    if (unlikely(!msg->peer_index))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return NULL;
+    CHECKFLAGSR(F_NEEDS_PI, NULL);
+    CHECKPEERIDXR(NULL);
 
     unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
+    unsigned char *end = ptr + msg->hdr.len;
+
+    CHECKBOUNDSR(ptr, end, sizeof(uint32_t), MRT_EBADRIBENT, NULL);
 
     uint32_t seqno;
     memcpy(&seqno, ptr, sizeof(seqno));
@@ -645,6 +667,8 @@ void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
     switch (msg->hdr.subtype) {
     case MRT_TABLE_DUMPV2_RIB_GENERIC:
     case MRT_TABLE_DUMPV2_RIB_GENERIC_ADDPATH:
+        CHECKBOUNDSR(ptr, end, sizeof(afi) + sizeof(safi), MRT_EBADRIBENT, NULL);
+
         memcpy(&afi, ptr, sizeof(afi));
         afi = frombig16(afi);
         ptr += sizeof(afi);
@@ -688,6 +712,8 @@ void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
         goto unsup;
     }
 
+    CHECKBOUNDSR(ptr, end, sizeof(uint8_t), MRT_EBADRIBENT, NULL);
+
     size_t bitlen = *ptr++;
     msg->ribhdr.seqno = seqno;
     msg->ribhdr.afi = afi;
@@ -698,6 +724,9 @@ void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
     msg->ribhdr.nlri.bitlen = bitlen;
 
     size_t n = naddrsize(bitlen);
+
+    CHECKBOUNDSR(ptr, end, n + sizeof(uint16_t), MRT_EBADRIBENT, NULL);
+
     memcpy(msg->ribhdr.nlri.bytes, ptr, n);
     ptr += n;
 
@@ -709,7 +738,7 @@ void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
     ptr += sizeof(count);
 
     if (pn)
-        *pn = msg->hdr.len + MESSAGE_OFFSET - (ptr - msg->buf);
+        *pn = end - ptr;
 
     return ptr;
 
@@ -725,12 +754,11 @@ int setribents(const void *buf, size_t n)
 
 int setribents_r(mrt_msg_t *msg, const void *buf, size_t n)
 {
-    if (unlikely(!msg->peer_index))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return msg->err;
+    CHECKFLAGS(F_WR | F_NEEDS_PI);
+    CHECKPEERIDX();
 
     // TODO implement
+    (void) buf, (void) n;
     return MRT_ENOERR;
 }
 
@@ -741,10 +769,8 @@ rib_header_t *startribents(size_t *pcount)
 
 rib_header_t *startribents_r(mrt_msg_t *msg, size_t *pcount)
 {
-    if (unlikely(!msg->peer_index))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return NULL;
+    CHECKFLAGSR(F_NEEDS_PI, NULL);
+    CHECKPEERIDXR(NULL);
 
     endpending(msg);
 
@@ -760,17 +786,19 @@ rib_entry_t *nextribent(void)
 
 rib_entry_t *nextribent_r(mrt_msg_t *msg)
 {
+    CHECKFLAGSR(F_RE, NULL);
+
     mrt_msg_t *pi = msg->peer_index;
-    if (unlikely(!pi))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return NULL;
 
     unsigned char *end = msg->buf + MESSAGE_OFFSET + msg->hdr.len;
     if (msg->reptr == end)
         return NULL;
 
     uint16_t idx;
+    uint32_t originated;
+
+    CHECKBOUNDSR(msg->reptr, end, sizeof(idx) + sizeof(originated), MRT_EBADRIBENT, NULL);
+
     memcpy(&idx, msg->reptr, sizeof(idx));
     idx = frombig16(idx);
     if (idx >= pi->picount) {
@@ -780,17 +808,13 @@ rib_entry_t *nextribent_r(mrt_msg_t *msg)
 
     msg->reptr += sizeof(idx);
 
-    uint32_t originated;
     memcpy(&originated, msg->reptr, sizeof(originated));
     originated = frombig32(originated);
     msg->reptr += sizeof(originated);
 
     uint32_t pathid = 0;
     if (msg->flags & F_ADDPATH) {
-        if (unlikely(msg->reptr + sizeof(pathid) > end)) {
-            msg->err = MRT_EBADRIBENT;
-            return NULL;
-        }
+        CHECKBOUNDSR(msg->reptr, end, sizeof(pathid), MRT_EBADRIBENT, NULL);
 
         memcpy(&pathid, msg->reptr, sizeof(pathid));
         pathid = frombig32(pathid);
@@ -798,9 +822,14 @@ rib_entry_t *nextribent_r(mrt_msg_t *msg)
     }
 
     uint16_t attr_len;
+
+    CHECKBOUNDSR(msg->reptr, end, sizeof(attr_len), MRT_EBADRIBENT, NULL);
+
     memcpy(&attr_len, msg->reptr, sizeof(attr_len));
     attr_len = frombig16(attr_len);
     msg->reptr += sizeof(attr_len);
+
+    CHECKBOUNDSR(msg->reptr, end, attr_len, MRT_EBADRIBENT, NULL);
 
     msg->ribent.peer_idx = idx;
     msg->ribent.originated = (time_t) originated;
@@ -824,10 +853,7 @@ int endribents(void)
 
 int endribents_r(mrt_msg_t *msg)
 {
-    if (unlikely((msg->flags & F_RE) == 0))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return msg->err;
+    CHECKFLAGS(F_RE);
 
     msg->flags |= F_RE;
     return MRT_ENOERR;
@@ -835,22 +861,19 @@ int endribents_r(mrt_msg_t *msg)
 
 bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg)
 {
-    if (unlikely(msg->flags & F_RD) == 0)
-        msg->err = MRT_EINVOP;
-    if (unlikely((msg->flags & F_IS_BGP) == 0))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return NULL;
-
-    // FIXME range check
+    CHECKFLAGSR(F_RD | F_IS_BGP, NULL);
 
     unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
     if (msg->flags & F_IS_EXT)
         ptr = &msg->buf[MESSAGE_EXTENDED_OFFSET];
 
+    unsigned char *end = ptr + msg->hdr.len;
+
     bgp4mp_header_t *hdr = &msg->bgp4mphdr;
     memset(hdr, 0, sizeof(*hdr));
     if (msg->flags & F_AS32) {
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(uint32_t), MRT_EBADBGP4MPHDR, NULL);
+
         memcpy(&hdr->peer_as, ptr, sizeof(hdr->peer_as));
         hdr->peer_as = frombig32(hdr->peer_as);
         ptr += sizeof(hdr->peer_as);
@@ -860,6 +883,8 @@ bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg)
     } else {
         uint16_t as;
 
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(uint16_t), MRT_EBADBGP4MPHDR, NULL);
+
         memcpy(&as, ptr, sizeof(as));
         hdr->peer_as = frombig16(as);
         ptr += sizeof(as);
@@ -867,6 +892,8 @@ bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg)
         hdr->local_as = frombig16(as);
         ptr += sizeof(as);
     }
+
+    CHECKBOUNDSR(ptr, end, 2 * sizeof(uint16_t), MRT_EBADBGP4MPHDR, NULL);
 
     memcpy(&hdr->iface, ptr, sizeof(hdr->iface));
     hdr->iface = frombig16(hdr->iface);
@@ -878,12 +905,16 @@ bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg)
     ptr += sizeof(afi);
     switch (afi) {
     case AFI_IPV4:
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(struct in_addr), MRT_EBADBGP4MPHDR, NULL);
+
         makenaddr(&hdr->peer_addr, ptr, 32);
         ptr += sizeof(struct in_addr);
         makenaddr(&hdr->local_addr, ptr, 32);
         ptr += sizeof(struct in_addr);
         break;
     case AFI_IPV6:
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(struct in6_addr), MRT_EBADBGP4MPHDR, NULL);
+
         makenaddr6(&hdr->peer_addr, ptr, 128);
         ptr += sizeof(struct in6_addr);
         makenaddr6(&hdr->local_addr, ptr, 128);
@@ -895,6 +926,8 @@ bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg)
     }
 
     if (msg->flags & F_HAS_STATE) {
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(uint16_t), MRT_EBADBGP4MPHDR, NULL);
+
         memcpy(&hdr->old_state, ptr, sizeof(hdr->old_state));
         hdr->old_state = frombig16(hdr->old_state);
         ptr += sizeof(hdr->old_state);
@@ -919,14 +952,7 @@ void *unwrapbgp4mp(size_t *pn)
 
 void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn)
 {
-    if (unlikely(msg->flags & F_RD) == 0)
-        msg->err = MRT_EINVOP;
-    if (unlikely((msg->flags & F_WRAPS_BGP) == 0))
-        msg->err = MRT_EINVOP;
-    if (unlikely(msg->err))
-        return NULL;
-
-    // FIXME bounds check
+    CHECKFLAGSR(F_RD | F_WRAPS_BGP, NULL);
 
     unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
     if (msg->flags & F_IS_EXT)
@@ -934,26 +960,29 @@ void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn)
 
     unsigned char *end = ptr + msg->hdr.len;
 
-    ptr += (msg->flags & F_AS32) ? 2 * sizeof(uint32_t) : 2 * sizeof(uint16_t);
+    uint16_t afi;
+    size_t total_as_size = msg->flags & F_AS32 ? 2 * sizeof(uint32_t) : 2 * sizeof(uint16_t);
+    CHECKBOUNDSR(ptr, end, total_as_size + sizeof(uint16_t) + sizeof(afi), MRT_EBADRIBENT, NULL);
+
+    ptr += total_as_size;
     ptr += sizeof(uint16_t);
 
-    uint16_t afi;
     memcpy(&afi, ptr, sizeof(afi));
     afi = frombig16(afi);
     ptr += sizeof(afi);
     switch (afi) {
     case AFI_IPV4:
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(struct in_addr), MRT_EBADRIBENT, NULL);
         ptr += 2 * sizeof(struct in_addr);
         break;
     case AFI_IPV6:
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(struct in6_addr), MRT_EBADRIBENT, NULL);
         ptr += 2 * sizeof(struct in6_addr);
         break;
     default:
         msg->err = MRT_EAFINOTSUP;
         return NULL;
     }
-    if (msg->flags & F_HAS_STATE)
-        ptr += 2 * sizeof(uint16_t);
 
     if (likely(pn))
         *pn = end - ptr;

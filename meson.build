@@ -121,7 +121,8 @@ filter_test = executable('filter_test',
 core_bench = executable('core_bench',
     sources : [
         'bench/core/main.c',
-        'bench/core/strutil_b.c'
+        'bench/core/strutil_b.c',
+        'bench/core/patriciatrie_b.c'
     ],
     dependencies : [
         isocore_dep,

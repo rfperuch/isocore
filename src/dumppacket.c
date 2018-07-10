@@ -337,7 +337,7 @@ static void printbgp_row(FILE *out, bgp_msg_t *pkt, const bgp_formatter_t *fmt)
         if (fmt->flags & BGPF_ISRIB)
             break;
 
-        
+        // TODO
         break;
     case BGP_UPDATE:
         c = '+';

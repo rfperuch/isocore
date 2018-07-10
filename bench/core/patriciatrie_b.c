@@ -28,50 +28,25 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#include <locale.h>
-#include <stdlib.h>
+#include <isolario/endian.h>
+#include <isolario/patriciatrie.h>
+#include <cbench/cbench.h>
 
-#include "bench.h"
-
-int main(void)
+void bpatinsertn(cbench_state_t *state)
 {
-    setlocale(LC_ALL, "");
+    netaddr_t addr;
+    addr.family = AF_INET;
+    addr.bitlen = 32;
+    memset(addr.bytes, 0, sizeof(addr.bytes));
 
-    if (cbench_initialize() != CB_SUCCESS)
-        return EXIT_FAILURE;
+    patricia_trie_t trie;
 
-    cbench_suite_t *suite = cbench_add_suite("core");
-    if (!suite)
-        goto out;
+    patinit(&trie, AF_INET);
 
-    if (!cbench_add_bench(suite, "bcommsprintf", bcommsprintf, NULL))
-        goto out;
+    while (cbench_next_iteration(state)) {
+        addr.u32[0] = tobig32(state->curiter);
+        patinsertn(&trie, &addr, NULL);
+    }
 
-    if (!cbench_add_bench(suite, "bsprintf", bsprintf, NULL))
-        goto out;
-
-    if (!cbench_add_bench(suite, "bcommulltoa", bcommulltoa, NULL))
-        goto out;
-
-    if (!cbench_add_bench(suite, "ulltoa", bulltoa, NULL))
-        goto out;
-
-    if (!cbench_add_bench(suite, "splitstr", bsplit, NULL))
-        goto out;
-
-    if (!cbench_add_bench(suite, "joinstrv", bjoinv, NULL))
-        goto out;
-
-    if (!cbench_add_bench(suite, "joinstr", bjoin, NULL))
-        goto out;
-
-    if (!cbench_add_bench(suite, "patinsertn", bpatinsertn, NULL))
-        goto out;
-
-    cbench_run();
-
-out:
-    cbench_cleanup();
-    return cbench_get_error();
+    patdestroy(&trie);
 }
-

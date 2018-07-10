@@ -150,17 +150,20 @@ enum {
     //recoverable errors
     MRT_NOTPEERIDX = -1,
     //unrecoverable
-    MRT_ENOERR = 0,     ///< No error (success) guaranteed to be zero.
-    MRT_EIO,            ///< Input/Output error during packet read.
-    MRT_EINVOP,         ///< Invalid operation (e.g. write while reading packet).
-    MRT_ENOMEM,         ///< Out of memory.
-    MRT_EBADHDR,        ///< Bad MRT packet header.
-    MRT_EBADTYPE,       ///< Bad MRT packet type.
-    MRT_EBADPEERIDX,    ///< Error encountered parsing associated Peer Index.
-    MRT_ERIBNOTSUP,     ///< Unsupported RIB entry encountered, according to RFC6396:
-                        ///  "An implementation that does not recognize particular AFI and SAFI
-                        ///  values SHOULD discard the remainder of the MRT record."
-    MRT_EBADRIBENT,     ///< Corrupted or truncated RIB entry
+    MRT_ENOERR = 0,      ///< No error (success) guaranteed to be zero.
+    MRT_EIO,             ///< Input/Output error during packet read.
+    MRT_EINVOP,          ///< Invalid operation (e.g. write while reading packet).
+    MRT_ENOMEM,          ///< Out of memory.
+    MRT_EBADHDR,         ///< Bad MRT packet header.
+    MRT_EBADTYPE,        ///< Bad MRT packet type.
+    MRT_EBADBGP4MPHDR,   ///< Bad BGP4MP header.
+    MRT_EBADPEERIDXHDR,  ///< Bad Peer index header.
+    MRT_EBADPEERIDX,     ///< Error encountered parsing associated Peer Index.
+    MRT_ENEEDSPEERIDX,   ///< Packet needs a peer index, but none was provided.
+    MRT_ERIBNOTSUP,      ///< Unsupported RIB entry encountered, according to RFC6396:
+                         ///  "An implementation that does not recognize particular AFI and SAFI
+                         ///  values SHOULD discard the remainder of the MRT record."
+    MRT_EBADRIBENT,      ///< Corrupted or truncated RIB entry
     MRT_EAFINOTSUP
 };
 
@@ -181,8 +184,14 @@ inline const char *mrtstrerror(int err)
         return "Bad MRT header";
     case MRT_EBADTYPE:
         return "Bad MRT packet type";
+    case MRT_EBADBGP4MPHDR:
+        return "Bad BGP4MP header";
+    case MRT_EBADPEERIDXHDR:
+        return "Bad Peer Index header";
     case MRT_EBADPEERIDX:
         return "Bad Peer Index message";
+    case MRT_ENEEDSPEERIDX:
+        return "No peer index provided";
     case MRT_ERIBNOTSUP:
         return "Unsupported RIB entry";
     case MRT_EAFINOTSUP:

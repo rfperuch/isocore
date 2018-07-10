@@ -47,5 +47,7 @@ void bjoinv(cbench_state_t *state);
 
 void bjoin(cbench_state_t *state);
 
+void bpatinsertn(cbench_state_t *state);
+
 #endif
 
