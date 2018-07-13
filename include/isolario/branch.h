@@ -65,6 +65,16 @@
  * If the compiler honors the hint, generated assembly is optimized
  * for the case in which \a guard is false.
  */
+/**
+ * @def unreachable()
+ * @brief Marks a code path as unreachable.
+ *
+ * The compiler is free to assume that a code path in which this
+ * marker appears shall never be reached.
+ * 
+ * @warning If that code path is actually reachable, then subtle, unexpected and
+ *          typically cathastrophic things could very well occur.
+ */
 #ifdef __GNUC__
 
 #ifndef likely
@@ -75,6 +85,10 @@
 #define unlikely(guard) __builtin_expect(!!(guard), 0)
 #endif
 
+#ifndef unreachable
+#define unreachable() __builtin_unreachable()
+#endif
+
 #else
 
 #ifndef likely
@@ -83,6 +97,10 @@
 
 #ifndef unlikely
 #define unlikely(guard) (guard)
+#endif
+
+#ifndef unreachable
+#define unreachable()
 #endif
 
 #endif
