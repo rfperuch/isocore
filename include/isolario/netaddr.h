@@ -151,27 +151,161 @@ inline purefunc sa_family_t saddrfamily(const char *s)
     return likely(*s == ':') ? AF_INET6 : AF_UNSPEC;
 }
 
-inline purefunc nonnull(1, 2) int prefixeqwithmask(const void *a, const void *b, unsigned int mask)
+inline purefunc nonnull(1, 2) int prefixeqwithmask(const netaddr_t *addr, const netaddr_t *dest, unsigned int mask)
 {
-    unsigned int n = mask >> 3;
+    unsigned int m = ~0u << (8 - (mask >> 3));
 
-    if (memcmp(a, b, n) == 0) {
-        unsigned int m = ~0u << (8 - (mask & 3));
+    switch (mask) {
+    case 128:
+        return addr->u32[0] == dest->u32[0] && addr->u32[1] == dest->u32[1] &&
+               addr->u32[2] == dest->u32[2] && addr->u32[3] == dest->u32[3];
 
-        const unsigned char *aptr = a;
-        const unsigned char *bptr = b;
+    case 127: case 126: case 125: case 124: case 123: case 122: case 121:
+        if (((addr->bytes[15] & m) == (dest->bytes[15] & m)))
+            return 0;
 
-        return (mask & 0x7) == 0 || (aptr[n] & m) == (bptr[n] & m);
+        // fallthrough
+    case 120:
+        return addr->u32[0] == dest->u32[0] && addr->u32[1] == dest->u32[1] &&
+               addr->u32[2] == dest->u32[2] && addr->u16[6] == dest->u16[6] &&
+               addr->bytes[14] == dest->bytes[14];
+
+    case 119: case 118: case 117: case 116: case 115: case 114: case 113:
+        if (((addr->bytes[14] & m) == (dest->bytes[14] & m)))
+            return 0;
+
+        // fallthrough
+    case 112:
+        return addr->u32[0] == dest->u32[0] && addr->u32[1] == dest->u32[1] &&
+               addr->u32[2] == dest->u32[2] && addr->u16[6] == dest->u16[6];
+
+    case 111: case 110: case 109: case 108: case 107: case 106: case 105:
+        if (((addr->bytes[13] & m) == (dest->bytes[13] & m)))
+            return 0;
+
+        // fallthrough
+    case 104:
+        return addr->u32[0] == dest->u32[0] && addr->u32[1] == dest->u32[1] &&
+               addr->u32[2] == dest->u32[2] && addr->bytes[12] == dest->bytes[12];
+
+    case 103: case 102: case 101: case 100: case 99: case 98: case 97:
+        if (((addr->bytes[12] & m) == (dest->bytes[12] & m)))
+            return 0;
+
+        // fallthrough
+    case 96:
+        return addr->u32[0] == dest->u32[0] && addr->u32[1] == dest->u32[1] &&
+               addr->u32[2] == dest->u32[2];
+
+    case 95: case 94: case 93: case 92: case 91: case 90: case 89:
+        if (((addr->bytes[11] & m) == (dest->bytes[11] & m)))
+            return 0;
+
+        // fallthrough
+    case 88:
+        return addr->u32[0] == dest->u32[0] && addr->u32[1] == dest->u32[1] &&
+               addr->u16[4] == dest->u16[4] && addr->bytes[10] == dest->bytes[10];
+
+    case 87: case 86: case 85: case 84: case 83: case 82: case 81:
+        if (((addr->bytes[10] & m) == (dest->bytes[10] & m)))
+            return 0;
+
+        // fallthrough
+    case 80:
+        return addr->u32[0] == dest->u32[0] && addr->u32[1] == dest->u32[1] &&
+               addr->u16[4] == dest->u16[4];
+
+    case 79: case 78: case 77: case 76: case 75: case 74: case 73:
+        if (((addr->bytes[9] & m) == (dest->bytes[9] & m)))
+            return 0;
+
+        // fallthrough
+    case 72:
+        return addr->u32[0] == dest->u32[0] && addr->u32[1] == dest->u32[1] &&
+               addr->bytes[8] == dest->bytes[8];
+
+    case 71: case 70: case 69: case 68: case 67: case 66: case 65:
+        if (((addr->bytes[8] & m) == (dest->bytes[8] & m)))
+            return 0;
+
+        // fallthrough
+    case 64:
+        return addr->u32[0] == dest->u32[0] && addr->u32[1] == dest->u32[1];
+
+    case 63: case 62: case 61: case 60: case 59: case 58: case 57:
+        if (((addr->bytes[7] & m) == (dest->bytes[7] & m)))
+            return 0;
+
+        // fallthrough
+    case 56:
+        return addr->u32[0] == dest->u32[0] && addr->u16[2] == dest->u16[2] &&
+               addr->bytes[6] == addr->bytes[6];
+
+    case 55: case 54: case 53: case 52: case 51: case 50: case 49:
+        if (((addr->bytes[6] & m) == (dest->bytes[6] & m)))
+            return 0;
+
+        // fallthrough
+    case 48:
+        return addr->u32[0] == dest->u32[0] && addr->u16[2] == dest->u16[2];
+
+    case 47: case 46: case 45: case 44: case 43: case 42: case 41:
+        if (((addr->bytes[5] & m) == (dest->bytes[5] & m)))
+            return 0;
+
+        // fallthrough
+    case 40:
+        return addr->u32[0] == dest->u32[0] && addr->bytes[4] == dest->bytes[4];
+
+    case 39: case 38: case 37: case 36: case 35: case 34: case 33:
+        if (((addr->bytes[4] & m) == (dest->bytes[4] & m)))
+            return 0;
+
+        // fallthrough
+    case 32:
+        return addr->u32[0] == dest->u32[0];
+
+    case 31: case 30: case 29: case 28: case 27: case 26: case 25:
+        if (((addr->bytes[3] & m) == (dest->bytes[3] & m)))
+            return 0;
+
+        // fallthrough
+    case 24:
+        return addr->u16[0] == dest->u16[0] && addr->bytes[2] == dest->bytes[2];
+
+    case 23: case 22: case 21: case 20: case 19: case 18: case 17:
+        if (((addr->bytes[2] & m) == (dest->bytes[2] & m)))
+            return 0;
+
+        // fallthrough
+    case 16:
+        return addr->u16[0] == dest->u16[0];
+
+    case 15: case 14: case 13: case 12: case 11: case 10: case 9:
+        if (((addr->bytes[1] & m) == (dest->bytes[1] & m)))
+            return 0;
+
+        // fallthrough
+    case 8:
+        return addr->bytes[0] == dest->bytes[0];
+
+    case 7: case 6: case 5: case 4: case 3: case 2: case 1:
+        return (addr->bytes[1] & m) == (dest->bytes[1] & m);
+
+    case 0:
+        return 1;
+
+    default:
+        unreachable();
+        return 0;
     }
-
-    return 0;
 }
 
 inline purefunc nonnull(1, 2) int prefixeq(const netaddr_t *a, const netaddr_t *b)
 {
     return a->family == b->family
         && a->bitlen == b->bitlen
-        && prefixeqwithmask(a->bytes, b->bytes, a->bitlen);
+        && prefixeqwithmask(a, b, a->bitlen);
 }
 
 inline purefunc nonnull(1, 2) int naddreq(const netaddr_t *a, const netaddr_t *b)
