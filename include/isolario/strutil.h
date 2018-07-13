@@ -94,6 +94,27 @@ inline purefunc nonnull(1) unsigned long memsdbm(const void *p, size_t n)
     return h;
 }
 
+inline nonullreturn nonnull(1) char *xtoa(char *dst, char **endp, unsigned int val)
+{
+    char buf[sizeof(val) * 2 + 1];
+
+    char *ptr = buf + sizeof(buf);
+
+    *--ptr = '\0';
+
+    char *end = ptr;
+    do {
+        *--ptr = "0123456789abcdef"[val & 0xf];
+        val >>= 4;
+    } while (val > 0);
+
+    size_t n = end - ptr;
+    if (endp)
+        *endp = &dst[n];
+
+    return memcpy(dst, ptr, n + 1);
+}
+
 inline nonullreturn nonnull(1) char *itoa(char *dst, char **endp, int i)
 {
     char buf[1 + digsof(i) + 1];

@@ -45,6 +45,8 @@ extern char *itoa(char *dst, char **end, int i);
 
 extern char *utoa(char *dst, char **end, unsigned int u);
 
+extern char *xtoa(char *dst, char **end, unsigned int val);
+
 extern char *ltoa(char *dst, char **end, long l);
 
 extern char *ultoa(char *dst, char **end, unsigned long u);

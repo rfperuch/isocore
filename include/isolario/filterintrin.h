@@ -42,6 +42,7 @@
 #include <isolario/netaddr.h>
 #include <isolario/filterpacket.h>
 #include <setjmp.h>
+#include <stdbool.h>
 #include <stdnoreturn.h>
 #include <string.h>
 
@@ -96,6 +97,12 @@ void vm_growstack(filter_vm_t *vm);
 void vm_growcode(filter_vm_t *vm);
 void vm_growk(filter_vm_t *vm);
 void vm_growtrie(filter_vm_t *vm);
+
+inline noreturn void vm_abort(filter_vm_t *vm, int error)
+{
+    vm->error = error;
+    longjmp(vm->except, -1);
+}
 
 inline bytecode_t vm_makeop(int opcode, int arg)
 {
@@ -156,12 +163,6 @@ inline void vm_clearstack(filter_vm_t *vm)
     vm->si = 0;
 }
 
-inline noreturn void vm_abort(filter_vm_t *vm, int error)
-{
-    vm->error = error;
-    longjmp(vm->except, -1);
-}
-
 inline stack_cell_t *vm_peek(filter_vm_t *vm)
 {
     if (unlikely(vm->si == 0))
@@ -220,6 +221,12 @@ inline void vm_exec_loadk(filter_vm_t *vm, int kidx)
     vm_push(vm, &vm->kp[kidx]);
 }
 
+inline void vm_exec_not(filter_vm_t *vm)
+{
+    stack_cell_t *cell = vm_peek(vm);
+    cell->value = !cell->value;
+}
+
 inline void *vm_heap_ptr(filter_vm_t *vm, unsigned int off)
 {
     return (unsigned char *) vm->heap + off;  // duh...
@@ -238,16 +245,15 @@ void vm_exec_unpack(filter_vm_t *vm);
 
 inline void vm_exec_store(filter_vm_t *vm)
 {
-    stack_cell_t *cell = vm_pop(vm);
-    netaddr_t *addr    = &cell->addr;
+    stack_cell_t *cell    = vm_pop(vm);
+    netaddr_t *addr       = &cell->addr;
+    patricia_trie_t *trie = vm->curtrie;
     switch (addr->family) {
-    case AF_INET:
-        if (!patinsertn(vm->curtrie, addr, NULL))
-            vm_abort(vm, VM_OUT_OF_MEMORY);
-
-        break;
     case AF_INET6:
-        if (!patinsertn(vm->curtrie6, addr, NULL))
+        trie = vm->curtrie6;
+        // fallthrough
+    case AF_INET:
+        if (!patinsertn(trie, addr, NULL))
             vm_abort(vm, VM_OUT_OF_MEMORY);
 
         break;
@@ -259,14 +265,15 @@ inline void vm_exec_store(filter_vm_t *vm)
 
 inline void vm_exec_discard(filter_vm_t *vm)
 {
-    stack_cell_t *cell = vm_pop(vm);
-    netaddr_t *addr    = &cell->addr;
+    stack_cell_t *cell    = vm_pop(vm);
+    netaddr_t *addr       = &cell->addr;
+    patricia_trie_t *trie = vm->curtrie;
     switch (addr->family) {
-    case AF_INET:
-        patremoven(vm->curtrie, addr);
-        break;
     case AF_INET6:
-        patremoven(vm->curtrie6, addr);
+        trie = vm->curtrie6;
+        // fallthrough
+    case AF_INET:
+        patremoven(trie, addr);
         break;
     default:
         vm_abort(vm, VM_SURPRISING_BYTES); // should never happen
@@ -334,13 +341,351 @@ inline void vm_exec_pfxcmp(filter_vm_t *vm, int kidx)
     a->value = prefixeq(&a->addr, &b->addr);
 }
 
-void vm_exec_withdrawn_accumulate(filter_vm_t *vm);
-void vm_exec_withdrawn_insert(filter_vm_t *vm);
+inline void vm_exec_all_withdrawn_insert(filter_vm_t *vm)
+{
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
 
-void vm_exec_nlri_accumulate(filter_vm_t *vm);
-void vm_exec_nlri_insert(filter_vm_t *vm);
+    startallwithdrawn_r(vm->bgp);
 
-void vm_exec_exact(filter_vm_t *vm);
+    const netaddr_t *addr;
+    while ((addr = nextwithdrawn_r(vm->bgp)) != NULL) {
+        patricia_trie_t *trie = vm->curtrie;
+        switch (addr->family) {
+        case AF_INET6:
+            trie = vm->curtrie6;
+            // fallthrough
+        case AF_INET:
+            if (!patinsertn(trie, addr, NULL))
+                vm_abort(vm, VM_OUT_OF_MEMORY);
+
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES); // should never happen
+            break;
+        }
+    }
+
+    if (unlikely(endwithdrawn_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+inline void vm_exec_all_withdrawn_accumulate(filter_vm_t *vm)
+{
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startallwithdrawn_r(vm->bgp);
+
+    const netaddr_t *addr;
+    while ((addr = nextwithdrawn_r(vm->bgp)) != NULL)
+        vm_pushaddr(vm, addr);
+
+    if (unlikely(endwithdrawn_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+inline void vm_exec_withdrawn_accumulate(filter_vm_t *vm)
+{
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startwithdrawn_r(vm->bgp);
+
+    const netaddr_t *addr;
+    while ((addr = nextwithdrawn_r(vm->bgp)) != NULL)
+        vm_pushaddr(vm, addr);
+
+    if (unlikely(endwithdrawn_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+inline void vm_exec_withdrawn_insert(filter_vm_t *vm)
+{
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startwithdrawn_r(vm->bgp);
+
+    const netaddr_t *addr;
+    while ((addr = nextwithdrawn_r(vm->bgp)) != NULL) {
+        patricia_trie_t *trie = vm->curtrie;
+        switch (addr->family) {
+        case AF_INET6:
+            trie = vm->curtrie6;
+            // fallthrough
+        case AF_INET:
+            if (!patinsertn(trie, addr, NULL))
+                vm_abort(vm, VM_OUT_OF_MEMORY);
+
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES); // should never happen
+            break;
+        }
+    }
+
+    if (unlikely(endwithdrawn_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+inline void vm_exec_all_nlri_insert(filter_vm_t *vm)
+{
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startallnlri_r(vm->bgp);
+
+    const netaddr_t *addr;
+    while ((addr = nextnlri_r(vm->bgp)) != NULL) {
+        patricia_trie_t *trie = vm->curtrie;
+        switch (addr->family) {
+        case AF_INET6:
+            trie = vm->curtrie6;
+            // fallthrough
+        case AF_INET:
+            if (!patinsertn(trie, addr, NULL))
+                vm_abort(vm, VM_OUT_OF_MEMORY);
+
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES); // should never happen
+            break;
+        }
+    }
+
+    if (unlikely(endnlri_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+inline void vm_exec_all_nlri_accumulate(filter_vm_t *vm)
+{
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startallnlri_r(vm->bgp);
+
+    const netaddr_t *addr;
+    while ((addr = nextnlri_r(vm->bgp)) != NULL)
+        vm_pushaddr(vm, addr);
+
+    if (unlikely(endnlri_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+inline void vm_exec_nlri_insert(filter_vm_t *vm)
+{
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startnlri_r(vm->bgp);
+
+    const netaddr_t *addr;
+    while ((addr = nextnlri_r(vm->bgp)) != NULL) {
+        patricia_trie_t *trie = vm->curtrie;
+        switch (addr->family) {
+        case AF_INET6:
+            trie = vm->curtrie6;
+            // fallthrough
+        case AF_INET:
+            if (!patinsertn(trie, addr, NULL))
+                vm_abort(vm, VM_OUT_OF_MEMORY);
+
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES); // should never happen
+            break;
+        }
+    }
+
+    if (unlikely(endnlri_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+inline void vm_exec_nlri_accumulate(filter_vm_t *vm)
+{
+    if (unlikely(getbgptype_r(vm->bgp) != BGP_UPDATE))
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startnlri_r(vm->bgp);
+
+    const netaddr_t *addr;
+    while ((addr = nextnlri_r(vm->bgp)) != NULL)
+        vm_pushaddr(vm, addr);
+
+    if (unlikely(endnlri_r(vm->bgp) != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+inline void vm_exec_exact(filter_vm_t *vm)
+{
+    while (vm->si > 0) {
+        stack_cell_t *cell    = vm_pop(vm);
+        netaddr_t *addr       = &cell->addr;
+        patricia_trie_t *trie = vm->curtrie;
+        switch (addr->family) {
+        case AF_INET6:
+            trie = vm->curtrie6;
+            // fallthrough
+        case AF_INET:
+            if (patsearchexactn(trie, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+            break;
+        }
+    }
+
+    vm_pushvalue(vm, false);
+}
+
+
+inline void vm_exec_subnet(filter_vm_t *vm)
+{
+    int result = false;
+    while (vm->si > 0) {
+        netaddr_t *addr = &vm->sp[--vm->si].addr;
+
+        patricia_trie_t *trie = vm->curtrie;
+        switch (addr->family) {
+        case AF_INET6:
+            trie = vm->curtrie6;
+            // fallthrough
+        case AF_INET:
+            if (patissubnetofn(trie, addr)) {
+                result = true;
+                goto done;
+            }
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+            break;
+        }
+    }
+
+done:
+    vm->si = 0;
+    vm->sp[vm->si++].value = result;
+}
+
+inline void vm_exec_supernet(filter_vm_t *vm)
+{
+    while (vm->si > 0) {
+        stack_cell_t *cell = vm_pop(vm);
+        netaddr_t *addr = &cell->addr;
+        switch (addr->family) {
+        case AF_INET:
+            if (patissupernetofn(vm->curtrie, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        case AF_INET6:
+            if (patissupernetofn(vm->curtrie6, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+            break;
+        }
+    }
+
+    vm_pushvalue(vm, false);
+}
+
+
+inline void vm_exec_related(filter_vm_t *vm)
+{
+    while (vm->si > 0) {
+        stack_cell_t *cell = vm_pop(vm);
+        netaddr_t *addr = &cell->addr;
+        switch (addr->family) {
+        case AF_INET:
+            if (patisrelatedofn(vm->curtrie, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        case AF_INET6:
+            if (patisrelatedofn(vm->curtrie6, addr)) {
+                vm_clearstack(vm);
+                vm_pushvalue(vm, true);
+                return;
+            }
+            break;
+        default:
+            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+            break;
+        }
+    }
+
+    vm_pushvalue(vm, false);
+}
+
+inline void vm_exec_pfxcontains(filter_vm_t *vm, int kidx)
+{
+    if (unlikely((unsigned int) kidx >= vm->ksiz))
+        vm_abort(vm, VM_K_UNDEFINED);
+
+    stack_cell_t *a = &vm->kp[kidx];
+    while (vm->si > 0) {
+        stack_cell_t *b = vm_pop(vm);
+
+        if (prefixeq(&a->addr, &b->addr)) {
+            vm_clearstack(vm);
+            vm_pushvalue(vm, true);
+            return;
+        }
+    }
+
+    vm_pushvalue(vm, false);
+}
+
+inline void vm_exec_addrcontains(filter_vm_t *vm, int kidx)
+{
+    if (unlikely((unsigned int) kidx >= vm->ksiz))
+        vm_abort(vm, VM_K_UNDEFINED);
+
+    stack_cell_t *a = &vm->kp[kidx];
+    while (vm->si > 0) {
+        stack_cell_t *b = vm_pop(vm);
+
+        if (naddreq(&a->addr, &b->addr)) {
+            vm_clearstack(vm);
+            vm_pushvalue(vm, true);
+            return;
+        }
+    }
+
+    vm_pushvalue(vm, false);
+}
+
+inline void vm_exec_ascontains(filter_vm_t *vm, int kidx)
+{
+    if (unlikely((unsigned int) kidx >= vm->ksiz))
+        vm_abort(vm, VM_K_UNDEFINED);
+
+    stack_cell_t *a = &vm->kp[kidx];
+    while (vm->si > 0) {
+        stack_cell_t *b = vm_pop(vm);
+        if (a->as == b->as) {
+            vm_clearstack(vm);
+            vm_pushvalue(vm, true);
+            return;
+        }
+    }
+
+    vm_pushvalue(vm, false);
+}
 
 #endif
 

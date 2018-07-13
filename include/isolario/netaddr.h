@@ -92,6 +92,7 @@ typedef struct {
     union {
         struct in_addr sin;
         struct in6_addr sin6;
+        uint16_t u16[sizeof(struct in6_addr) / sizeof(uint16_t)];
         uint32_t u32[sizeof(struct in6_addr) / sizeof(uint32_t)];
         unsigned char bytes[sizeof(struct in6_addr)];
     };

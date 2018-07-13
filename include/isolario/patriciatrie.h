@@ -7,6 +7,7 @@
 #ifndef ISOLARIO_PATRICIA_TRIE_H_
 #define ISOLARIO_PATRICIA_TRIE_H_
 
+#include <isolario/funcattribs.h>
 #include <isolario/netaddr.h>
 #include <isolario/uint128_t.h>
 
@@ -132,9 +133,9 @@ trienode_t** patgetsubnetsofc(const patricia_trie_t *pt, const char *cprefix);
  * 0 otherwise
  *
  */
-int patissubnetofn(const patricia_trie_t *pt, const netaddr_t *prefix);
+purefunc int patissubnetofn(const patricia_trie_t *pt, const netaddr_t *prefix);
 
-int patissubnetofc(const patricia_trie_t *pt, const char *cprefix);
+purefunc int patissubnetofc(const patricia_trie_t *pt, const char *cprefix);
 
 /**
  * @brief Related of a prefix

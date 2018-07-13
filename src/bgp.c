@@ -28,7 +28,6 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#include <assert.h>
 #include <isolario/bgp.h>
 #include <isolario/branch.h>
 #include <isolario/endian.h>
@@ -67,7 +66,8 @@ enum {
     F_REALASPATH = 1 << 10,
     F_NHOP       = 1 << 11,
     F_ADDPATH    = 1 << 12,
-    F_ASN32BIT   = 1 << 13
+    F_ASN32BIT   = 1 << 13,
+    F_PRESOFFTAB = 1 << 14  ///< See rebuildbgpfrommrt()
 };
 
 /// @brief Offsets for various BGP packet fields
@@ -103,11 +103,47 @@ enum {
     // special offset value, indicating that value was not found
     // (used while reading special attributes in update message, to indicate
     // that the attribute was already searched, but was not found)
-    OFFSET_NOT_FOUND = UINT16_MAX
+    OFFSET_NOT_FOUND_BYTE = 0xff, // used for memset()
+    OFFSET_NOT_FOUND      = 0xffff
+};
+
+// Notable attributes lookup table
+
+#define INDEX_BIAS 1
+#define MAKE_CODE_INDEX(x) ((x) + INDEX_BIAS)
+#define EXTRACT_CODE_INDEX(x) ((x) - INDEX_BIAS)
+
+// NOTE: index count must be less than nelems(bgp_msg_t.offtab)!
+static const int8_t attr_code_index[255] = {
+    [AS_PATH_CODE]            = MAKE_CODE_INDEX(0),
+    [ORIGIN_CODE]             = MAKE_CODE_INDEX(1),
+    [ATOMIC_AGGREGATE_CODE]   = MAKE_CODE_INDEX(2),
+    [AGGREGATOR_CODE]         = MAKE_CODE_INDEX(3),
+    [NEXT_HOP_CODE]           = MAKE_CODE_INDEX(4),
+    [COMMUNITY_CODE]          = MAKE_CODE_INDEX(5),
+    [MP_REACH_NLRI_CODE]      = MAKE_CODE_INDEX(6),
+    [MP_UNREACH_NLRI_CODE]    = MAKE_CODE_INDEX(7),
+    [EXTENDED_COMMUNITY_CODE] = MAKE_CODE_INDEX(8),
+    [AS4_PATH_CODE]           = MAKE_CODE_INDEX(9),
+    [AS4_AGGREGATOR_CODE]     = MAKE_CODE_INDEX(10),
+    [LARGE_COMMUNITY_CODE]    = MAKE_CODE_INDEX(11)
 };
 
 /// @brief Global thread BGP message instance.
 static _Thread_local bgp_msg_t curmsg;
+
+int getbgptype_r(bgp_msg_t *msg)
+{
+    if (unlikely((msg->flags & F_RDWR) == 0))
+        return BGP_BADTYPE;
+
+    return msg->buf[TYPE_OFFSET];
+}
+
+int getbgptype(void)
+{
+    return getbgptype_r(&curmsg);
+}
 
 // Minimum packet size table (see setbgpwrite()) ===============================
 
@@ -153,7 +189,7 @@ extern const char *bgpstrerror(int err);
 /// @brief Check for a \a flags operation on a BGP packet of type \a type.
 static int checktype(bgp_msg_t *msg, int type, int flags)
 {
-    if (unlikely(getbgptype_r(msg) != type))
+    if (unlikely(msg->buf[TYPE_OFFSET] != type))
         msg->err = BGP_EINVOP;
     if (unlikely((msg->flags & flags) != flags))
         msg->err = BGP_EINVOP;
@@ -292,11 +328,15 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
 {
     setbgpwrite_r(msg, BGP_UPDATE, flags);
 
-    const bgpattr_t *attr = data;
+    const bgpattr_t *attr     = data;
     const netaddr_t *addr     = nlri;
     const netaddrap_t *addrap = nlri;  // only read if flags & BGPF_ADDPATH
-    unsigned char *dst    = &msg->buf[BASE_PACKET_LENGTH];
-    int seen_mp_reach     = false;
+    unsigned char *dst        = &msg->buf[BASE_PACKET_LENGTH];
+    int seen_mp_reach         = false;
+
+    // innocent little HACK, see while-loop below...
+    msg->flags |= F_PRESOFFTAB;  // don't let bgpfinish() zero-out the offset table
+    memset(msg->offtab, OFFSET_NOT_FOUND_BYTE, sizeof(msg->offtab));
 
     // no withdrawn, zero-out 2 bytes
     *dst++ = 0;
@@ -331,14 +371,23 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
         if (unlikely(n < size))
             goto error;
 
-        int truncated = true;
+        // HACK: pre-populate the notable attribute offset table:
+        // scanning the packet for MP_REACH and MP_UNREACH, note that we really
+        // shouldn't do that while writing to the packet, but we are filling it
+        // directly inside this loop (and bgpfinish_r() doesn't touch it),
+        // so we know we are safe.
+        int idx = EXTRACT_CODE_INDEX(attr_code_index[attr->code]);
+        if (idx >= 0)
+            msg->offtab[idx] = ((unsigned char *) dst - msg->buf);
+
+        int truncated = true;  // assume BGPF_STDMRT
         switch (attr->code) {
         case MP_REACH_NLRI_CODE:
             // in v6 case, MP_REACH lacks NLRI and removes reserved field
             seen_mp_reach = true;
 
             if (addr->family == AF_INET6) {
-                if (flags & BGPF_GUESSMRT && !ismrttruncated(src, len))
+                if ((flags & (BGPF_FULLMPREACH | BGPF_STDMRT)) == 0 && !ismrttruncated(src, len))
                     truncated = false;
                 if (flags & BGPF_FULLMPREACH)
                     truncated = false;
@@ -346,20 +395,21 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
                 if (truncated) {
                     // rebuild MP_REACH_NLRI
                     size_t addrlen = naddrsize(addr->bitlen);
-                    size_t n = sizeof(uint16_t) + sizeof(uint8_t) + len + 1 + 1 + addrlen;
+                    size_t expanded_size = sizeof(uint16_t) + sizeof(uint8_t) + len + 1 + 1 + addrlen;
                     if (msg->flags & F_ADDPATH)
-                        n += sizeof(uint32_t);
+                        expanded_size += sizeof(uint32_t);
 
-                    *dst++ = (n > 0xff) ? EXTENDED_MP_REACH_NLRI_FLAGS : DEFAULT_MP_REACH_NLRI_FLAGS;
+                    *dst++ = (expanded_size > 0xff) ? EXTENDED_MP_REACH_NLRI_FLAGS : DEFAULT_MP_REACH_NLRI_FLAGS;
                     *dst++ = MP_REACH_NLRI_CODE;
-                    *dst++ = n & 0xff;
-                    if (n > 0xff)
-                        *dst++ = n >> 8;
+                    if (expanded_size > 0xff)
+                        *dst++ = expanded_size >> 8;
 
-                    uint16_t afi = tobig16(AFI_IPV6);
+                    *dst++ = expanded_size & 0xff;
+
+                    uint16_t afi = BIG16_C(AFI_IPV6);
                     memcpy(dst, &afi, sizeof(afi));
                     dst += sizeof(afi);
-
+                    // FIXME bound check
                     *dst++ = SAFI_UNICAST;
 
                     memcpy(dst, src, len);
@@ -412,25 +462,39 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
                     if (unlikely((size_t) (end - src) != segcount * sizeof(uint32_t)))
                         goto error;
 
+                    // FIXME
                     for (int i = 0; i < segcount; i++) {
+#if 0
+                        // the good...
                         uint32_t as;
                         memcpy(&as, src, sizeof(as));
+                        as = frombig32(as);
+                        if (unlikely(as > 0xffff))
+                            goto error;
 
-                        uint16_t as16 = tobig16(frombig32(as));
+                        uint16_t as16 = tobig16(as);
                         memcpy(dst, &as16, sizeof(as16));
 
                         src += sizeof(as);
                         dst += sizeof(as16);
+#else
+                        // the bad AND ugly
+                        memcpy(dst, src + 2, sizeof(uint16_t));
+                        src += sizeof(uint32_t);
+                        dst += sizeof(uint16_t);
+#endif
                     }
 
                     // rewrite length
-                    start += 2;
-
                     size_t total = (dst - start) - hdrsize;
 
-                    *start++ = total & 0xff;
+                    start += 2;  // skip attribute flags and code
+
+                    // write updated length
                     if (attr->flags & ATTR_EXTENDED_LENGTH)
                         *start++ = total >> 8;
+
+                    *start++ = total & 0xff;
                 }
                 break;
             }
@@ -505,19 +569,6 @@ int setbgpwrite_r(bgp_msg_t *msg, int type, int flags)
     memset(msg->buf + sizeof(bgp_marker), 0, min_len - sizeof(bgp_marker));
     msg->buf[TYPE_OFFSET] = type;
     return BGP_ENOERR;
-}
-
-int getbgptype(void)
-{
-    return getbgptype_r(&curmsg);
-}
-
-int getbgptype_r(bgp_msg_t *msg)
-{
-    if (unlikely((msg->flags & F_RDWR) == 0))
-        return BGP_BADTYPE;
-
-    return msg->buf[TYPE_OFFSET];
 }
 
 size_t getbgplength(void)
@@ -610,10 +661,11 @@ void *bgpfinish_r(bgp_msg_t *msg, size_t *pn)
     if (likely(pn))
         *pn = n;
 
-    msg->flags &= ~F_WR;
-    msg->flags |= F_RD; //allow reading from this message in the future
-    memset(msg->offtab, 0, sizeof(msg->offtab));
+    if ((msg->flags & F_PRESOFFTAB)== 0)
+        memset(msg->offtab, 0, sizeof(msg->offtab));
 
+    msg->flags &= ~(F_WR | F_PRESOFFTAB);
+    msg->flags |= F_RD; //allow reading from this message in the future
     return msg->buf;
 }
 
@@ -1036,7 +1088,7 @@ void *nextwithdrawn_r(bgp_msg_t *msg)
         return NULL;
 
     netaddr_t *addr = &msg->pfxbuf.pfx;
-    while (msg->uptr == msg->uend) {  // this loop handles empty MP_UNREACH
+    while (unlikely(msg->uptr == msg->uend)) {  // this loop handles empty MP_UNREACH
         if ((msg->flags & F_ALLWITHDRN) == 0)
             return NULL;  // we're done
 
@@ -1075,7 +1127,9 @@ void *nextwithdrawn_r(bgp_msg_t *msg)
     if (msg->flags & F_ADDPATH) {
         uint32_t pathid;
 
-        if (unlikely(msg->uptr + sizeof(pathid) > msg->uend)) {
+        // if >=, also catch the case in which there is room for the PATHID,
+        // but no room for prefix bit length
+        if (unlikely(msg->uptr + sizeof(pathid) >= msg->uend)) {
             msg->err = BGP_EBADWDRWN;
             return NULL;
         }
@@ -1089,7 +1143,7 @@ void *nextwithdrawn_r(bgp_msg_t *msg)
 
     size_t bitlen = *msg->uptr++;  // TODO validate value
     size_t n = naddrsize(bitlen);
-    if (msg->uptr + n > msg->uend) {
+    if (unlikely(msg->uptr + n > msg->uend)) {
         msg->err = BGP_EBADWDRWN;
         return NULL;
     }
@@ -1153,26 +1207,6 @@ int endwithdrawn_r(bgp_msg_t *msg)
     msg->flags &= ~(F_WITHDRN | F_ALLWITHDRN);
     return BGP_ENOERR;
 }
-
-#define INDEX_BIAS 1
-#define MAKE_CODE_INDEX(x) ((x) + INDEX_BIAS)
-#define EXTRACT_CODE_INDEX(x) ((x) - INDEX_BIAS)
-
-// NOTE: index count must be less than nelems(bgp_msg_t.offtab)!
-static const int8_t attr_code_index[255] = {
-    [AS_PATH_CODE]            = MAKE_CODE_INDEX(0),
-    [ORIGIN_CODE]             = MAKE_CODE_INDEX(1),
-    [ATOMIC_AGGREGATE_CODE]   = MAKE_CODE_INDEX(2),
-    [AGGREGATOR_CODE]         = MAKE_CODE_INDEX(3),
-    [NEXT_HOP_CODE]           = MAKE_CODE_INDEX(4),
-    [COMMUNITY_CODE]          = MAKE_CODE_INDEX(5),
-    [MP_REACH_NLRI_CODE]      = MAKE_CODE_INDEX(6),
-    [MP_UNREACH_NLRI_CODE]    = MAKE_CODE_INDEX(7),
-    [EXTENDED_COMMUNITY_CODE] = MAKE_CODE_INDEX(8),
-    [AS4_PATH_CODE]           = MAKE_CODE_INDEX(9),
-    [AS4_AGGREGATOR_CODE]     = MAKE_CODE_INDEX(10),
-    [LARGE_COMMUNITY_CODE]    = MAKE_CODE_INDEX(11)
-};
 
 void *getbgpattribs(size_t *pn)
 {
@@ -1417,7 +1451,7 @@ void *nextnlri_r(bgp_msg_t *msg)
         return NULL;
 
     netaddr_t *addr = &msg->pfxbuf.pfx;
-    while (msg->uptr == msg->uend) {  // this handles empty MP_REACH attributes
+    while (unlikely(msg->uptr == msg->uend)) {  // this handles empty MP_REACH attributes
         if ((msg->flags & F_ALLNLRI) == 0)
             return NULL;
 
@@ -1454,7 +1488,10 @@ void *nextnlri_r(bgp_msg_t *msg)
     memset(addr->bytes, 0, sizeof(addr->bytes));
     if (msg->flags & F_ADDPATH) {
         uint32_t pathid;
-        if (unlikely(msg->uptr + sizeof(pathid) > msg->uend)) {
+
+        // if >=, also catch the case in which there is exactly one ADDPATH
+        // but no more room for bit length
+        if (unlikely(msg->uptr + sizeof(pathid) >= msg->uend)) {
             msg->err = BGP_EBADNLRI;
             return NULL;
         }
@@ -1807,7 +1844,6 @@ netaddr_t *nextnhop_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_NHOP))
         return NULL;
 
-    // FIXME bound check
     netaddr_t *addr = &msg->pfxbuf.pfx;
     if (msg->nhptr == msg->nhend) {
         if (!msg->mpnhptr)
@@ -1823,7 +1859,12 @@ netaddr_t *nextnhop_r(bgp_msg_t *msg)
         msg->mpnhptr = msg->mpnhend = NULL;
     }
 
-    size_t n = naddrsize(addr->bitlen);
+    size_t n = addr->bitlen >> 3; // we know next-hops are full prefixes
+    if (unlikely(msg->nhptr + n > msg->nhend)) {
+        msg->err = BGP_EBADATTR;
+        return NULL;
+    }
+
     memcpy(addr->bytes, msg->nhptr, n);
     msg->nhptr += n;
     return addr;
@@ -1942,14 +1983,33 @@ bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg)
     if (checktype(msg, BGP_UPDATE, F_RD))
         return NULL;
 
+    /* RFC 6793
+     * A NEW BGP speaker MUST also be prepared to receive the AS4_AGGREGATOR
+     * attribute along with the AGGREGATOR attribute from an OLD BGP
+     * speaker.  When both of the attributes are received, if the AS number
+     * in the AGGREGATOR attribute is not AS_TRANS, then:
+     *
+     * -  the AS4_AGGREGATOR attribute and the AS4_PATH attribute SHALL be ignored,
+     * -  the AGGREGATOR attribute SHALL be taken as the information
+     *    about the aggregating node, and
+     * -  the AS_PATH attribute SHALL be taken as the AS path
+     *    information.
+     *
+     * Otherwise,
+     * -  the AGGREGATOR attribute SHALL be ignored,
+     * -  the AS4_AGGREGATOR attribute SHALL be taken as the information
+     *    about the aggregating node, and
+     * -  the AS path information would need to be constructed, as in all
+     *    other cases.
+     */
     bgpattr_t *aggr = getbgpaggregator_r(msg);
     if (unlikely(!aggr))
         return NULL;
 
     if (getaggregatoras(aggr) == AS_TRANS) {
-        aggr = getbgpas4aggregator_r(msg);
-        if (unlikely(!aggr))
-            msg->err = BGP_EBADATTR;
+        bgpattr_t *aggr4 = getbgpas4aggregator_r(msg);
+        if (aggr4)
+                aggr = aggr4;
     }
     return aggr;
 }

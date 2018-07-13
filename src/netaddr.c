@@ -1,3 +1,4 @@
+#include <isolario/endian.h>
 #include <isolario/netaddr.h>
 #include <isolario/strutil.h>
 #include <stdio.h>
@@ -79,15 +80,94 @@ char* naddrtos(const netaddr_t* ip, int mode)
 {
     static _Thread_local char buf[INET6_ADDRSTRLEN + 1 + digsof(ip->bitlen) + 1];
 
-    if (inet_ntop(ip->family, &ip->sin, buf, sizeof(buf)) == NULL)
+    char *ptr;
+    int i, best, max;
+    switch (ip->family) {
+    case AF_INET:
+        utoa(buf, &ptr, ip->bytes[0]);
+        *ptr++ = '.';
+        utoa(ptr, &ptr, ip->bytes[1]);
+        *ptr++ = '.';
+        utoa(ptr, &ptr, ip->bytes[2]);
+        *ptr++ = '.';
+        utoa(ptr, &ptr, ip->bytes[3]);
+        break;
+    case AF_INET6:
+        if (ip->u32[0] == 0 && ip->u32[1] == 0 && ip->u16[4] == 0 && ip->u16[5] == 0xff) {
+            // v4 mapped to v6 (starts with 0:0:0:0:0:0:ffff)
+            memcpy(buf, "::ffff:", 7);
+            ptr = buf + 7;
+
+            utoa(ptr, &ptr, ip->bytes[0]);
+            *ptr++ = '.';
+            utoa(ptr, &ptr, ip->bytes[1]);
+            *ptr++ = '.';
+            utoa(ptr, &ptr, ip->bytes[2]);
+            *ptr++ = '.';
+            utoa(ptr, &ptr, ip->bytes[3]);
+            break;
+        }
+
+        // typical v6
+        xtoa(buf, &ptr, frombig16(ip->u16[0]));
+        *ptr++ = ':';
+        xtoa(ptr, &ptr, frombig16(ip->u16[1]));
+        *ptr++ = ':';
+        xtoa(ptr, &ptr, frombig16(ip->u16[2]));
+        *ptr++ = ':';
+        xtoa(ptr, &ptr, frombig16(ip->u16[3]));
+        *ptr++ = ':';
+        xtoa(ptr, &ptr, frombig16(ip->u16[4]));
+        *ptr++ = ':';
+        xtoa(ptr, &ptr, frombig16(ip->u16[5]));
+        *ptr++ = ':';
+        xtoa(ptr, &ptr, frombig16(ip->u16[6]));
+        *ptr++ = ':';
+        xtoa(ptr, &ptr, frombig16(ip->u16[7]));
+
+        // replace longest /(^0|:)[:0]{2,}/ with "::"
+        for (i = best = 0, max = 2; buf[i] != '\0'; i++) {
+            if (i > 0 && buf[i] != ':')
+                continue;
+
+            // count the number of consecutive 0 in this substring
+            int n = 0;
+            for (int j = i; buf[j] != '\0'; j++) {
+                if (buf[j] != ':' && buf[j] != '0')
+                    break;
+
+                n++;
+            }
+
+            // store the position if this is the best we've seen so far
+            if (n > max) {
+                best = i;
+                max = n;
+            }
+        }
+
+        ptr = buf + i;
+        if (max > 3) {
+            // we can compress the string
+            buf[best] = ':';
+            buf[best + 1] = ':';
+
+            int len = i - best - max;
+            memmove(buf + best + 2, buf + best + max, len + 1);
+            ptr = buf + best + 2 + len;
+        }
+
+        break;
+    default:
         return "invalid";
+    }
+
 
     if (mode == NADDR_CIDR) {
-        char *ptr = buf + strlen(buf);
-
         *ptr++ = '/';
         utoa(ptr, NULL, ip->bitlen);
     }
+
     return buf;
 }
 
