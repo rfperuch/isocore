@@ -47,6 +47,8 @@ void testtrimwhites(void);
 
 void testnetaddr(void);
 
+void testprefixeqwithmask(void);
+
 void testpatbase(void);
 
 void testpatgetfuncs(void);

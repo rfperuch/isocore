@@ -67,6 +67,12 @@ int main(void)
 
     if (!cbench_add_bench(suite, "patinsertn", bpatinsertn, NULL))
         goto out;
+    
+    if (!cbench_add_bench(suite, "bprefixeqwithmask", bprefixeqwithmask, NULL))
+        goto out;
+    
+    if (!cbench_add_bench(suite, "bppathcompwithmask", bppathcompwithmask, NULL))
+        goto out;
 
     cbench_run();
 

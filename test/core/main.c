@@ -64,6 +64,9 @@ int main(void)
 
     if (!CU_add_test(suite, "test netaddr", testnetaddr))
         goto error;
+    
+    if (!CU_add_test(suite, "test testprefixeqwithmask", testprefixeqwithmask))
+        goto error;
 
     if (!CU_add_test(suite, "test patricia base", testpatbase))
         goto error;

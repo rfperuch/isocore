@@ -123,7 +123,8 @@ core_bench = executable('core_bench',
     sources : [
         'bench/core/main.c',
         'bench/core/strutil_b.c',
-        'bench/core/patriciatrie_b.c'
+        'bench/core/patriciatrie_b.c',
+        'bench/core/netaddr_b.c'
     ],
     dependencies : [
         isocore_dep,

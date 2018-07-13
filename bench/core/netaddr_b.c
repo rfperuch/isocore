@@ -28,30 +28,50 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef ISOLARIO_CORE_BENCH_H_
-#define ISOLARIO_CORE_BENCH_H_
-
+#include <isolario/endian.h>
 #include <cbench/cbench.h>
+#include <isolario/netaddr.h>
+#include <string.h>
 
-void bcommsprintf(cbench_state_t *state);
+volatile int bh;
 
-void bsprintf(cbench_state_t *state);
+void bprefixeqwithmask(cbench_state_t *state)
+{
+    netaddr_t addr;
+    netaddr_t dest;
+    addr.family = AF_INET;
+    addr.bitlen = 32;
+    
+    while (cbench_next_iteration(state)) {
+        addr.u32[0] = tobig32(state->curiter);
+        dest.u32[0] = state->curiter;
+        bh = prefixeqwithmask(&addr, &dest, state->curiter % 129);
+    }
+}
 
-void bcommulltoa(cbench_state_t *state);
+static int patcompwithmask(const netaddr_t *addr, const netaddr_t *dest, int mask)
+{
+    if (memcmp(&addr->bytes[0], &dest->bytes[0], mask / 8) == 0) {
+        int n = mask / 8;
+        int m = ((unsigned int) (~0) << (8 - (mask % 8)));
 
-void bulltoa(cbench_state_t *state);
+        if (((mask & 0x7) == 0) || ((addr->bytes[n] & m) == (dest->bytes[n] & m)))
+            return 1;
+    }
 
-void bsplit(cbench_state_t *state);
+    return 0;
+}
 
-void bjoinv(cbench_state_t *state);
-
-void bjoin(cbench_state_t *state);
-
-void bpatinsertn(cbench_state_t *state);
-
-void bprefixeqwithmask(cbench_state_t *state);
-
-void bppathcompwithmask(cbench_state_t *state);
-
-#endif
-
+void bppathcompwithmask(cbench_state_t *state)
+{
+    netaddr_t addr;
+    netaddr_t dest;
+    addr.family = AF_INET;
+    addr.bitlen = 32;
+    
+    while (cbench_next_iteration(state)) {
+        addr.u32[0] = tobig32(state->curiter);
+        dest.u32[0] = state->curiter;
+        bh = patcompwithmask(&addr, &dest, state->curiter % 129);
+    }
+}

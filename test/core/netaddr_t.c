@@ -53,3 +53,21 @@ void testnetaddr(void)
         CU_ASSERT_STRING_EQUAL(naddrtos(&cloned, NADDR_PLAIN), table[i].ip);
     }
 }
+
+void testprefixeqwithmask(void)
+{
+    netaddr_t p;
+    stonaddr(&p, "2a00::");
+    
+    netaddr_t q;
+    stonaddr(&q, "8a00::");
+    
+    netaddr_t r;
+    stonaddr(&r, "8a00::1");
+    
+    for (int i = 0; i <= 128; i++) {
+        CU_ASSERT_EX(prefixeqwithmask(&p, &p, i) == 1, "with mask %d", i);
+        CU_ASSERT(prefixeqwithmask(&p, &q, i) == 0 || i == 0);
+        CU_ASSERT(prefixeqwithmask(&p, &r, i) == 0 || i == 0 || i == 128);
+    }
+}
