@@ -70,7 +70,7 @@ int stonaddr(netaddr_t *ip, const char *s)
     return 0;
 }
 
-extern int prefixeqwithmask(const void *a, const void *b, unsigned int mask);
+extern int prefixeqwithmask(const netaddr_t *a, const netaddr_t *b, unsigned int mask);
 
 extern int prefixeq(const netaddr_t *a, const netaddr_t *b);
 
