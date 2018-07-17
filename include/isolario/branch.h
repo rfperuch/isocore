@@ -69,11 +69,11 @@
  * @def unreachable()
  * @brief Marks a code path as unreachable.
  *
- * The compiler is free to assume that a code path in which this
- * marker appears shall never be reached.
- * 
+ * The compiler is free to assume that the code path following this
+ * marker shall never be reached.
+ *
  * @warning If that code path is actually reachable, then subtle, unexpected and
- *          typically cathastrophic things could very well occur.
+ *          typically catastrophic events could very well occur at runtime.
  */
 #ifdef __GNUC__
 

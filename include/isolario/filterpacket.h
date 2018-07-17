@@ -136,15 +136,16 @@ enum {
     VM_STACK_UNDERFLOW  = -3,
     VM_FUNC_UNDEFINED   = -4,
     VM_K_UNDEFINED      = -5,
-    VM_TRIE_MISMATCH    = -6,
-    VM_TRIE_UNDEFINED   = -7,
-    VM_PACKET_MISMATCH  = -8,
-    VM_BAD_PACKET       = -9,
-    VM_ILLEGAL_OPCODE   = -10,
-    VM_BAD_BLOCK        = -11,
-    VM_BLOCKS_OVERFLOW  = -12,
-    VM_SURPRISING_BYTES = -13,
-    VM_BAD_ARRAY        = -14
+    VM_BAD_ACCESSOR     = -6,
+    VM_TRIE_MISMATCH    = -7,
+    VM_TRIE_UNDEFINED   = -8,
+    VM_PACKET_MISMATCH  = -9,
+    VM_BAD_PACKET       = -10,
+    VM_ILLEGAL_OPCODE   = -11,
+    VM_BAD_BLOCK        = -12,
+    VM_BLOCKS_OVERFLOW  = -13,
+    VM_SURPRISING_BYTES = -14,
+    VM_BAD_ARRAY        = -15
 };
 
 inline char *filter_strerror(int err)
@@ -165,6 +166,8 @@ inline char *filter_strerror(int err)
         return "Reference to undefined function";
     case VM_K_UNDEFINED:
         return "Reference to undefined constant";
+    case VM_BAD_ACCESSOR:
+        return "Illegal packet accessor";
     case VM_TRIE_MISMATCH:
         return "Trie/Prefix family mismatch";
     case VM_TRIE_UNDEFINED:

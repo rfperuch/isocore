@@ -85,7 +85,7 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 
-#if 0 && defined(__GNUC__) && !defined(ISOLARIO_VM_PLAIN_SWITCH)
+#if defined(__GNUC__) && !defined(ISOLARIO_VM_PLAIN_SWITCH)
 // use computed goto to speed-up bytecode interpreter
 #include "vm_opcodes.h"
 
@@ -251,36 +251,15 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
             DISPATCH();
 
         EXECUTE(SUBNET):
-#if 1
             vm_exec_subnet(vm);
-#else
-{
-    int result = false;
-    while (vm->si > 0) {
-        netaddr_t *addr = &vm->sp[--vm->si].addr;
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
+            DISPATCH();
 
-        patricia_trie_t *trie = vm->curtrie;
-        switch (addr->family) {
-        case AF_INET6:
-            trie = vm->curtrie6;
-            // fallthrough
-        case AF_INET:
-            if (patissubnetofn(trie, addr)) {
-                result = true;
-                goto done2;
-            }
-            break;
-        default:
-            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
-            break;
-        }
-    }
-
-done2:
-    vm->si = 0;
-    vm->sp[vm->si++].value = result;
-}
-#endif
+        EXECUTE(PSUBNET):
+            arg = vm_getarg(ip);  // NOTE: not extended
+            vm_exec_psubnet(vm, arg);
             PREDICT(CPASS);
             PREDICT(CFAIL);
             PREDICT(NOT);

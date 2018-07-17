@@ -37,11 +37,12 @@ volatile int bh;
 
 void bprefixeqwithmask(cbench_state_t *state)
 {
-    netaddr_t addr;
-    netaddr_t dest;
-    addr.family = AF_INET;
-    addr.bitlen = 32;
-    
+    netaddr_t addr, dest;
+    memset(&addr, 0, sizeof(addr));
+    memset(&dest, 0, sizeof(dest));
+    addr.family = dest.family = AF_INET;
+    addr.bitlen = dest.bitlen = 32;
+
     while (cbench_next_iteration(state)) {
         addr.u32[0] = tobig32(state->curiter);
         dest.u32[0] = state->curiter;
@@ -64,11 +65,12 @@ static int patcompwithmask(const netaddr_t *addr, const netaddr_t *dest, int mas
 
 void bppathcompwithmask(cbench_state_t *state)
 {
-    netaddr_t addr;
-    netaddr_t dest;
-    addr.family = AF_INET;
-    addr.bitlen = 32;
-    
+    netaddr_t addr, dest;
+    memset(&addr, 0, sizeof(addr));
+    memset(&dest, 0, sizeof(dest));
+    addr.family = dest.family = AF_INET;
+    addr.bitlen = dest.bitlen = 32;
+
     while (cbench_next_iteration(state)) {
         addr.u32[0] = tobig32(state->curiter);
         dest.u32[0] = state->curiter;

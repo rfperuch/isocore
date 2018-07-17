@@ -38,7 +38,7 @@ typedef struct nodepage_s nodepage_t;
 */
 typedef struct {
     pnode_t* head;
-    sa_family_t family;
+    int maxbitlen;
     unsigned int nprefs;
     nodepage_t* pages;
     pnode_t* freenodes;

@@ -53,6 +53,7 @@ static const void *const vm_opcode_table[256] = {
 
     [FOPC_EXACT]        = &&EX_EXACT,
     [FOPC_SUBNET]       = &&EX_SUBNET,
+    [FOPC_PSUBNET]      = &&EX_PSUBNET,
     [FOPC_SUPERNET]     = &&EX_SUPERNET,
     [FOPC_RELATED]      = &&EX_RELATED,
     [FOPC_PFXCONTAINS]  = &&EX_PFXCONTAINS,
@@ -70,7 +71,7 @@ static const void *const vm_opcode_table[256] = {
 
     [OPCODES_COUNT]     = &&EX_SIGILL,
 
-    &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
+    &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,

@@ -191,6 +191,7 @@ extern void vm_exec_nlri_accumulate(filter_vm_t *vm);
 
 extern void vm_exec_exact(filter_vm_t *vm);
 extern void vm_exec_subnet(filter_vm_t *vm);
+extern void vm_exec_psubnet(filter_vm_t *vm, int access);
 extern void vm_exec_supernet(filter_vm_t *vm);
 extern void vm_exec_related(filter_vm_t *vm);
 

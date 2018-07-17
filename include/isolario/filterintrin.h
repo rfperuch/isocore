@@ -74,6 +74,7 @@ enum {
          */
 
     FOPC_SUBNET,
+    FOPC_PSUBNET,
     FOPC_SUPERNET,
     FOPC_RELATED,
 
@@ -91,6 +92,15 @@ enum {
     FOPC_ASCMP,
 
     OPCODES_COUNT
+};
+
+enum {
+    PKT_ACC_BAD,
+    PKT_ACC_WITHDRAWN,
+    PKT_ACC_ALL_WITHDRAWN,
+    PKT_ACC_NLRI,
+    PKT_ACC_ALL_NLRI,
+    PKT_ACC_ALL
 };
 
 void vm_growstack(filter_vm_t *vm);
@@ -296,7 +306,7 @@ inline void vm_exec_settrie(filter_vm_t *vm, int trie)
         vm_abort(vm, VM_TRIE_UNDEFINED);
 
     vm->curtrie = &vm->tries[trie];
-    if (unlikely(vm->curtrie->family != AF_INET))
+    if (unlikely(vm->curtrie->maxbitlen != 32))
         vm_abort(vm, VM_TRIE_MISMATCH);
 }
 
@@ -306,7 +316,7 @@ inline void vm_exec_settrie6(filter_vm_t *vm, int trie6)
         vm_abort(vm, VM_TRIE_UNDEFINED);
 
     vm->curtrie6 = &vm->tries[trie6];
-    if (unlikely(vm->curtrie6->family != AF_INET6))
+    if (unlikely(vm->curtrie6->maxbitlen != 128))
         vm_abort(vm, VM_TRIE_MISMATCH);
 }
 
@@ -570,6 +580,70 @@ inline void vm_exec_subnet(filter_vm_t *vm)
 done:
     vm->si = 0;
     vm->sp[vm->si++].value = result;
+}
+
+inline void vm_exec_psubnet(filter_vm_t *vm, int access)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    netaddr_t *addr;
+    int result, err;
+
+    result = false;
+    switch (access) {
+    case PKT_ACC_ALL:
+        startallnlri_r(vm->bgp);
+        while (!result && (addr = nextnlri_r(vm->bgp)) != NULL) {
+            patricia_trie_t *trie = vm->curtrie;
+            switch (addr->family) {
+            case AF_INET6:
+                trie = vm->curtrie6;
+                // fallthrough
+            case AF_INET:
+                if (patissubnetofn(trie, addr))
+                    result = true;
+
+                break;
+            default:
+                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+                break;
+            }
+        }
+
+        err = endnlri_r(vm->bgp);
+        if (result || err != BGP_ENOERR)
+            break;
+
+        startallwithdrawn_r(vm->bgp);
+        while (!result && (addr = nextwithdrawn_r(vm->bgp)) != NULL) {
+            patricia_trie_t *trie = vm->curtrie;
+            switch (addr->family) {
+            case AF_INET6:
+                trie = vm->curtrie6;
+                // fallthrough
+            case AF_INET:
+                if (patissubnetofn(trie, addr))
+                    result = true;
+
+                break;
+            default:
+                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+                break;
+            }
+        }
+
+        err = endwithdrawn_r(vm->bgp);
+        break;
+    default:
+        vm_abort(vm, VM_BAD_ACCESSOR);
+        break;
+    }
+
+    if (unlikely(err != BGP_ENOERR))
+        vm_abort(vm, VM_BAD_PACKET);
+
+    vm_pushvalue(vm, result);
 }
 
 inline void vm_exec_supernet(filter_vm_t *vm)

@@ -737,6 +737,7 @@ io_rw_t *io_xzopen(int fd, size_t bufsiz, const char *mode, ...)
 
     va_list va;
 
+    va_start(va, mode);
     uint32_t compression = 6;
     switch (xz->mode) {
     case 'r':
