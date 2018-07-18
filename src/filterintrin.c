@@ -139,7 +139,7 @@ extern void vm_exec_loadk(filter_vm_t *vm, int kidx);
 
 extern void vm_check_array(filter_vm_t *vm, stack_cell_t *arr);
 
-extern void *vm_heap_ptr(filter_vm_t *vm, unsigned int off);
+extern void *vm_heap_ptr(filter_vm_t *vm, intptr_t off);
 
 void vm_exec_unpack(filter_vm_t *vm)
 {
@@ -201,6 +201,11 @@ extern void vm_exec_addrcontains(filter_vm_t *vm, int kidx);
 
 extern void vm_exec_ascontains(filter_vm_t *vm, int kidx);
 
+extern void vm_exec_aspmatch(filter_vm_t *vm, int acc);
+extern void vm_exec_aspstarts(filter_vm_t *vm, int acc);
+extern void vm_exec_aspends(filter_vm_t *vm, int acc);
+extern void vm_exec_aspexact(filter_vm_t *vm, int acc);
+
 void vm_emit_ex(filter_vm_t *vm, int opcode, int idx)
 {
     // NOTE: paranoid, assumes 8 bit bytes... as the whole Isolario project does
@@ -241,30 +246,29 @@ static void *vm_heap_ensure(filter_vm_t *vm, size_t aligned_size)
     return heap;
 }
 
-void *vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone)
+intptr_t vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone)
 {
     // align allocation
     size += sizeof(max_align_t) - 1;
     size -= (size & (sizeof(max_align_t) - 1));
 
-    unsigned char *ptr;
-
+    intptr_t ptr;
     if (unlikely(!vm_heap_ensure(vm, size)))
-        return NULL;
+        return -1;
 
     switch (zone) {
     case VM_HEAP_PERM:
         if (unlikely(vm->dynmarker > 0)) {
             assert(false);
-            return NULL; // illegal!
+            return -1; // illegal!
         }
 
-        ptr = (unsigned char *) vm->heap + vm->highwater;
+        ptr = vm->highwater;
         vm->highwater += size;
         return ptr;
 
     case VM_HEAP_TEMP:
-        ptr = (unsigned char *) vm->heap + vm->highwater;
+        ptr = vm->highwater;
         ptr += vm->dynmarker;
 
         vm->dynmarker += size;
@@ -273,6 +277,6 @@ void *vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone)
     default:
         // should never happen
         assert(false);
-        return NULL;
+        return -1;
     }
 }

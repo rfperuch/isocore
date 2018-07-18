@@ -82,6 +82,11 @@ enum {
     FOPC_ADDRCONTAINS,
     FOPC_ASCONTAINS,
 
+    FOPC_ASPMATCH,
+    FOPC_ASPSTARTS,
+    FOPC_ASPENDS,
+    FOPC_ASPEXACT,
+
     FOPC_CALL,     ///< ???: call a function
     FOPC_SETTRIE,
     FOPC_SETTRIE6,
@@ -96,11 +101,16 @@ enum {
 
 enum {
     PKT_ACC_BAD,
+
     PKT_ACC_WITHDRAWN,
     PKT_ACC_ALL_WITHDRAWN,
     PKT_ACC_NLRI,
     PKT_ACC_ALL_NLRI,
-    PKT_ACC_ALL
+    PKT_ACC_ALL,  // TODO better naming (accesses only NLRI/WITHDRAWN, not ALL)
+
+    PKT_ACC_AS_PATH,
+    PKT_ACC_AS4_PATH,
+    PKT_ACC_REAL_AS_PATH
 };
 
 void vm_growstack(filter_vm_t *vm);
@@ -166,7 +176,9 @@ void vm_emit_ex(filter_vm_t *vm, int opcode, int idx);
 
 typedef enum { VM_HEAP_PERM, VM_HEAP_TEMP } vm_heap_zone_t;
 
-void *vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone);
+enum { VM_BAD_HEAP_PTR = -1 };
+
+intptr_t vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone);
 
 inline void vm_clearstack(filter_vm_t *vm)
 {
@@ -237,8 +249,10 @@ inline void vm_exec_not(filter_vm_t *vm)
     cell->value = !cell->value;
 }
 
-inline void *vm_heap_ptr(filter_vm_t *vm, unsigned int off)
+inline void *vm_heap_ptr(filter_vm_t *vm, intptr_t off)
 {
+    assert(off >= 0);
+
     return (unsigned char *) vm->heap + off;  // duh...
 }
 
@@ -553,7 +567,6 @@ inline void vm_exec_exact(filter_vm_t *vm)
     vm_pushvalue(vm, false);
 }
 
-
 inline void vm_exec_subnet(filter_vm_t *vm)
 {
     int result = false;
@@ -759,6 +772,199 @@ inline void vm_exec_ascontains(filter_vm_t *vm, int kidx)
     }
 
     vm_pushvalue(vm, false);
+}
+
+inline void vm_exec_aspmatch(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    switch (acc) {
+    case PKT_ACC_AS_PATH:
+        startaspath_r(vm->bgp);
+        break;
+    case PKT_ACC_AS4_PATH:
+        startas4path_r(vm->bgp);
+        break;
+    case PKT_ACC_REAL_AS_PATH:
+        startrealaspath_r(vm->bgp);
+        break;
+    default:
+        vm_abort(vm, VM_BAD_ACCESSOR);
+        break;
+    }
+
+    uint32_t asbuf[vm->si];
+    int buffered = 0;
+
+    as_pathent_t *ent;
+    while (true) {
+        int i;
+
+        for (i = 0; i < vm->si; i++) {
+            stack_cell_t *cell = &vm->sp[i];
+            if (i == buffered) {
+                // read one more AS from packet
+                ent = nextaspath_r(vm->bgp);
+                if (!ent) {
+                    // doesn't match
+                    vm_clearstack(vm);
+                    vm->sp[vm->si++].value = false;
+                    goto done;
+                }
+
+                asbuf[buffered++] = ent->as;
+            }
+            if (cell->as != asbuf[i])
+                break;
+        }
+
+        if (i == vm->si) {
+            // successfuly matched
+            vm_clearstack(vm);
+            vm->sp[vm->si++].value = true;
+            break;
+        }
+
+        // didn't match, consume the first element in asbuf and continue trying
+        memmove(asbuf, asbuf + 1, (buffered - 1) * sizeof(*asbuf));
+        buffered--;
+    }
+
+done:
+    if (endaspath_r(vm->bgp) != BGP_ENOERR)
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+inline void vm_exec_aspstarts(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    switch (acc) {
+    case PKT_ACC_AS_PATH:
+        startaspath_r(vm->bgp);
+        break;
+    case PKT_ACC_AS4_PATH:
+        startas4path_r(vm->bgp);
+        break;
+    case PKT_ACC_REAL_AS_PATH:
+        startrealaspath_r(vm->bgp);
+        break;
+    default:
+        vm_abort(vm, VM_BAD_ACCESSOR);
+        break;
+    }
+
+    int i;
+    for (i = 0; i < vm->si; i++) {
+        as_pathent_t *ent = nextaspath_r(vm->bgp);
+        if (!ent || vm->sp[i].as != ent->as)
+            break;  // does not match
+    }
+
+    if (endaspath_r(vm->bgp) != BGP_ENOERR)
+        vm_abort(vm, VM_BAD_PACKET);
+
+    int value = (i == vm->si);
+
+    vm_clearstack(vm);
+    vm->sp[vm->si++].value = value;
+}
+
+
+inline void vm_exec_aspends(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    switch (acc) {
+    case PKT_ACC_AS_PATH:
+        startaspath_r(vm->bgp);
+        break;
+    case PKT_ACC_AS4_PATH:
+        startas4path_r(vm->bgp);
+        break;
+    case PKT_ACC_REAL_AS_PATH:
+        startrealaspath_r(vm->bgp);
+        break;
+    default:
+        vm_abort(vm, VM_BAD_ACCESSOR);
+        break;
+    }
+
+    uint32_t asbuf[vm->si];
+    int n = 0;
+
+    as_pathent_t *ent;
+    while ((ent = nextaspath_r(vm->bgp)) != NULL) {
+        if (n == vm->si) {
+            // slide AS path window
+            memmove(asbuf, asbuf + 1, (n - 1) * sizeof(*asbuf));
+            n--;
+        }
+
+        asbuf[n++] = ent->as;
+    }
+    if (endaspath_r(vm->bgp) != BGP_ENOERR)
+        vm_abort(vm, VM_BAD_PACKET);
+
+    int length_match = (n == vm->si);
+
+    vm_clearstack(vm);
+
+    if (!length_match) {
+        vm->sp[vm->si++].value = false;
+        return;
+    }
+
+    // NOTE: technically we cleared the stack, but we know it was N elements long before...
+    int i;
+    for (i = 0; i < n; i++) {
+        if (asbuf[i] != vm->sp[i].as)
+            break;
+    }
+
+    vm->sp[vm->si++].value = (i == n);
+}
+
+
+inline void vm_exec_aspexact(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    switch (acc) {
+    case PKT_ACC_AS_PATH:
+        startaspath_r(vm->bgp);
+        break;
+    case PKT_ACC_AS4_PATH:
+        startas4path_r(vm->bgp);
+        break;
+    case PKT_ACC_REAL_AS_PATH:
+        startrealaspath_r(vm->bgp);
+        break;
+    default:
+        vm_abort(vm, VM_BAD_ACCESSOR);
+        break;
+    }
+
+    as_pathent_t *ent;
+    int i;
+    for (i = 0; i < vm->si; i++) {
+        ent = nextaspath_r(vm->bgp);
+        if (!ent || vm->sp[i].as != ent->as)
+            break;  // does not match
+    }
+
+    ent = nextaspath_r(vm->bgp);
+
+    int value = (ent == NULL && i == vm->si);
+
+    vm_clearstack(vm);
+    vm->sp[vm->si++].value = value;
+    if (endaspath_r(vm->bgp) != BGP_ENOERR)
+        vm_abort(vm, VM_BAD_PACKET);
 }
 
 #endif

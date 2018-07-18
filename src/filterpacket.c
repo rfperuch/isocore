@@ -232,6 +232,31 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
             }
             DISPATCH();
 
+        EXECUTE(ASPMATCH):
+            vm_exec_aspmatch(vm, vm_getarg(ip));
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
+            DISPATCH();
+        EXECUTE(ASPSTARTS):
+            vm_exec_aspstarts(vm, vm_getarg(ip));
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
+            DISPATCH();
+        EXECUTE(ASPENDS):
+            vm_exec_aspends(vm, vm_getarg(ip));
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
+            DISPATCH();
+        EXECUTE(ASPEXACT):
+            vm_exec_aspexact(vm, vm_getarg(ip));
+            exarg = 0;
+            PREDICT(CPASS);
+            PREDICT(CFAIL);
+            PREDICT(NOT);
+            DISPATCH();
         EXECUTE(CALL):
             arg = vm_extendarg(vm_getarg(ip), exarg);
             if (unlikely(arg >= VM_FUNCS_COUNT))

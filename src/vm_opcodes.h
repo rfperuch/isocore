@@ -60,6 +60,11 @@ static const void *const vm_opcode_table[256] = {
     [FOPC_ADDRCONTAINS] = &&EX_ADDRCONTAINS,
     [FOPC_ASCONTAINS]   = &&EX_ASCONTAINS,
 
+    [FOPC_ASPMATCH]     = &&EX_ASPMATCH,
+    [FOPC_ASPSTARTS]    = &&EX_ASPSTARTS,
+    [FOPC_ASPENDS]      = &&EX_ASPENDS,
+    [FOPC_ASPEXACT]     = &&EX_ASPEXACT,
+
     [FOPC_CALL]         = &&EX_CALL,
     [FOPC_SETTRIE]      = &&EX_SETTRIE,
     [FOPC_SETTRIE6]     = &&EX_SETTRIE6,
@@ -72,7 +77,6 @@ static const void *const vm_opcode_table[256] = {
     [OPCODES_COUNT]     = &&EX_SIGILL,
 
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
-    &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,

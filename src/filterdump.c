@@ -41,7 +41,8 @@ enum {
     ARG_DIRECT,
     ARG_K,
     ARG_FN,
-    ARG_TRIE
+    ARG_TRIE,
+    ARG_ACC   // direct packet accessor
 };
 
 static const char *const vm_opstr_table[256] = {
@@ -65,6 +66,10 @@ static const char *const vm_opstr_table[256] = {
     [FOPC_ADDRCONTAINS] = "ADDRCONTAINS",
     [FOPC_ASCONTAINS]   = "ASCONTAINS",
     [FOPC_CALL]         = "CALL",
+    [FOPC_ASPMATCH]     = "ASPMATCH",
+    [FOPC_ASPSTARTS]    = "ASPSTARTS",
+    [FOPC_ASPENDS]      = "ASPENDS",
+    [FOPC_ASPEXACT]     = "ASPEXACT",
     [FOPC_SETTRIE]      = "SETTRIE",
     [FOPC_SETTRIE6]     = "SETTRIE6",
     [FOPC_CLRTRIE]      = "CLRTRIE",
@@ -88,12 +93,16 @@ static const int8_t vm_oparg_table[OPCODES_COUNT] = {
     [FOPC_CFAIL]        = ARG_NONE,
     [FOPC_EXACT]        = ARG_NONE,
     [FOPC_SUBNET]       = ARG_NONE,
-    [FOPC_PSUBNET]      = ARG_DIRECT,  // TODO packet accessor
+    [FOPC_PSUBNET]      = ARG_ACC,  // TODO print this kind of values in a decent way
     [FOPC_SUPERNET]     = ARG_NONE,
     [FOPC_RELATED]      = ARG_NONE,
     [FOPC_PFXCONTAINS]  = ARG_K,
     [FOPC_ADDRCONTAINS] = ARG_K,
     [FOPC_ASCONTAINS]   = ARG_K,
+    [FOPC_ASPMATCH]     = ARG_ACC,
+    [FOPC_ASPSTARTS]    = ARG_ACC,
+    [FOPC_ASPENDS]      = ARG_ACC,
+    [FOPC_ASPEXACT]     = ARG_ACC,
     [FOPC_CALL]         = ARG_FN,
     [FOPC_SETTRIE]      = ARG_TRIE,
     [FOPC_SETTRIE6]     = ARG_TRIE,
@@ -214,6 +223,8 @@ static int printop(FILE *f, int pc, int codesiz, bytecode_t code, const char *na
     fputc('\t', f);
     arg = vm_extendarg(arg, exarg);
     switch (mode) {
+    case ARG_ACC:
+        // TODO print this decently
     case ARG_DIRECT:
         fprintf(f, "%d", arg);
         break;
