@@ -31,7 +31,7 @@
 /**
  * @file isolario/progutil.h
  *
- * @brief Optimized bit twiddling utility functions.
+ * @brief General utilities for command line tools.
  *
  * @note This header is guaranteed to include standard \a stdarg.h and \a stdnoreturn.h,
  *       it may include other standard, POSIX or isolario-specific headers, but includers
@@ -45,8 +45,29 @@
 #include <stdarg.h>
 #include <stdnoreturn.h>
 
+/**
+ * @brief External variable referencing the name of this program.
+ *
+ * @note This variable is initially \a NULL, and is only set by setprogramnam().
+ */
 extern const char *programnam;
 
+/**
+ * @brief Initialize the \a programnam variable.
+ *
+ * Extracts the program name from the first command line argument
+ * (\a argv[0]), saving it to \a programnam.
+ * Functions in this group use that value to format diagnostic messages.
+ *
+ * @param [in] argv0 This argument should always be the main() function
+ *                   \a argv[0] value, it is used to retrieve the name
+ *                   of this program, it must not be \a NULL.
+ *
+ * @note This function may alter the contents of \a argv0, and
+ *       \a programnam shall reference a substring of this argument,
+ *       hence the program should rely no more on the contents of the
+ *       argument string.
+ */
 nonnull(1) void setprogramnam(char *argv0);
 
 nonnull(1) void evprintf(const char *fmt, va_list va);
