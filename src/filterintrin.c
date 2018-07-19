@@ -189,11 +189,302 @@ extern void vm_exec_all_nlri_accumulate(filter_vm_t *vm);
 extern void vm_exec_nlri_insert(filter_vm_t *vm);
 extern void vm_exec_nlri_accumulate(filter_vm_t *vm);
 
-extern void vm_exec_exact(filter_vm_t *vm);
-extern void vm_exec_subnet(filter_vm_t *vm);
-extern void vm_exec_psubnet(filter_vm_t *vm, int access);
-extern void vm_exec_supernet(filter_vm_t *vm);
-extern void vm_exec_related(filter_vm_t *vm);
+void vm_exec_exact(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+    if (unlikely((acc & PKT_ACC_NETS_MASK) == 0))
+        vm_abort(vm, VM_BAD_ACCESSOR);
+
+    netaddr_t *addr;
+
+    int result = false;
+    if (acc & PKT_ACC_NLRI_MASK) {
+        if (acc & PKT_ACC_ALL_NLRI)
+            startallnlri_r(vm->bgp);
+        else
+            startnlri_r(vm->bgp);
+
+        while ((addr = nextnlri_r(vm->bgp)) != NULL) {
+            patricia_trie_t *trie = vm->curtrie;
+            switch (addr->family) {
+            case AF_INET6:
+                trie = vm->curtrie6;
+                // fallthrough
+            case AF_INET:
+                if (patisrelatedofn(trie, addr)) {
+                    result = true;
+                    acc = 0;  // inhibit any other scanning
+                    goto donenlri;
+                }
+
+                break;
+            default:
+                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+                break;
+            }
+        }
+
+donenlri:
+        if (unlikely(endnlri_r(vm->bgp) != BGP_ENOERR))
+            vm_abort(vm, VM_BAD_PACKET);
+    }
+
+    if (acc & PKT_ACC_WITHDRAWN_MASK) {
+        if (acc & PKT_ACC_ALL_WITHDRAWN)
+            startallwithdrawn_r(vm->bgp);
+        else
+            startwithdrawn_r(vm->bgp);
+
+        while ((addr = nextwithdrawn_r(vm->bgp)) != NULL) {
+            patricia_trie_t *trie = vm->curtrie;
+            switch (addr->family) {
+            case AF_INET6:
+                trie = vm->curtrie6;
+                // fallthrough
+            case AF_INET:
+                if (patisrelatedofn(trie, addr)) {
+                    result = true;
+                    goto donewithdrawn;
+                }
+
+                break;
+            default:
+                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+                break;
+            }
+        }
+
+donewithdrawn:
+        if (endwithdrawn_r(vm->bgp) != BGP_ENOERR)
+            vm_abort(vm, VM_BAD_PACKET);
+    }
+
+    vm_pushvalue(vm, result);
+}
+
+void vm_exec_subnet(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+    if (unlikely((acc & PKT_ACC_NETS_MASK) == 0))
+        vm_abort(vm, VM_BAD_ACCESSOR);
+
+    netaddr_t *addr;
+
+    int result = false;
+    if (acc & PKT_ACC_NLRI_MASK) {
+        if (acc & PKT_ACC_ALL_NLRI)
+            startallnlri_r(vm->bgp);
+        else
+            startnlri_r(vm->bgp);
+
+        while ((addr = nextnlri_r(vm->bgp)) != NULL) {
+            patricia_trie_t *trie = vm->curtrie;
+            switch (addr->family) {
+            case AF_INET6:
+                trie = vm->curtrie6;
+                // fallthrough
+            case AF_INET:
+                if (patissubnetofn(trie, addr)) {
+                    result = true;
+                    acc = 0;  // inhibit any other scanning
+                    goto donenlri;
+                }
+
+                break;
+            default:
+                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+                break;
+            }
+        }
+
+donenlri:
+        if (unlikely(endnlri_r(vm->bgp) != BGP_ENOERR))
+            vm_abort(vm, VM_BAD_PACKET);
+    }
+
+    if (acc & PKT_ACC_WITHDRAWN_MASK) {
+        if (acc & PKT_ACC_ALL_WITHDRAWN)
+            startallwithdrawn_r(vm->bgp);
+        else
+            startwithdrawn_r(vm->bgp);
+
+        while ((addr = nextwithdrawn_r(vm->bgp)) != NULL) {
+            patricia_trie_t *trie = vm->curtrie;
+            switch (addr->family) {
+            case AF_INET6:
+                trie = vm->curtrie6;
+                // fallthrough
+            case AF_INET:
+                if (patissubnetofn(trie, addr)) {
+                    result = true;
+                    goto donewithdrawn;
+                }
+
+                break;
+            default:
+                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+                break;
+            }
+        }
+
+donewithdrawn:
+        if (endwithdrawn_r(vm->bgp) != BGP_ENOERR)
+            vm_abort(vm, VM_BAD_PACKET);
+    }
+
+    vm_pushvalue(vm, result);
+}
+
+void vm_exec_supernet(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+    if (unlikely((acc & PKT_ACC_NETS_MASK) == 0))
+        vm_abort(vm, VM_BAD_ACCESSOR);
+
+    netaddr_t *addr;
+
+    int result = false;
+    if (acc & PKT_ACC_NLRI_MASK) {
+        if (acc & PKT_ACC_ALL_NLRI)
+            startallnlri_r(vm->bgp);
+        else
+            startnlri_r(vm->bgp);
+
+        while ((addr = nextnlri_r(vm->bgp)) != NULL) {
+            patricia_trie_t *trie = vm->curtrie;
+            switch (addr->family) {
+            case AF_INET6:
+                trie = vm->curtrie6;
+                // fallthrough
+            case AF_INET:
+                if (patissupernetofn(trie, addr)) {
+                    result = true;
+                    acc = 0;  // inhibit any other scanning
+                    goto donenlri;
+                }
+
+                break;
+            default:
+                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+                break;
+            }
+        }
+
+donenlri:
+        if (unlikely(endnlri_r(vm->bgp) != BGP_ENOERR))
+            vm_abort(vm, VM_BAD_PACKET);
+    }
+
+    if (acc & PKT_ACC_WITHDRAWN_MASK) {
+        if (acc & PKT_ACC_ALL_WITHDRAWN)
+            startallwithdrawn_r(vm->bgp);
+        else
+            startwithdrawn_r(vm->bgp);
+
+        while ((addr = nextwithdrawn_r(vm->bgp)) != NULL) {
+            patricia_trie_t *trie = vm->curtrie;
+            switch (addr->family) {
+            case AF_INET6:
+                trie = vm->curtrie6;
+                // fallthrough
+            case AF_INET:
+                if (patissupernetofn(trie, addr)) {
+                    result = true;
+                    goto donewithdrawn;
+                }
+
+                break;
+            default:
+                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+                break;
+            }
+        }
+
+donewithdrawn:
+        if (endwithdrawn_r(vm->bgp) != BGP_ENOERR)
+            vm_abort(vm, VM_BAD_PACKET);
+    }
+
+    vm_pushvalue(vm, result);
+}
+
+
+void vm_exec_related(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+    if (unlikely((acc & PKT_ACC_NETS_MASK) == 0))
+        vm_abort(vm, VM_BAD_ACCESSOR);
+
+    netaddr_t *addr;
+
+    int result = false;
+    if (acc & PKT_ACC_NLRI_MASK) {
+        if (acc & PKT_ACC_ALL_NLRI)
+            startallnlri_r(vm->bgp);
+        else
+            startnlri_r(vm->bgp);
+
+        while ((addr = nextnlri_r(vm->bgp)) != NULL) {
+            patricia_trie_t *trie = vm->curtrie;
+            switch (addr->family) {
+            case AF_INET6:
+                trie = vm->curtrie6;
+                // fallthrough
+            case AF_INET:
+                if (patisrelatedofn(trie, addr)) {
+                    result = true;
+                    acc = 0;  // inhibit any other scanning
+                    goto donenlri;
+                }
+
+                break;
+            default:
+                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+                break;
+            }
+        }
+
+donenlri:
+        if (unlikely(endnlri_r(vm->bgp) != BGP_ENOERR))
+            vm_abort(vm, VM_BAD_PACKET);
+    }
+
+    if (acc & PKT_ACC_WITHDRAWN_MASK) {
+        if (acc & PKT_ACC_ALL_WITHDRAWN)
+            startallwithdrawn_r(vm->bgp);
+        else
+            startwithdrawn_r(vm->bgp);
+
+        while ((addr = nextwithdrawn_r(vm->bgp)) != NULL) {
+            patricia_trie_t *trie = vm->curtrie;
+            switch (addr->family) {
+            case AF_INET6:
+                trie = vm->curtrie6;
+                // fallthrough
+            case AF_INET:
+                if (patisrelatedofn(trie, addr)) {
+                    result = true;
+                    goto donewithdrawn;
+                }
+
+                break;
+            default:
+                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+                break;
+            }
+        }
+
+donewithdrawn:
+        if (endwithdrawn_r(vm->bgp) != BGP_ENOERR)
+            vm_abort(vm, VM_BAD_PACKET);
+    }
+
+    vm_pushvalue(vm, result);
+}
 
 extern void vm_exec_pfxcontains(filter_vm_t *vm, int kidx);
 
@@ -201,10 +492,197 @@ extern void vm_exec_addrcontains(filter_vm_t *vm, int kidx);
 
 extern void vm_exec_ascontains(filter_vm_t *vm, int kidx);
 
-extern void vm_exec_aspmatch(filter_vm_t *vm, int acc);
-extern void vm_exec_aspstarts(filter_vm_t *vm, int acc);
-extern void vm_exec_aspends(filter_vm_t *vm, int acc);
-extern void vm_exec_aspexact(filter_vm_t *vm, int acc);
+void vm_exec_aspmatch(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    switch (acc) {
+    case PKT_ACC_AS_PATH:
+        startaspath_r(vm->bgp);
+        break;
+    case PKT_ACC_AS4_PATH:
+        startas4path_r(vm->bgp);
+        break;
+    case PKT_ACC_REAL_AS_PATH:
+        startrealaspath_r(vm->bgp);
+        break;
+    default:
+        vm_abort(vm, VM_BAD_ACCESSOR);
+        break;
+    }
+
+    uint32_t asbuf[vm->si];
+    int buffered = 0;
+
+    as_pathent_t *ent;
+    while (true) {
+        int i;
+
+        for (i = 0; i < vm->si; i++) {
+            stack_cell_t *cell = &vm->sp[i];
+            if (i == buffered) {
+                // read one more AS from packet
+                ent = nextaspath_r(vm->bgp);
+                if (!ent) {
+                    // doesn't match
+                    vm_clearstack(vm);
+                    vm->sp[vm->si++].value = false;
+                    goto done;
+                }
+
+                asbuf[buffered++] = ent->as;
+            }
+            if (cell->as != asbuf[i])
+                break;
+        }
+
+        if (i == vm->si) {
+            // successfuly matched
+            vm_clearstack(vm);
+            vm->sp[vm->si++].value = true;
+            break;
+        }
+
+        // didn't match, consume the first element in asbuf and continue trying
+        memmove(asbuf, asbuf + 1, (buffered - 1) * sizeof(*asbuf));
+        buffered--;
+    }
+
+done:
+    if (endaspath_r(vm->bgp) != BGP_ENOERR)
+        vm_abort(vm, VM_BAD_PACKET);
+}
+
+void vm_exec_aspstarts(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    switch (acc) {
+    case PKT_ACC_AS_PATH:
+        startaspath_r(vm->bgp);
+        break;
+    case PKT_ACC_AS4_PATH:
+        startas4path_r(vm->bgp);
+        break;
+    case PKT_ACC_REAL_AS_PATH:
+        startrealaspath_r(vm->bgp);
+        break;
+    default:
+        vm_abort(vm, VM_BAD_ACCESSOR);
+        break;
+    }
+
+    int i;
+    for (i = 0; i < vm->si; i++) {
+        as_pathent_t *ent = nextaspath_r(vm->bgp);
+        if (!ent || vm->sp[i].as != ent->as)
+            break;  // does not match
+    }
+
+    if (endaspath_r(vm->bgp) != BGP_ENOERR)
+        vm_abort(vm, VM_BAD_PACKET);
+
+    int value = (i == vm->si);
+
+    vm_clearstack(vm);
+    vm->sp[vm->si++].value = value;
+}
+
+void vm_exec_aspends(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    switch (acc) {
+    case PKT_ACC_AS_PATH:
+        startaspath_r(vm->bgp);
+        break;
+    case PKT_ACC_AS4_PATH:
+        startas4path_r(vm->bgp);
+        break;
+    case PKT_ACC_REAL_AS_PATH:
+        startrealaspath_r(vm->bgp);
+        break;
+    default:
+        vm_abort(vm, VM_BAD_ACCESSOR);
+        break;
+    }
+
+    uint32_t asbuf[vm->si];
+    int n = 0;
+
+    as_pathent_t *ent;
+    while ((ent = nextaspath_r(vm->bgp)) != NULL) {
+        if (n == vm->si) {
+            // slide AS path window
+            memmove(asbuf, asbuf + 1, (n - 1) * sizeof(*asbuf));
+            n--;
+        }
+
+        asbuf[n++] = ent->as;
+    }
+    if (endaspath_r(vm->bgp) != BGP_ENOERR)
+        vm_abort(vm, VM_BAD_PACKET);
+
+    int length_match = (n == vm->si);
+
+    vm_clearstack(vm);
+
+    if (!length_match) {
+        vm->sp[vm->si++].value = false;
+        return;
+    }
+
+    // NOTE: technically we cleared the stack, but we know it was N elements long before...
+    int i;
+    for (i = 0; i < n; i++) {
+        if (asbuf[i] != vm->sp[i].as)
+            break;
+    }
+
+    vm->sp[vm->si++].value = (i == n);
+}
+
+
+void vm_exec_aspexact(filter_vm_t *vm, int acc)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    switch (acc) {
+    case PKT_ACC_AS_PATH:
+        startaspath_r(vm->bgp);
+        break;
+    case PKT_ACC_AS4_PATH:
+        startas4path_r(vm->bgp);
+        break;
+    case PKT_ACC_REAL_AS_PATH:
+        startrealaspath_r(vm->bgp);
+        break;
+    default:
+        vm_abort(vm, VM_BAD_ACCESSOR);
+        break;
+    }
+
+    as_pathent_t *ent;
+    int i;
+    for (i = 0; i < vm->si; i++) {
+        ent = nextaspath_r(vm->bgp);
+        if (!ent || vm->sp[i].as != ent->as)
+            break;  // does not match
+    }
+
+    ent = nextaspath_r(vm->bgp);
+
+    int value = (ent == NULL && i == vm->si);
+
+    vm_clearstack(vm);
+    vm->sp[vm->si++].value = value;
+    if (endaspath_r(vm->bgp) != BGP_ENOERR)
+        vm_abort(vm, VM_BAD_PACKET);
+}
 
 void vm_emit_ex(filter_vm_t *vm, int opcode, int idx)
 {

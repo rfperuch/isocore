@@ -100,17 +100,24 @@ enum {
 };
 
 enum {
-    PKT_ACC_BAD,
+    PKT_ACC_BAD = 0,
 
-    PKT_ACC_WITHDRAWN,
-    PKT_ACC_ALL_WITHDRAWN,
-    PKT_ACC_NLRI,
-    PKT_ACC_ALL_NLRI,
-    PKT_ACC_ALL,  // TODO better naming (accesses only NLRI/WITHDRAWN, not ALL)
+    PKT_ACC_STACK          = 1 << 0,
 
-    PKT_ACC_AS_PATH,
-    PKT_ACC_AS4_PATH,
-    PKT_ACC_REAL_AS_PATH
+    PKT_ACC_WITHDRAWN      = 1 << 1,
+    PKT_ACC_ALL_WITHDRAWN  = 1 << 2,
+    PKT_ACC_WITHDRAWN_MASK = PKT_ACC_WITHDRAWN | PKT_ACC_ALL_WITHDRAWN,
+
+    PKT_ACC_NLRI          = 1 << 3,
+    PKT_ACC_ALL_NLRI      = 1 << 4,
+    PKT_ACC_NLRI_MASK     = PKT_ACC_NLRI | PKT_ACC_ALL_NLRI,
+
+    PKT_ACC_ALL_NETS      = PKT_ACC_ALL_WITHDRAWN | PKT_ACC_ALL_NLRI,
+    PKT_ACC_NETS_MASK     = PKT_ACC_WITHDRAWN_MASK | PKT_ACC_NLRI_MASK,
+
+    PKT_ACC_AS_PATH       = 1 << 5,
+    PKT_ACC_AS4_PATH      = 1 << 6,
+    PKT_ACC_REAL_AS_PATH  = PKT_ACC_AS_PATH | PKT_ACC_AS4_PATH
 };
 
 void vm_growstack(filter_vm_t *vm);
@@ -541,182 +548,10 @@ inline void vm_exec_nlri_accumulate(filter_vm_t *vm)
         vm_abort(vm, VM_BAD_PACKET);
 }
 
-inline void vm_exec_exact(filter_vm_t *vm)
-{
-    while (vm->si > 0) {
-        stack_cell_t *cell    = vm_pop(vm);
-        netaddr_t *addr       = &cell->addr;
-        patricia_trie_t *trie = vm->curtrie;
-        switch (addr->family) {
-        case AF_INET6:
-            trie = vm->curtrie6;
-            // fallthrough
-        case AF_INET:
-            if (patsearchexactn(trie, addr)) {
-                vm_clearstack(vm);
-                vm_pushvalue(vm, true);
-                return;
-            }
-            break;
-        default:
-            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
-            break;
-        }
-    }
-
-    vm_pushvalue(vm, false);
-}
-
-inline void vm_exec_subnet(filter_vm_t *vm)
-{
-    int result = false;
-    while (vm->si > 0) {
-        netaddr_t *addr = &vm->sp[--vm->si].addr;
-
-        patricia_trie_t *trie = vm->curtrie;
-        switch (addr->family) {
-        case AF_INET6:
-            trie = vm->curtrie6;
-            // fallthrough
-        case AF_INET:
-            if (patissubnetofn(trie, addr)) {
-                result = true;
-                goto done;
-            }
-            break;
-        default:
-            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
-            break;
-        }
-    }
-
-done:
-    vm->si = 0;
-    vm->sp[vm->si++].value = result;
-}
-
-inline void vm_exec_psubnet(filter_vm_t *vm, int access)
-{
-    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
-        vm_abort(vm, VM_PACKET_MISMATCH);
-
-    netaddr_t *addr;
-    int result, err;
-
-    result = false;
-    switch (access) {
-    case PKT_ACC_ALL:
-        startallnlri_r(vm->bgp);
-        while (!result && (addr = nextnlri_r(vm->bgp)) != NULL) {
-            patricia_trie_t *trie = vm->curtrie;
-            switch (addr->family) {
-            case AF_INET6:
-                trie = vm->curtrie6;
-                // fallthrough
-            case AF_INET:
-                if (patissubnetofn(trie, addr))
-                    result = true;
-
-                break;
-            default:
-                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
-                break;
-            }
-        }
-
-        err = endnlri_r(vm->bgp);
-        if (result || err != BGP_ENOERR)
-            break;
-
-        startallwithdrawn_r(vm->bgp);
-        while (!result && (addr = nextwithdrawn_r(vm->bgp)) != NULL) {
-            patricia_trie_t *trie = vm->curtrie;
-            switch (addr->family) {
-            case AF_INET6:
-                trie = vm->curtrie6;
-                // fallthrough
-            case AF_INET:
-                if (patissubnetofn(trie, addr))
-                    result = true;
-
-                break;
-            default:
-                vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
-                break;
-            }
-        }
-
-        err = endwithdrawn_r(vm->bgp);
-        break;
-    default:
-        vm_abort(vm, VM_BAD_ACCESSOR);
-        break;
-    }
-
-    if (unlikely(err != BGP_ENOERR))
-        vm_abort(vm, VM_BAD_PACKET);
-
-    vm_pushvalue(vm, result);
-}
-
-inline void vm_exec_supernet(filter_vm_t *vm)
-{
-    while (vm->si > 0) {
-        stack_cell_t *cell = vm_pop(vm);
-        netaddr_t *addr = &cell->addr;
-        switch (addr->family) {
-        case AF_INET:
-            if (patissupernetofn(vm->curtrie, addr)) {
-                vm_clearstack(vm);
-                vm_pushvalue(vm, true);
-                return;
-            }
-            break;
-        case AF_INET6:
-            if (patissupernetofn(vm->curtrie6, addr)) {
-                vm_clearstack(vm);
-                vm_pushvalue(vm, true);
-                return;
-            }
-            break;
-        default:
-            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
-            break;
-        }
-    }
-
-    vm_pushvalue(vm, false);
-}
-
-
-inline void vm_exec_related(filter_vm_t *vm)
-{
-    while (vm->si > 0) {
-        stack_cell_t *cell = vm_pop(vm);
-        netaddr_t *addr = &cell->addr;
-        switch (addr->family) {
-        case AF_INET:
-            if (patisrelatedofn(vm->curtrie, addr)) {
-                vm_clearstack(vm);
-                vm_pushvalue(vm, true);
-                return;
-            }
-            break;
-        case AF_INET6:
-            if (patisrelatedofn(vm->curtrie6, addr)) {
-                vm_clearstack(vm);
-                vm_pushvalue(vm, true);
-                return;
-            }
-            break;
-        default:
-            vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
-            break;
-        }
-    }
-
-    vm_pushvalue(vm, false);
-}
+void vm_exec_exact(filter_vm_t *vm, int acc);
+void vm_exec_subnet(filter_vm_t *vm, int acc);
+void vm_exec_supernet(filter_vm_t *vm, int acc);
+void vm_exec_related(filter_vm_t *vm, int acc);
 
 inline void vm_exec_pfxcontains(filter_vm_t *vm, int kidx)
 {
@@ -774,198 +609,10 @@ inline void vm_exec_ascontains(filter_vm_t *vm, int kidx)
     vm_pushvalue(vm, false);
 }
 
-inline void vm_exec_aspmatch(filter_vm_t *vm, int acc)
-{
-    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
-        vm_abort(vm, VM_PACKET_MISMATCH);
-
-    switch (acc) {
-    case PKT_ACC_AS_PATH:
-        startaspath_r(vm->bgp);
-        break;
-    case PKT_ACC_AS4_PATH:
-        startas4path_r(vm->bgp);
-        break;
-    case PKT_ACC_REAL_AS_PATH:
-        startrealaspath_r(vm->bgp);
-        break;
-    default:
-        vm_abort(vm, VM_BAD_ACCESSOR);
-        break;
-    }
-
-    uint32_t asbuf[vm->si];
-    int buffered = 0;
-
-    as_pathent_t *ent;
-    while (true) {
-        int i;
-
-        for (i = 0; i < vm->si; i++) {
-            stack_cell_t *cell = &vm->sp[i];
-            if (i == buffered) {
-                // read one more AS from packet
-                ent = nextaspath_r(vm->bgp);
-                if (!ent) {
-                    // doesn't match
-                    vm_clearstack(vm);
-                    vm->sp[vm->si++].value = false;
-                    goto done;
-                }
-
-                asbuf[buffered++] = ent->as;
-            }
-            if (cell->as != asbuf[i])
-                break;
-        }
-
-        if (i == vm->si) {
-            // successfuly matched
-            vm_clearstack(vm);
-            vm->sp[vm->si++].value = true;
-            break;
-        }
-
-        // didn't match, consume the first element in asbuf and continue trying
-        memmove(asbuf, asbuf + 1, (buffered - 1) * sizeof(*asbuf));
-        buffered--;
-    }
-
-done:
-    if (endaspath_r(vm->bgp) != BGP_ENOERR)
-        vm_abort(vm, VM_BAD_PACKET);
-}
-
-inline void vm_exec_aspstarts(filter_vm_t *vm, int acc)
-{
-    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
-        vm_abort(vm, VM_PACKET_MISMATCH);
-
-    switch (acc) {
-    case PKT_ACC_AS_PATH:
-        startaspath_r(vm->bgp);
-        break;
-    case PKT_ACC_AS4_PATH:
-        startas4path_r(vm->bgp);
-        break;
-    case PKT_ACC_REAL_AS_PATH:
-        startrealaspath_r(vm->bgp);
-        break;
-    default:
-        vm_abort(vm, VM_BAD_ACCESSOR);
-        break;
-    }
-
-    int i;
-    for (i = 0; i < vm->si; i++) {
-        as_pathent_t *ent = nextaspath_r(vm->bgp);
-        if (!ent || vm->sp[i].as != ent->as)
-            break;  // does not match
-    }
-
-    if (endaspath_r(vm->bgp) != BGP_ENOERR)
-        vm_abort(vm, VM_BAD_PACKET);
-
-    int value = (i == vm->si);
-
-    vm_clearstack(vm);
-    vm->sp[vm->si++].value = value;
-}
-
-
-inline void vm_exec_aspends(filter_vm_t *vm, int acc)
-{
-    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
-        vm_abort(vm, VM_PACKET_MISMATCH);
-
-    switch (acc) {
-    case PKT_ACC_AS_PATH:
-        startaspath_r(vm->bgp);
-        break;
-    case PKT_ACC_AS4_PATH:
-        startas4path_r(vm->bgp);
-        break;
-    case PKT_ACC_REAL_AS_PATH:
-        startrealaspath_r(vm->bgp);
-        break;
-    default:
-        vm_abort(vm, VM_BAD_ACCESSOR);
-        break;
-    }
-
-    uint32_t asbuf[vm->si];
-    int n = 0;
-
-    as_pathent_t *ent;
-    while ((ent = nextaspath_r(vm->bgp)) != NULL) {
-        if (n == vm->si) {
-            // slide AS path window
-            memmove(asbuf, asbuf + 1, (n - 1) * sizeof(*asbuf));
-            n--;
-        }
-
-        asbuf[n++] = ent->as;
-    }
-    if (endaspath_r(vm->bgp) != BGP_ENOERR)
-        vm_abort(vm, VM_BAD_PACKET);
-
-    int length_match = (n == vm->si);
-
-    vm_clearstack(vm);
-
-    if (!length_match) {
-        vm->sp[vm->si++].value = false;
-        return;
-    }
-
-    // NOTE: technically we cleared the stack, but we know it was N elements long before...
-    int i;
-    for (i = 0; i < n; i++) {
-        if (asbuf[i] != vm->sp[i].as)
-            break;
-    }
-
-    vm->sp[vm->si++].value = (i == n);
-}
-
-
-inline void vm_exec_aspexact(filter_vm_t *vm, int acc)
-{
-    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
-        vm_abort(vm, VM_PACKET_MISMATCH);
-
-    switch (acc) {
-    case PKT_ACC_AS_PATH:
-        startaspath_r(vm->bgp);
-        break;
-    case PKT_ACC_AS4_PATH:
-        startas4path_r(vm->bgp);
-        break;
-    case PKT_ACC_REAL_AS_PATH:
-        startrealaspath_r(vm->bgp);
-        break;
-    default:
-        vm_abort(vm, VM_BAD_ACCESSOR);
-        break;
-    }
-
-    as_pathent_t *ent;
-    int i;
-    for (i = 0; i < vm->si; i++) {
-        ent = nextaspath_r(vm->bgp);
-        if (!ent || vm->sp[i].as != ent->as)
-            break;  // does not match
-    }
-
-    ent = nextaspath_r(vm->bgp);
-
-    int value = (ent == NULL && i == vm->si);
-
-    vm_clearstack(vm);
-    vm->sp[vm->si++].value = value;
-    if (endaspath_r(vm->bgp) != BGP_ENOERR)
-        vm_abort(vm, VM_BAD_PACKET);
-}
+void vm_exec_aspmatch(filter_vm_t *vm, int acc);
+void vm_exec_aspstarts(filter_vm_t *vm, int acc);
+void vm_exec_aspends(filter_vm_t *vm, int acc);
+void vm_exec_aspexact(filter_vm_t *vm, int acc);
 
 #endif
 

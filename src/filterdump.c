@@ -59,7 +59,6 @@ static const char *const vm_opstr_table[256] = {
     [FOPC_CFAIL]        = "CFAIL",
     [FOPC_EXACT]        = "EXACT",
     [FOPC_SUBNET]       = "SUBNET",
-    [FOPC_PSUBNET]      = "PSUBNET",
     [FOPC_SUPERNET]     = "SUPERNET",
     [FOPC_RELATED]      = "RELATED",
     [FOPC_PFXCONTAINS]  = "PFXCONTAINS",
@@ -91,11 +90,10 @@ static const int8_t vm_oparg_table[OPCODES_COUNT] = {
     [FOPC_NOT]          = ARG_NONE,
     [FOPC_CPASS]        = ARG_NONE,
     [FOPC_CFAIL]        = ARG_NONE,
-    [FOPC_EXACT]        = ARG_NONE,
-    [FOPC_SUBNET]       = ARG_NONE,
-    [FOPC_PSUBNET]      = ARG_ACC,  // TODO print this kind of values in a decent way
-    [FOPC_SUPERNET]     = ARG_NONE,
-    [FOPC_RELATED]      = ARG_NONE,
+    [FOPC_EXACT]        = ARG_ACC,
+    [FOPC_SUBNET]       = ARG_ACC,
+    [FOPC_SUPERNET]     = ARG_ACC,
+    [FOPC_RELATED]      = ARG_ACC,
     [FOPC_PFXCONTAINS]  = ARG_K,
     [FOPC_ADDRCONTAINS] = ARG_K,
     [FOPC_ASCONTAINS]   = ARG_K,
@@ -223,8 +221,6 @@ static int printop(FILE *f, int pc, int codesiz, bytecode_t code, const char *na
     fputc('\t', f);
     arg = vm_extendarg(arg, exarg);
     switch (mode) {
-    case ARG_ACC:
-        // TODO print this decently
     case ARG_DIRECT:
         fprintf(f, "%d", arg);
         break;
@@ -239,6 +235,10 @@ static int printop(FILE *f, int pc, int codesiz, bytecode_t code, const char *na
 
     case ARG_TRIE:
         fprintf(f, "Tr[%d]", arg);
+        break;
+
+    case ARG_ACC:
+        fprintf(f, "Ac[%d]", arg);
         break;
 
     default:

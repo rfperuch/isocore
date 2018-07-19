@@ -269,36 +269,28 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
             DISPATCH();
 
         EXECUTE(EXACT):
-            vm_exec_exact(vm);
+            vm_exec_exact(vm, vm_getarg(ip));
             PREDICT(CPASS);
             PREDICT(CFAIL);
             PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(SUBNET):
-            vm_exec_subnet(vm);
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
-            DISPATCH();
-
-        EXECUTE(PSUBNET):
-            arg = vm_getarg(ip);  // NOTE: not extended
-            vm_exec_psubnet(vm, arg);
+            vm_exec_subnet(vm, vm_getarg(ip));
             PREDICT(CPASS);
             PREDICT(CFAIL);
             PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(SUPERNET):
-            vm_exec_supernet(vm);
+            vm_exec_supernet(vm, vm_getarg(ip));
             PREDICT(CPASS);
             PREDICT(CFAIL);
             PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(RELATED):
-            vm_exec_related(vm);
+            vm_exec_related(vm, vm_getarg(ip));
             PREDICT(CPASS);
             PREDICT(CFAIL);
             PREDICT(NOT);
