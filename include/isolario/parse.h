@@ -141,8 +141,8 @@ void startparsing(const char *name, unsigned int start_line);
  * * The handler may use \a longjmp() to jump back to a known \a setjmp()
  *   buffer, the application handles this as a parsing error and completely
  *   halts the parsing process, performing any required action.
- *   In this occurrence, the handler never returns to the parser and
- *   error can be dealt just like an "exception".
+ *   In this scenario the handler never returns to the parser and
+ *   errors can be dealt with in a fashion similar to an "exception".
  *   Be careful when using this approach with Variable Length Arrays, since
  *   it may introduce unobvious memory-leak.
  *
