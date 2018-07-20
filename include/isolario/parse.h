@@ -55,15 +55,15 @@
  * rapid parsing with moderated memory usage. The implemented format only
  * supports two basic concepts:
  *
- * * Tokens - A token is any word separated by whitespaces, no quoting
- *            or escape sequences are recognized.
+ * * Tokens - A token is any word separated by whitespaces, a number of escape
+ *            sequences can be used to express special caracters inside them.
  *
  * * Comments - A hash (\a #) starts a comment that extends to the end of
  *              the line it appears in; \a # is a reserved character and
  *              it may not be used inside a token. A comment may appear
  *              anywhere in text.
  *
- * The parser also recognizes the following escape sequences:
+ * The parser recognizes the following escape sequences:
  * * '\n'  - newline
  * * '\v'  - vertical tab
  * * '\t'  - horizontal tab
