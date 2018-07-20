@@ -76,7 +76,7 @@ int main(int argc, char **argv)
 	startparsing(argv[1], 0);
 	// save the old error-handling function to restore it later,
 	// if we know that no handler was registered before, we can assume it to
-	// be just NULL, we do it anyway in this example just for reference.
+	// be just NULL, we do it anyway in this example just for reference
 	parse_err_callback_t old_handler = setperrcallback(parsing_error);
 
 	const char *tok;
