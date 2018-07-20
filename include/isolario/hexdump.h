@@ -108,9 +108,9 @@
  *           byte is printed separately; when the value is 2, bytes pair of
  *           bytes are coupled toghether when printing them, and so on...
  *           By default all bytes are taken as a single group and are not
- *           separated in any way, *most likely, when a \a Sep is specified
+ *           separated in any way, most likely, when a \a Sep is specified
  *           in the mode string, this value should also be specified, otherwise
- *           the \a Sep modifier has no effect*.
+ *           the \a Sep modifier has no effect.
  *           As an additional feature, the \a '*' value can be used for this
  *           field, in this case, the group lenght is taken from the next
  *           *integer* (that is: \a int) variable in the variable argument list.
@@ -220,7 +220,7 @@
  *         exceed \a n and may only be less than \a n in presence of an I/O
  *         error.
  */
-nonnull(1, 4) size_t hexdump(FILE *out, const void *data, size_t n, const char *mode, ...);
+nonnull(1) size_t hexdump(FILE *out, const void *data, size_t n, const char *mode, ...);
 
 /**
  * @brief Hexadecimal dump to char string.
@@ -266,7 +266,7 @@ nonnull(1, 4) size_t hexdump(FILE *out, const void *data, size_t n, const char *
  *       formatting and has the obvious advantage of not requiring careful
  *       thinking on caller's behalf.
  */
-nonnull(5) size_t hexdumps(char *dst, size_t size, const void *data, size_t n, const char *mode, ...);
+size_t hexdumps(char *dst, size_t size, const void *data, size_t n, const char *mode, ...);
 
 /** @} */
 
