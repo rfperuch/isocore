@@ -88,7 +88,7 @@
  */
 
 enum {
-    TOK_LEN_MAX = 64 ///< Maximum token length.
+    TOK_LEN_MAX = 256 ///< Maximum token length.
 };
 
 /// @brief Error handling callback for parser.
