@@ -292,9 +292,9 @@ static void compile_expr(FILE *f, filter_vm_t *vm, va_list va)
     }
 }
 
-static void handle_parse_error(const char *name, unsigned int lineno, const char *msg)
+static void handle_parse_error(const char *name, unsigned int lineno, const char *msg, void *data)
 {
-    (void) name, (void) lineno;
+    (void) name, (void) lineno, (void) data;
 
     strncpy(err_msg, msg, sizeof(err_msg) - 1);
     err_msg[sizeof(err_msg) - 1] = '\0';

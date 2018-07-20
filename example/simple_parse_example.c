@@ -41,8 +41,10 @@ static noreturn void usage(void)
     exit(EXIT_FAILURE);
 }
 
-static noreturn void parsing_error(const char *name, unsigned int lineno, const char *msg)
+static noreturn void parsing_error(const char *name, unsigned int lineno, const char *msg, void *data)
 {
+    (void) data; // unused
+
     // just exit printing the error message
     exprintf(EXIT_FAILURE, "%s:%u: %s", name, lineno, msg);
 }
@@ -73,7 +75,7 @@ int main(int argc, char **argv)
     // in callback, we pass 0 as the first line, which is the 'default'
     // (actually a synonym for 1), we could start from the middle of the file
     // and adjust this value to reflect the first line
-    startparsing(argv[1], 0);
+    startparsing(argv[1], 0, NULL);
     // save the old error-handling function to restore it later,
     // if we know that no handler was registered before, we can assume it to
     // be just NULL, we do it anyway in this example just for reference

@@ -108,13 +108,38 @@ enum {
  * @param [in] msg    An informative human readable parsing error message,
  *                    the handler shall never be called by the parser with
  *                    a \a NULL value for this argument.
+ * @param [in] data   A pointer to user defined data, as provided to \a startparsing().
  *
  * @see setperrcallback()
  */
-typedef void (*parse_err_callback_t)(const char *name, unsigned int lineno, const char *msg);
+typedef void (*parse_err_callback_t)(const char *name, unsigned int lineno, const char *msg, void *data);
 
-/// @brief Fill parsing session name and starting line.
-void startparsing(const char *name, unsigned int start_line);
+/**
+ * @brief Fill parsing session name and starting line.
+ *
+ * This function should be called whenever a new parsing session takes place,
+ * in order to provide sensible information to parsing error callbacks.
+ *
+ * @param [in] name       Session name, this argument may be \a NULL to indicate
+ *                        that the session has no name. The contents of this
+ *                        pointer are *not* copyed and are expected to remain
+ *                        valid throughout the parsing session.
+ * @param [in] start_line The initial starting line, if this value is \a 0,
+ *                        it is silently interpreted as \a 1.
+ * @param [in] data       User-defined data, which is forwared to the error
+ *                        handler unchanged whenever a parsing error occurs.
+ *                        This argument may be \a NULL.
+ *
+ * @note Any existing set information about previous parsing session is
+ *       overwritten by calling this function.
+ *       This function may be repeatedly called to simulate sub-sections
+ *       in the same parsing session.
+ *       The initial parsing session has \a NULL name, a starting line of 1
+ *       and \a NULL data.
+ *
+ * @see setperrcallback()
+ */
+void startparsing(const char *name, unsigned int start_line, void *data);
 
 /**
  * @brief Register a parsing error callback, returns old callback.

@@ -40,15 +40,16 @@
 
 typedef struct {
     const char *name;
+    void *data;
     unsigned int lineno;
+    parse_err_callback_t err;
 
     char buf[TOK_LEN_MAX + 1];
     char unget[TOK_LEN_MAX + 1];
-
-    parse_err_callback_t err;
 } parser_t;
 
-static _Thread_local parser_t parser = { NULL };
+// initialize as specified by the default parsing session
+static _Thread_local parser_t parser = { NULL, NULL, 1, NULL };
 
 void parsingerr(const char *msg, ...)
 {
@@ -64,7 +65,7 @@ void parsingerr(const char *msg, ...)
 
         // always report line 0 if session is unavailable
         unsigned int lineno = (parser.name) ? parser.lineno : 0;
-        parser.err(parser.name, lineno, buf);
+        parser.err(parser.name, lineno, buf, parser.data);
     }
 }
 
@@ -76,13 +77,14 @@ parse_err_callback_t setperrcallback(parse_err_callback_t cb)
     return old;
 }
 
-void startparsing(const char *name, unsigned int start_line)
+void startparsing(const char *name, unsigned int start_line, void *data)
 {
     if (start_line < 1)
         start_line = 1;  // line 0 makes little sense...
 
     parser.name = name;
     parser.lineno = start_line;
+	parser.data = data;
 }
 
 void skiptonextline(FILE *f)
