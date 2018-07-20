@@ -78,7 +78,7 @@
  * a callback is invoked with a human readable message, when available,
  * the current parsing session name and line number are also provided.
  * The user is responsible to terminate parsing under such circumstances,
- * typically by using longjmp() or similar methods.
+ * typically by using \a longjmp() or similar methods.
  *
  * @note Since the most effective way to terminate parsing is using longjmp(),
  *       extra care should be taken to avoid using Variable Length Arrays (VLA)
@@ -101,7 +101,7 @@ void startparsing(const char *name, unsigned int start_line);
 parse_err_callback_t setperrcallback(parse_err_callback_t cb);
 
 /**
- * @brief Return next token, \a NULL on end of parse.
+ * @brief Return next token, or \a NULL on end of parse.
  *
  * This function should be called repeatedly on an input \a FILE to
  * parse each token, on end-of-file \a NULL will be returned.
@@ -142,8 +142,9 @@ printflike(1, 2) nonnull(1) void parsingerr(const char *msg, ...);
 /**
  * @example simple_parse_example.c
  *
- * This is a simple parse() example, including thorough error handling,
- * demonstrating the intended API usage model.
+ * This is a simple example for the \a parse() function and the overall
+ * @ref Parse API, including thorough error handling.
+ * It demonstrates the intended API usage model.
  */
 
 /** @} */

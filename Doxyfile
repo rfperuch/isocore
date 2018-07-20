@@ -32,6 +32,23 @@ MAN_LINKS              = YES
 CLASS_DIAGRAMS         = NO
 EXAMPLE_PATH           = example
 
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = printflike(x,y)= \
+                         scanflike(x,y)= \
+                         sentinel(idx)= \
+                         nonnull(...)= \
+                         malloclike= \
+                         nonullreturn= \
+                         purefunc= \
+                         constfunc= \
+                         wur= \
+                         likely(cond)= \
+                         unlikely(cond)= \
+                         unreachable()= \
+                         noreturn=
+
 DOT_FONTNAME           = Helvetica
 DOT_FONTSIZE           = 11
 
