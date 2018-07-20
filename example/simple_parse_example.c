@@ -37,14 +37,14 @@
 
 static noreturn void usage(void)
 {
-	fprintf(stderr, "usage: %s FILE\n", programnam);
-	exit(EXIT_FAILURE);
+    fprintf(stderr, "usage: %s FILE\n", programnam);
+    exit(EXIT_FAILURE);
 }
 
 static noreturn void parsing_error(const char *name, unsigned int lineno, const char *msg)
 {
-	// just exit printing the error message
-	exprintf(EXIT_FAILURE, "%s:%u: %s", name, lineno, msg);
+    // just exit printing the error message
+    exprintf(EXIT_FAILURE, "%s:%u: %s", name, lineno, msg);
 }
 
 // parse a single file given from program arguments,
@@ -52,57 +52,57 @@ static noreturn void parsing_error(const char *name, unsigned int lineno, const 
 // Prints out parsed tokens to stdout, one per line
 int main(int argc, char **argv)
 {
-	setprogramnam(argv[0]);
+    setprogramnam(argv[0]);
 
-	if (argc != 2)
-		usage();
+    if (argc != 2)
+        usage();
 
-	FILE *f;
-	if (strcmp(argv[1], "-") == 0) {
-		// allow parsing from stdin
-		argv[1] = "(stdin)";
-		f = stdin;
-	} else {
-		f = fopen(argv[1], "r");
-	}
-	if (!f)
-		exprintf(EXIT_FAILURE, "could not open '%s':", argv[1]);
+    FILE *f;
+    if (strcmp(argv[1], "-") == 0) {
+        // allow parsing from stdin
+        argv[1] = "(stdin)";
+        f = stdin;
+    } else {
+        f = fopen(argv[1], "r");
+    }
+    if (!f)
+        exprintf(EXIT_FAILURE, "could not open '%s':", argv[1]);
 
-	// register parsing session informations and error callback,
-	// this is important to achieve good and more informative error messages
-	// in callback, we pass 0 as the first line, which is the 'default'
-	// (actually a synonym for 1), we could start from the middle of the file
-	// and adjust this value to reflect the first line
-	startparsing(argv[1], 0);
-	// save the old error-handling function to restore it later,
-	// if we know that no handler was registered before, we can assume it to
-	// be just NULL, we do it anyway in this example just for reference
-	parse_err_callback_t old_handler = setperrcallback(parsing_error);
+    // register parsing session informations and error callback,
+    // this is important to achieve good and more informative error messages
+    // in callback, we pass 0 as the first line, which is the 'default'
+    // (actually a synonym for 1), we could start from the middle of the file
+    // and adjust this value to reflect the first line
+    startparsing(argv[1], 0);
+    // save the old error-handling function to restore it later,
+    // if we know that no handler was registered before, we can assume it to
+    // be just NULL, we do it anyway in this example just for reference
+    parse_err_callback_t old_handler = setperrcallback(parsing_error);
 
-	const char *tok;
-	while ((tok = parse(f)) != NULL)
-		puts(tok);  // echo each token one per line
+    const char *tok;
+    while ((tok = parse(f)) != NULL)
+        puts(tok);  // echo each token one per line
 
-	// parse() shall return NULL on end of file,
-	// but may also return NULL when a I/O error occurs,
-	// we don't bother to handle I/O errors in any special way, so redirect
-	// them to the usual parsing error path
-	if (ferror(f))
-		parsingerr("read error");
+    // parse() shall return NULL on end of file,
+    // but may also return NULL when a I/O error occurs,
+    // we don't bother to handle I/O errors in any special way, so redirect
+    // them to the usual parsing error path
+    if (ferror(f))
+        parsingerr("read error");
 
-	// done parsing, close the file
-	if (f != stdin)
-		fclose(f);
+    // done parsing, close the file
+    if (f != stdin)
+        fclose(f);
 
-	// ...and restore the old handler
-	// (in this case we could have done a simple setperrcallback(NULL),
-	// but we use the more general approach just for reference)
-	setperrcallback(old_handler);
+    // ...and restore the old handler
+    // (in this case we could have done a simple setperrcallback(NULL),
+    // but we use the more general approach just for reference)
+    setperrcallback(old_handler);
 
-	// flush stdout to be sure no output error occurs,
-	// in case we're writing to file
-	if (fflush(stdout) != 0)
-		exprintf(EXIT_FAILURE, "could not write to stdout:");
+    // flush stdout to be sure no output error occurs,
+    // in case we're writing to file
+    if (fflush(stdout) != 0)
+        exprintf(EXIT_FAILURE, "could not write to stdout:");
 
-	return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }
