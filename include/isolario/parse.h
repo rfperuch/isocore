@@ -91,13 +91,69 @@ enum {
     TOK_LEN_MAX = 256 ///< Maximum token length.
 };
 
-/// @brief Error handling callback for parser.
+/**
+ * @brief Error handling callback for parser.
+ *
+ * Defines a pointer to function with the signature expected by the parser
+ * whenever a parsing-error handler is called.
+ *
+ * @param [in] name   The parsing session name, as specified by \a startparsing().
+ *                    This argument may be \a NULL when no parsing session
+ *                    information is available (e.g. \a startparsing() wasn't called).
+ * @param [in] lineno The line number in which error was detected,
+ *                    the handler may discretionally ignore this argument if
+ *                    \a name is \a NULL (for example it may make little sense
+ *                    to print a line number information when parsing from a
+ *                    console).
+ * @param [in] msg    An informative human readable parsing error message,
+ *                    the handler shall never be called by the parser with
+ *                    a \a NULL value for this argument.
+ *
+ * @see setperrcallback()
+ */
 typedef void (*parse_err_callback_t)(const char *name, unsigned int lineno, const char *msg);
 
 /// @brief Fill parsing session name and starting line.
 void startparsing(const char *name, unsigned int start_line);
 
-/// @brief Register error callback, returns old callback.
+/**
+ * @brief Register a parsing error callback, returns old callback.
+ *
+ * Whenever the \a parse() function (or any other parsing function) encounters
+ * a parsing error, the provided function is called with a meaningful context
+ * information to handle the parsing error. Typically the application
+ * wants to print or store the parsing error for logging or notification
+ * purposes.
+ *
+ * The registered function is responsible to decide whether the application
+ * may recover from a parsing error or not.
+ * If the application does not tolerate parsing errors at all, the most
+ * effective way to do so is calling \a exit() or similar functions to
+ * terminate execution from within the handler, doing so will keep
+ * the parsing logic clean.
+ * If the application is capable of tolerating parsing errors, then
+ * there are two approaches to do so:
+ * * The handler can return normally to the parer, after possibly setting
+ *   some significant variable, and the parser will return special values to
+ *   its caller (e.g. \a parse() will return \a NULL, as if end-of-parse
+ *   occurred), the application is thus resposible of doing the usual error
+ *   checking.
+ * * The handler may use \a longjmp() to jump back to a known \a setjmp()
+ *   buffer, the application handles this as a parsing error and completely
+ *   halts the parsing process, performing any required action.
+ *   In this occurrence, the handler never returns to the parser and
+ *   error can be dealt just like an "exception".
+ *   Be careful when using this approach with Variable Length Arrays, since
+ *   it may introduce unobvious memory-leak.
+ *
+ * @param [in] cb Function to be called whenever a parsing error occurs.
+ *                Specify \a NULL to remove any installed handler.
+ *
+ * @return The previously registered error handler, \a NULL if no handler
+ *         was registered.
+ *
+ * @see startparsing()
+ */
 parse_err_callback_t setperrcallback(parse_err_callback_t cb);
 
 /**
@@ -113,7 +169,7 @@ parse_err_callback_t setperrcallback(parse_err_callback_t cb);
  *
  * @return A pointer to a statically (thread-local) allocated storage,
  *         that is guaranteed to remain valid at least up to the next call
- *         to this function. The returned pointer must not be free()d.
+ *         to this function. The returned pointer must not be \a free()d.
  *
  * @note On read error, \a NULL is returned, as if EOF was encountered,
  *       the caller may distinguish such situations by invoking \a ferror()
@@ -121,22 +177,117 @@ parse_err_callback_t setperrcallback(parse_err_callback_t cb);
  */
 nonnull(1) char *parse(FILE *f);
 
-/// @brief Place token back into the stream.
+/**
+ * @brief Place token back into the stream.
+ *
+ * This function makes possible to place back a parsed token into
+ * the parsing stream, the next parsing call shall return it as if it
+ * was encountered for the first time.
+ *
+ * @param [in] tok The token to be placed back into the parser,
+ *                 this argument can be \a NULL, and if it is, this function
+ *                 has no effect.
+ *                 Behavior is undefined if \a tok is not \a NULL and it was
+ *                 not returned by a previous call to \a parse() or any other
+ *                 parsing function.
+ *
+ */
 void ungettoken(const char *tok);
 
-/// @brief Expect a token (\a NULL to expect any token).
+/**
+ * @brief Expect a token (\a NULL to expect any token).
+ *
+ * Behaves like a call to \a parse(), but additionally requires a token
+ * to exist in the input source.
+ * This function shall consider an end of parse condition as a parsing error,
+ * and call the parsing error handler registered by the latest call to
+ * \a setperrcallback() with the appropriate arguments.
+ * If the \a what argument is not \a NULL, then this function also ensures
+ * that the token matches exactly (as in \a strcmp()) the provided argument
+ * string.
+ *
+ * @param [in] f    The input source, must not be \a NULL.
+ *                  The same considerations as \a parse() hold valid for this
+ *                  function.
+ * @param [in] what An optional string that requires the next token to match
+ *                  exactly this string. If this argument is not \a NULL, then
+ *                  encountering a token which does not compare as equal to
+ *                  this string is considered a parsing error.
+ *
+ * @return The next token in input source, \a NULL on error: in particular,
+ *         if no error handler is currently registered, \a NULL is returned
+ *         to signal an unexpected end of parse or token mismatch.
+ *         The same storage considerations as \a parse() hold valid for the
+ *         returned buffer.
+ */
+
 nonnull(1) char *expecttoken(FILE *f, const char *what);
 
-/// @brief Expect integer.
+/**
+ * @brief Expect integer value.
+ *
+ * Behaves like \a expecttoken(), but additionally considers a parsing error
+ * to encounter a token which is not an invalid or out of range base 10 integer
+ * value.
+ *
+ * @param [in] f The input source, the same considerations as \a parse()
+ *               hold valid for this function.
+ *
+ * @return The parsed integer token, 0 is returned on parsing error.
+ *
+ * @note Since 0 is a valid integer token, the error handler should take
+ *       action to inform the caller that a bad token was encountered to
+ *       disambiguate this event.
+ *
+ * @see setperrcallback()
+ */
 nonnull(1) int iexpecttoken(FILE *f);
 
-/// @brief Expect floating point value.
+/**
+ * @brief Expect floating point value.
+ *
+ * Behaves like \a expecttoken(), but additionally considers a parsing error
+ * to encounter a token which is not an invalid floating point value.
+ *
+ * @param [in] f The input source, the same considerations as \a parse()
+ *               hold valid for this function.
+ *
+ * @return The parsed floating point token, 0.0 is returned on parsing error.
+ *
+ * @note Since 0.0 is a valid floating point token, the error handler should
+ *       take action to inform the caller that a bad token was encountered to
+ *       disambiguate this event.
+ *
+ * @see setperrcallback()
+ */
 nonnull(1) double fexpecttoken(FILE *f);
 
-/// @brief Skip remaining tokens in this line.
+/**
+ * @brief Skip remaining tokens in this line.
+ *
+ * Advances until a newline character is encountered, effectively skipping
+ * any token in the current line.
+ * Any token fed to \a ungettoken() is discarded.
+ *
+ * @param [in] f The input source, must not be \a NULL.
+ *               The same considerations as \a parse() hold valid for this
+ *               function.
+ */
 nonnull(1) void skiptonextline(FILE *f);
 
-/// @brief Trigger a parsing error at the current position.
+/**
+ * @brief Trigger a parsing error at the current position.
+ *
+ * This function can be called to signal a parsing error at the current
+ * position, it is especially useful when performing additional checks
+ * on token returned by this API.
+ * The message is formatted in a printf-like fashion.
+ *
+ * @param [in] msg Parsing error format string.
+ * @param [in] ... Format arguments.
+ *
+ * @see setperrcallback()
+ */
 printflike(1, 2) nonnull(1) void parsingerr(const char *msg, ...);
 
 /**
