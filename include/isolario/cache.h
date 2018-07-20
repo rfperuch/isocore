@@ -65,7 +65,7 @@ typedef enum {
 #ifdef __GNUC__
 #define memprefetch(addr, locality) __builtin_prefetch(addr, locality)
 #else
-#define memprefetch(addr, locality)
+#define memprefetch(addr, locality) ((void) (addr), (void) (locality))
 #endif
 
 #endif
