@@ -243,6 +243,9 @@ nonnull(1) char *expecttoken(FILE *f, const char *what);
  */
 nonnull(1) int iexpecttoken(FILE *f);
 
+/// @brief Behaves like \a iexpecttoken(), but allows for \a long \a long values.
+nonnull(1) long long llexpecttoken(FILE *f);
+
 /**
  * @brief Expect floating point value.
  *
@@ -272,6 +275,11 @@ nonnull(1) double fexpecttoken(FILE *f);
  * @param [in] f The input source, must not be \a NULL.
  *               The same considerations as \a parse() hold valid for this
  *               function.
+ *
+ * @note In the event that a token spans over multiple lines (e.g. it contains the
+ *       '\\n' escape sequence), such token is considered to be in the next line,
+ *       so that same token will be the one returned by the subsequent call to
+ *       \a parse().
  */
 nonnull(1) void skiptonextline(FILE *f);
 
