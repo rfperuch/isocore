@@ -1,5 +1,5 @@
 PROJECT_NAME           = "Isolario Core Library"
-PROJECT_BRIEF          = "General utility functions and types for the Isolario Project"
+PROJECT_BRIEF          = "Core library providing basic functionality and types for the entire Isolario Project"
 PROJECT_LOGO           =
 OUTPUT_DIRECTORY       = docs
 ABBREVIATE_BRIEF       = "The $name widget" \
