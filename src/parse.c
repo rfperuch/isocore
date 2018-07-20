@@ -87,16 +87,16 @@ void startparsing(const char *name, unsigned int start_line)
 
 void skiptonextline(FILE *f)
 {
-	parser.unget[0] = '\0';  // don't waste time parsing it back
+    parser.unget[0] = '\0';  // don't waste time parsing it back
 
     const char *tok;
-	unsigned int curline = parser.lineno;
-	while ((tok = parse(f)) != NULL) {
-		if (curline != parser.lineno)
-			break;
-	}
+    unsigned int curline = parser.lineno;
+    while ((tok = parse(f)) != NULL) {
+        if (curline != parser.lineno)
+            break;
+    }
 
-	ungettoken(tok);
+    ungettoken(tok);
 }
 
 char *parse(FILE *f)
@@ -220,25 +220,25 @@ int iexpecttoken(FILE *f)
 
 long long llexpecttoken(FILE *f)
 {
-	char *tok = expecttoken(f, NULL);
-	char *eptr;
+    char *tok = expecttoken(f, NULL);
+    char *eptr;
 
-	if (!tok)
-		return 0;
+    if (!tok)
+        return 0;
 
-	errno = 0;
-	long long v = strtoll(tok, &eptr, 10);
-	if (tok == eptr || *eptr != '\0') {
-		parsingerr("got '%s', but integer value expected", tok);
-		return 0;
-	}
+    errno = 0;
+    long long v = strtoll(tok, &eptr, 10);
+    if (tok == eptr || *eptr != '\0') {
+        parsingerr("got '%s', but integer value expected", tok);
+        return 0;
+    }
 
-	if (errno != 0) {
-		parsingerr("got '%s': %s", tok, strerror(errno));
-		return 0;
-	}
+    if (errno != 0) {
+        parsingerr("got '%s': %s", tok, strerror(errno));
+        return 0;
+    }
 
-	return v;
+    return v;
 }
 
 double fexpecttoken(FILE *f)
