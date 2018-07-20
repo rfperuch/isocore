@@ -1,0 +1,3 @@
+option('build-benchmarks', type : 'boolean', value : 'true', description : 'Build benchmarks using CBench')
+option('build-examples', type : 'boolean', value : 'true', description : 'Build API example programs')
+option('build-tests', type : 'boolean', value : 'true', description : 'Build test programs using CUnit')

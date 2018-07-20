@@ -30,6 +30,7 @@ GENERATE_LATEX         = YES
 GENERATE_MAN           = YES
 MAN_LINKS              = YES
 CLASS_DIAGRAMS         = NO
+EXAMPLE_PATH           = example
 
 DOT_FONTNAME           = Helvetica
 DOT_FONTSIZE           = 11

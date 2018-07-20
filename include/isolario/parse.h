@@ -64,14 +64,14 @@
  *              anywhere in text.
  *
  * The parser recognizes the following escape sequences:
- * * '\n'  - newline
- * * '\v'  - vertical tab
- * * '\t'  - horizontal tab
- * * '\r'  - caret return
- * * '\#'  - hash character
- * * '\\'  - backslash character
- * * '\ '  - space character
- * * '\\n' - token follows after newline
+ * * '\\n'  - newline
+ * * '\\v'  - vertical tab
+ * * '\\t'  - horizontal tab
+ * * '\\r'  - caret return
+ * * '\\#'  - hash character
+ * * '\\\\' - backslash character
+ * * '\\ '  - space character
+ * * '\\n'  - token follows after newline
  *
  * Error handling is performed via callbacks, an error callback may be
  * registered to handle parsing errors, when such error is encountered,
@@ -100,7 +100,25 @@ void startparsing(const char *name, unsigned int start_line);
 /// @brief Register error callback, returns old callback.
 parse_err_callback_t setperrcallback(parse_err_callback_t cb);
 
-/// @brief Return next token, \a NULL on end of parse.
+/**
+ * @brief Return next token, \a NULL on end of parse.
+ *
+ * This function should be called repeatedly on an input \a FILE to
+ * parse each token, on end-of-file \a NULL will be returned.
+ *
+ * @param [in] f The input file to be parsed, this function does not impose
+ *               the caller to provide the same source for each call,
+ *               you may freely change the source. This argument must not be
+ *               \a NULL.
+ *
+ * @return A pointer to a statically (thread-local) allocated storage,
+ *         that is guaranteed to remain valid at least up to the next call
+ *         to this function. The returned pointer must not be free()d.
+ *
+ * @note On read error, \a NULL is returned, as if EOF was encountered,
+ *       the caller may distinguish such situations by invoking \a ferror()
+ *       on \a f.
+ */
 nonnull(1) char *parse(FILE *f);
 
 /// @brief Place token back into the stream.
@@ -120,6 +138,13 @@ nonnull(1) void skiptonextline(FILE *f);
 
 /// @brief Trigger a parsing error at the current position.
 printflike(1, 2) nonnull(1) void parsingerr(const char *msg, ...);
+
+/**
+ * @example simple_parse_example.c
+ *
+ * This is a simple parse() example, including thorough error handling,
+ * demonstrating the intended API usage model.
+ */
 
 /** @} */
 

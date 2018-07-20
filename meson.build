@@ -23,8 +23,6 @@ zlib_dep = dependency('zlib')
 bz2_dep = cc.find_library('bz2', required : true)
 lzma_dep = dependency('liblzma', version: '>=5.1.1')
 lz4_dep = cc.find_library('lz4', required : true)
-cunit_dep = dependency('cunit')
-cbench_dep = dependency('cbench', static : true, fallback : [ 'cbench', 'cbench_dep' ])
 
 incdir = include_directories('include')
 
@@ -68,82 +66,98 @@ isocore_dep = declare_dependency(
     link_with : isocore
 )
 
-testincdir = include_directories('test')
-benchincdir = include_directories('bench')
+if get_option('build-tests')
+	cunit_dep = dependency('cunit')
+	testincdir = include_directories('test')
 
-bgp_test = executable('bgp_test',
-    sources : [
-        'test/bgp/attribs.c',
-        'test/bgp/main.c',
-        'test/bgp/open.c',
-        'test/bgp/update.c'
-    ],
-    dependencies : [
-        isocore_dep,
-        cunit_dep
-    ],
-    include_directories : testincdir
-)
-test('bgp', bgp_test)
+	bgp_test = executable('bgp_test',
+		sources : [
+			'test/bgp/attribs.c',
+			'test/bgp/main.c',
+			'test/bgp/open.c',
+			'test/bgp/update.c'
+		],
+		dependencies : [
+			isocore_dep,
+			cunit_dep
+		],
+		include_directories : testincdir
+	)
+	test('bgp', bgp_test)
 
-core_test = executable('core_test',
-    sources : [
-        'test/core/main.c',
-        'test/core/dumppacket_t.c',
-        'test/core/hexdump_t.c',
-        'test/core/io_t.c',
-        'test/core/json_t.c',
-        'test/core/log_t.c',
-        'test/core/netaddr_t.c',
-        'test/core/patriciatrie_t.c',
-        'test/core/strutil_t.c',
-        'test/core/uint128_t.c'
-    ],
-    dependencies : [
-        isocore_dep,
-        cunit_dep
-    ],
-    include_directories : testincdir
-)
-test('core', core_test)
+	core_test = executable('core_test',
+		sources : [
+			'test/core/main.c',
+			'test/core/dumppacket_t.c',
+			'test/core/hexdump_t.c',
+			'test/core/io_t.c',
+			'test/core/json_t.c',
+			'test/core/log_t.c',
+			'test/core/netaddr_t.c',
+			'test/core/patriciatrie_t.c',
+			'test/core/strutil_t.c',
+			'test/core/uint128_t.c'
+		],
+		dependencies : [
+			isocore_dep,
+			cunit_dep
+		],
+		include_directories : testincdir
+	)
+	test('core', core_test)
 
-filter_test = executable('filter_test',
-    sources : [
-        'test/filter/main.c',
-        'test/filter/mrt_filter_t.c'
-    ],
-    dependencies : [
-        isocore_dep,
-        cunit_dep
-    ],
-    include_directories : testincdir
-)
+	filter_test = executable('filter_test',
+		sources : [
+			'test/filter/main.c',
+			'test/filter/mrt_filter_t.c'
+		],
+		dependencies : [
+			isocore_dep,
+			cunit_dep
+		],
+		include_directories : testincdir
+	)
+endif
 
-core_bench = executable('core_bench',
-    sources : [
-        'bench/core/main.c',
-        'bench/core/strutil_b.c',
-        'bench/core/patriciatrie_b.c',
-        'bench/core/netaddr_b.c'
-    ],
-    dependencies : [
-        isocore_dep,
-        cbench_dep
-    ],
-    include_directories : benchincdir
-)
-benchmark('core', core_bench)
+if get_option('build-examples')
 
-bgp_bench = executable('bgp_bench',
-    sources : [
-        'bench/bgp/main.c',
-        'bench/bgp/update_b.c'
-    ],
-    dependencies : [
-        isocore_dep,
-        cbench_dep
-    ],
-    include_directories : benchincdir
-)
-benchmark('bgp', bgp_bench)
+	simple_parse_example = executable('simple_parse_example',
+		sources : [ 'example/simple_parse_example.c' ],
+		dependencies : [ isocore_dep ]
+	)
 
+endif
+
+if get_option('build-benchmarks')
+	cbench_dep = dependency('cbench', static : true, fallback : [ 'cbench', 'cbench_dep' ])
+	benchincdir = include_directories('bench')
+
+	core_bench = executable('core_bench',
+		sources : [
+			'bench/core/main.c',
+			'bench/core/strutil_b.c',
+			'bench/core/patriciatrie_b.c',
+			'bench/core/netaddr_b.c'
+		],
+		dependencies : [
+			isocore_dep,
+			cbench_dep
+		],
+		include_directories : benchincdir
+	)
+	benchmark('core', core_bench)
+
+	bgp_bench = executable('bgp_bench',
+		sources : [
+			'bench/bgp/main.c',
+			'bench/bgp/update_b.c'
+		],
+		dependencies : [
+			isocore_dep,
+			cbench_dep
+		],
+		include_directories : benchincdir
+	)
+	benchmark('bgp', bgp_bench)
+
+endif
