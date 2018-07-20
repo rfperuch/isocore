@@ -105,14 +105,14 @@
  *
  * * Group - An unsigned integer value specifying how many bytes should be
  *           grouped toghether when formatting them, when the value is 1, each
- *           byte is printed separately; when the value is 2, bytes pair of
- *           bytes are coupled toghether when printing them, and so on...
+ *           byte is printed separately; when the value is 2, pair of
+ *           bytes are coupled toghether for printing, and so on...
  *           By default all bytes are taken as a single group and are not
- *           separated in any way, most likely, when a \a Sep is specified
- *           in the mode string, this value should also be specified, otherwise
+ *           separated in any way, most likely, when \a Sep is specified
+ *           in mode string, this value should be as well, otherwise
  *           the \a Sep modifier has no effect.
  *           As an additional feature, the \a '*' value can be used for this
- *           field, in this case, the group lenght is taken from the next
+ *           field, in this case, the group length is taken from the next
  *           *integer* (that is: \a int) variable in the variable argument list.
  *
  * * Sep   - This field introduces an additional constrain on the number of
