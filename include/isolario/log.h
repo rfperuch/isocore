@@ -46,7 +46,10 @@
 /**
  * @defgroup Logging Isolario logging facility
  *
- * @brief Logging functions for the Isolario.
+ * @brief Logging functions for the Isolario Project.
+ *
+ * This module implements a thread-safe, performance oriented logging facility,
+ * capable of logging both to the console using \a stderr and to a file.
  *
  * @{
  */
