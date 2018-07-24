@@ -245,7 +245,6 @@ void ungettoken(const char *tok);
  *         The same storage considerations as \a parse() hold valid for the
  *         returned buffer.
  */
-
 nonnull(1) char *expecttoken(FILE *f, const char *what);
 
 /**
@@ -329,6 +328,14 @@ printflike(1, 2) nonnull(1) void parsingerr(const char *msg, ...);
  * This is a simple example for the \a parse() function and the overall
  * @ref Parse API, including thorough error handling.
  * It demonstrates the intended API usage model.
+ */
+
+/**
+ * @example simple_calc_example.c
+ *
+ * This is a simple calculator program with variables support,
+ * it demonstrates various aspects of the @ref Parse API with some
+ * advanced features.
  */
 
 /** @} */

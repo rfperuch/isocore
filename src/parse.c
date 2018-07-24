@@ -60,8 +60,13 @@ void parsingerr(const char *msg, ...)
         va_list vl;
 
         va_start(vl, msg);
-        vsnprintf(buf, sizeof(buf), msg, vl);
+        int n = vsnprintf(buf, sizeof(buf), msg, vl);
         va_end(vl);
+
+        // add strerror if msg ends with :
+        int nmsg = strlen(msg);
+        if (nmsg > 0 && msg[nmsg - 1] == ':')
+            snprintf(buf + n, sizeof(buf) - n, ": %s", strerror(errno));
 
         // always report line 0 if session is unavailable
         unsigned int lineno = (parser.name) ? parser.lineno : 0;
@@ -236,7 +241,7 @@ long long llexpecttoken(FILE *f)
     }
 
     if (errno != 0) {
-        parsingerr("got '%s': %s", tok, strerror(errno));
+        parsingerr("got '%s':", tok);
         return 0;
     }
 
@@ -257,7 +262,7 @@ double fexpecttoken(FILE *f)
         parsingerr("got '%s', but floating point value expected", tok);
         return 0.0;
     } else if (errno != 0) {
-        parsingerr("'%s': %s", tok, strerror(errno));
+        parsingerr("'%s':", tok);
         return 0.0;
     } else {
         return v;
