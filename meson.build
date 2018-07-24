@@ -126,6 +126,11 @@ if get_option('build-examples')
 		dependencies : [ isocore_dep ]
 	)
 
+	simple_calc_example = executable('simple_calc_example',
+		sources : [ 'example/simple_calc_example.c' ],
+		dependencies : [ isocore_dep, m_dep ]
+	)
+
 endif
 
 if get_option('build-benchmarks')
