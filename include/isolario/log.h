@@ -180,6 +180,8 @@ nonnull(2) void logvprintf(logsev_t sev, const char *fmt, va_list va);
  *
  * After calling this function, the logging system is restored to its
  * default state.
+ *
+ * @note This function is *not* thread safe.
  */
 void logclose(void);
 
