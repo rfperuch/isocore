@@ -261,7 +261,7 @@ inline nonullreturn nonnull(1) char *ulltoa(char *dst, char **endp, unsigned lon
  * @brief Split string against a delimiter.
  *
  * Returns a buffer of strings splitted against a delimiter string.
- * When such buffer is no longer useful, it must be free()d.
+ * When such buffer is no longer useful, it must be \a free()d.
  *
  * @param [in]  s     String to be splitted into substrings, may not be \a NULL.
  * @param [in]  delim Delimiter string for each substring, may be \a NULL.
@@ -275,7 +275,7 @@ inline nonullreturn nonnull(1) char *ulltoa(char *dst, char **endp, unsigned lon
  *         obtained by repeatedly splitting \a str against the delimiter string
  *         \a delim. The returned buffer must be free()d by the caller.
  *
- * @note The caller must only free() the returned pointer, each string
+ * @note The caller must only \a free() the returned pointer, each string
  *       in the buffer share the same memory and is consequently free()d by
  *       such call.
  */
@@ -291,7 +291,7 @@ malloclike wur char *joinstr(const char *delim, char **strings, size_t n);
 /**
  * @brief Join a \a va_list of strings on a delimiter.
  *
- * @return A dynamically allocated string that must be free()d by the caller.
+ * @return A dynamically allocated string that must be \a free()d by the caller.
  */
 malloclike wur char *joinstrvl(const char *delim, va_list va);
 
@@ -301,11 +301,13 @@ malloclike wur char *joinstrvl(const char *delim, va_list va);
  * This function expects a variable number of \a const \a char pointers
  * and joins them on a delimiter.
  *
- * @param [in] ... A variable number of \a const \a char pointers, this list
- *                 *must* be terminated by a \a NULL \a char pointer, as in:
- *                 @verbatim (char *) NULL @endverbatim.
+ * @param [in] delim Delimiter, added between each string, specifying \a NULL
+ *                   is equivalent to \a "".
+ * @param [in] ...   A variable number of \a const \a char pointers, this list
+ *                   *must* be terminated by a \a NULL \a char pointer, as in:
+ *                   @verbatim (char *) NULL @endverbatim.
  *
- * @return A dynamically allocated string that must be free()d by the caller.
+ * @return A dynamically allocated string that must be \a free()d by the caller.
  */
 malloclike wur sentinel(0) char *joinstrv(const char *delim, ...);
 
