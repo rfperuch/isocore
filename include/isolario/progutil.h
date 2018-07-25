@@ -46,6 +46,14 @@
 #include <stdnoreturn.h>
 
 /**
+ * @defgroup Program_utility Common utilities for command line tools.
+ *
+ * @brief Useful utility functions for command line tools.
+ *
+ * @{
+ */
+
+/**
  * @brief External variable referencing the name of this program.
  *
  * @note This variable is initially \a NULL, and is only set by setprogramnam().
@@ -70,12 +78,41 @@ extern const char *programnam;
  */
 nonnull(1) void setprogramnam(char *argv0);
 
-nonnull(1) void evprintf(const char *fmt, va_list va);
-
+/**
+ * @brief Error \a printf().
+ *
+ * Formats and reports an error to \a stderr.
+ * This convenience function prepends the program name to the message, and
+ * automatically appends \a strerror(\a errno) if the format string terminates
+ * with ':'. This function terminates every message with a newline.
+ *
+ * @param [in] fmt The message format string.
+ * @param [in] ... Formatting arguments.
+ */
 printflike(1, 2) nonnull(1) void eprintf(const char *fmt, ...);
 
+/**
+ * @brief \a eprintf() variant with explicit \a va_list.
+ */
+nonnull(1) void evprintf(const char *fmt, va_list va);
+
+/**
+ * @brief \a exprintf() variant with explicit \a va_list.
+ */
 noreturn nonnull(2) void exvprintf(int code, const char *fmt, va_list va);
 
+/**
+ * @brief Error \a printf() and \a exit().
+ *
+ * Behaves like \a eprintf(), once the message is printed, this function
+ * \a exit()s with the specified error code.
+ *
+ * @param [in] code Exit code.
+ * @param [in] fmt  The message format string.
+ * @param [in] ...  Format message arguments.
+ */
 noreturn printflike(2, 3) nonnull(2) void exprintf(int code, const char *fmt, ...);
+
+/** @} */
 
 #endif
