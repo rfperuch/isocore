@@ -59,7 +59,7 @@ isocore = library('isocore',
     dependencies : [ m_dep, threads_dep, zlib_dep, bz2_dep, lz4_dep, lzma_dep ],
     install : true
 )
-install_subdir('include', install_dir : 'include')
+install_subdir('include', install_dir : get_option('includedir'), strip_directory : true)
 
 isocore_dep = declare_dependency(
     include_directories : incdir,
