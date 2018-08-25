@@ -1,5 +1,5 @@
 project('isocore', 'c', version : '2.31',
-                        meson_version : '>=0.45.0',
+                        meson_version : '>=0.46.0',
                         license : 'BSD3',
                         default_options : [ 'c_std=c11', 'b_ndebug=if-release' ])
 
@@ -26,7 +26,7 @@ lz4_dep = cc.find_library('lz4', required : true)
 
 incdir = include_directories('include')
 
-isocore = library('isocore',
+isocore = both_libraries('isocore',
     sources : [
         'src/bgp.c',
         'src/bgpattribs.c',
@@ -60,6 +60,15 @@ isocore = library('isocore',
     install : true
 )
 install_subdir('include', install_dir : get_option('includedir'), strip_directory : true)
+
+pkg = import('pkgconfig')
+pkg.generate(
+    name : meson.project_name(),
+    version : meson.project_version(),
+    libraries : isocore,
+    subdirs : [ 'isolario' ],
+    description : 'The Isolario project core library.'
+)
 
 isocore_dep = declare_dependency(
     include_directories : incdir,
