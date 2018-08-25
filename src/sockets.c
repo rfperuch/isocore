@@ -99,7 +99,7 @@ int setmd5key(int sd, char *md5key)
 int fsockopen(const struct sockaddr *addr, socklen_t addrlen, const char *mode, ...)
 {
     struct sockaddr *saddr = NULL;
-    socklen_t saddrlen;
+    socklen_t saddrlen = 0;  // quiet down compiler warnings (accessed only if saddr != NULL anyway)
     bool should_listen = false;
 
     int backlog = 0;
