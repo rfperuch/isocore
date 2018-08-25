@@ -217,20 +217,20 @@ static int io_zerror(io_rw_t *io)
 static int io_zclose(io_rw_t *io)
 {
     io_zstate *z  = io_getstate(io);
-    if (unlikely(z->err != Z_OK))
-        return 0;
-
     z_stream *str = &z->stream;
 
-    int err;
+    int err = z->err;  // function's result
     switch (z->mode) {
     case 'r':
         inflateEnd(str);
         break;
     case 'w':
-        err = deflate(str, Z_FINISH);
-        if (err == Z_STREAM_END)
-            write(z->fd, z->buf, z->bufsiz - str->avail_out);
+        if (err == 0) {  // don't attempt to finalize write upon previous error
+            int res = deflate(str, Z_FINISH);
+            int n = z->bufsiz - str->avail_out;
+            if (res == Z_STREAM_END && write(z->fd, z->buf, n) != n)
+                err = Z_ERRNO;
+        }
 
         deflateEnd(str);
         break;
@@ -239,7 +239,9 @@ static int io_zclose(io_rw_t *io)
         break;
     }
 
-    err = close(z->fd);
+    if (close(z->fd) != 0)
+        err = Z_ERRNO;
+
     free(io);
     return err;
 }
