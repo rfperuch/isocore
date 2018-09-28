@@ -220,7 +220,7 @@ namespace isolario {
 
     class json_dec {
     public:
-        explicit json_dec(const char* text = nullptr) noexcept : ptr(text), err(JSON_END) {}
+        explicit json_dec(const char* text = nullptr) noexcept : ptr(text), err(JSON_SUCCESS) {}
 
         json_dec(const json_dec&) = delete;
         json_dec& operator=(const json_dec&) = delete;
@@ -228,12 +228,14 @@ namespace isolario {
         void reset(const char* text) noexcept
         {
             ptr = text;
+            err = JSON_SUCCESS;
             tok.clear();
         }
 
         bool next_token(json_tok& dest) noexcept
         {
             if (!ptr) {
+                err = JSON_END;
                 return false;
             }
 
