@@ -64,6 +64,7 @@ namespace isolario
         z_format format;  ///< Z compression format.
         int compression;  ///< Only meaningful for \a io_access::write, compression level [1-9]
         int window_bits;  ///< Only meaningful for \a io_access::write, sensible range: [8, 15]
+        inline static constexpr const char *extension = ".gz";
 
         constexpr z_params() noexcept
             : io_params(), format(z_format::rfc1952), compression(-1), window_bits(15)
@@ -76,6 +77,7 @@ namespace isolario
         int verbosity;    ///< Verbosity level [0-9]
         int work_factor;  ///< Only meaningful for \a io_access::write, BZ2 work factor
         bool small_flag;  ///< Only meaningful for \a io_access::read, BZ2 small flag
+        inline static constexpr const char *extension = ".bz2";
 
         constexpr bz2_params() noexcept
             : io_params(), compression(9), verbosity(0), work_factor(0), small_flag(false)
@@ -93,6 +95,7 @@ namespace isolario
         lzma_checksum checksum;      ///< Only meaningful for \a io_access::write, checksum algorithm used for data integrity.
         std::uint64_t memory_usage;  ///< Only meaningful for \a io_access::read, decoding process memory usage.
         bool extreme_preset;         ///< Only meaningful for \a io_access::write, extreme preset for data compression.
+        inline static constexpr const char *extension = ".xz";
 
         constexpr xz_params() noexcept
             : io_params(), compression(6), checksum(lzma_checksum::crc64), memory_usage(~0ull), extreme_preset(false)
@@ -102,6 +105,7 @@ namespace isolario
 
     struct lz4_params : io_params {
         int compression;
+        inline static constexpr const char *extension = ".lz4";
 
         constexpr lz4_params() noexcept
             : io_params(), compression(0) {}
@@ -147,7 +151,7 @@ namespace isolario
             ptr = &buf;
         }
 
-        bool fd_open(const char *name, io_access access)
+        bool fd_open(const char *name, io_access access = io_access::read)
         {
             close();
 
@@ -169,7 +173,7 @@ namespace isolario
             ptr = &buf;
         }
 
-        bool file_open(const char *name, io_access access) noexcept
+        bool file_open(const char *name, io_access access = io_access::read) noexcept
         {
             close();
 
