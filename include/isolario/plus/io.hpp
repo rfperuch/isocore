@@ -289,12 +289,16 @@ namespace isolario
 
         explicit operator bool() const noexcept { return is_open() && ptr->error(ptr) == 0; }
 
-        void close() noexcept
+        bool close() noexcept
         {
+            bool ok = true;
             if (is_open()) {
-                ptr->close(ptr);
+                if (ptr->close(ptr) != 0) {
+                    ok = false;
+                }
                 ptr = nullptr;
             }
+            return ok;
         }
 
         ~io_rw() { close(); }
