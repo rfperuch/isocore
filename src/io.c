@@ -176,14 +176,14 @@ static size_t io_zread(io_rw_t *io, void *dst, size_t n)
 
 static size_t io_zwrite(io_rw_t *io, const void *src, size_t n)
 {
-    io_zstate *z  = io_getstate(io);
+    io_zstate *z = io_getstate(io);
 
     if (unlikely(z->err != Z_OK))
         return 0;
 
     z_stream *str = &z->stream;
 
-    str->next_in  = (void *) src;
+    str->next_in = (void *)src;
     str->avail_in = n;
     while (str->avail_in > 0) {
         if (str->avail_out == 0) {
@@ -193,7 +193,7 @@ static size_t io_zwrite(io_rw_t *io, const void *src, size_t n)
                 break;
             }
 
-            str->next_out  = z->buf;
+            str->next_out = z->buf;
             str->avail_out = z->bufsiz;
         }
 
@@ -216,27 +216,27 @@ static int io_zerror(io_rw_t *io)
 
 static int io_zclose(io_rw_t *io)
 {
-    io_zstate *z  = io_getstate(io);
+    io_zstate *z = io_getstate(io);
     z_stream *str = &z->stream;
 
     int err = z->err;  // function's result
     switch (z->mode) {
-    case 'r':
-        inflateEnd(str);
-        break;
-    case 'w':
-        if (err == 0) {  // don't attempt to finalize write upon previous error
-            int res = deflate(str, Z_FINISH);
-            int n = z->bufsiz - str->avail_out;
-            if (res == Z_STREAM_END && write(z->fd, z->buf, n) != n)
-                err = Z_ERRNO;
-        }
+        case 'r':
+            inflateEnd(str);
+            break;
+        case 'w':
+            if (err == 0) {  // don't attempt to finalize write upon previous error
+                int res = deflate(str, Z_FINISH);
+                int n = z->bufsiz - str->avail_out;
+                if (res == Z_STREAM_END && write(z->fd, z->buf, n) != n)
+                    err = Z_ERRNO;
+            }
 
-        deflateEnd(str);
-        break;
-    default:
-        assert(false);
-        break;
+            deflateEnd(str);
+            break;
+        default:
+            assert(false);
+            break;
     }
 
     if (close(z->fd) != 0)
@@ -258,7 +258,7 @@ io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...)
     if (unlikely(!io))
         return NULL;
 
-    io->read  = io_zread;
+    io->read = io_zread;
     io->write = io_zwrite;
     io->error = io_zerror;
     io->close = io_zclose;
@@ -266,33 +266,35 @@ io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...)
     va_list va;
     va_start(va, mode);
 
-    z         = io_getstate(io);
-    z->fd     = fd;
-    z->err    = 0;
-    z->mode   = *mode++;
+    z = io_getstate(io);
+    z->fd = fd;
+    z->err = 0;
+    z->mode = *mode++;
     z->bufsiz = bufsiz;
 
     int compression = Z_DEFAULT_COMPRESSION;
     int wbits = 15;
     switch (z->mode) {
-    case 'r':
-        mode++;
-        break;
-    case 'w':
-        if (*mode == '*') {
-            compression = va_arg(va, int);
+        case 'r':
             mode++;
-        } else if (isdigit((unsigned char) *mode)) {
-            compression = atoi(mode);
+            break;
+        case 'w':
+            if (*mode == '*') {
+                compression = va_arg(va, int);
+                mode++;
+            } else if (isdigit((unsigned char)*mode)) {
+                compression = atoi(mode);
 
-            do mode++; while (isdigit((unsigned char) *mode));
-        }
+                do
+                    mode++;
+                while (isdigit((unsigned char)*mode));
+            }
 
-        break;
-    default:
-        va_end(va);
-        errno = EINVAL;
-        goto fail;
+            break;
+        default:
+            va_end(va);
+            errno = EINVAL;
+            goto fail;
     }
 
     // normalize compression level
@@ -305,28 +307,30 @@ io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...)
         if (*mode == '*') {
             wbits = va_arg(va, int);
             mode++;
-        } else if (isdigit((unsigned char) *mode)) {
+        } else if (isdigit((unsigned char)*mode)) {
             wbits = atoi(mode);
 
-            do mode++; while (isdigit((unsigned char) *mode));
+            do
+                mode++;
+            while (isdigit((unsigned char)*mode));
         }
     }
 
     // normalize window bits
     wbits = clamp(wbits, 8, 15);
     switch (*mode) {
-    case 'd':
-        // use the original deflate format RFC 1951
-        wbits = -wbits;
-        break;
-    case 'z':
-        // use the zlib format RFC 1950
-        break;
-    case 'g':
-    default:
-        // support gzip compression (default) RFC 1952
-        wbits += 16;
-        break;
+        case 'd':
+            // use the original deflate format RFC 1951
+            wbits = -wbits;
+            break;
+        case 'z':
+            // use the zlib format RFC 1950
+            break;
+        case 'g':
+        default:
+            // support gzip compression (default) RFC 1952
+            wbits += 16;
+            break;
     }
 
     va_end(va);
@@ -341,7 +345,7 @@ io_rw_t *io_zopen(int fd, size_t bufsiz, const char *mode, ...)
     } else {
         err = deflateInit2(str, compression, Z_DEFLATED, wbits, 8, Z_DEFAULT_STRATEGY);
 
-        str->next_out  = z->buf;
+        str->next_out = z->buf;
         str->avail_out = z->bufsiz;
     }
 
@@ -372,9 +376,9 @@ static size_t io_bz2read(io_rw_t *io, void *dst, size_t n)
     if (unlikely(bz->err != BZ_OK))
         return 0;
 
-    bz_stream *str  = &bz->stream;
+    bz_stream *str = &bz->stream;
 
-    str->next_out  = dst;
+    str->next_out = dst;
     str->avail_out = n;
     while (str->avail_out > 0) {
         if (str->avail_in == 0) {
@@ -386,7 +390,7 @@ static size_t io_bz2read(io_rw_t *io, void *dst, size_t n)
             if (rd == 0)
                 break;  // EOF
 
-            str->next_in  = bz->buf;
+            str->next_in = bz->buf;
             str->avail_in = rd;
         }
 
@@ -409,9 +413,9 @@ static size_t io_bz2write(io_rw_t *io, const void *src, size_t n)
     if (unlikely(bz->err != BZ_OK))
         return 0;
 
-    bz_stream *str  = &bz->stream;
+    bz_stream *str = &bz->stream;
 
-    str->next_in  = (char *) src;
+    str->next_in = (char *)src;
     str->avail_in = n;
     while (str->avail_in) {
         if (str->avail_out == 0) {
@@ -421,12 +425,12 @@ static size_t io_bz2write(io_rw_t *io, const void *src, size_t n)
                 break;
             }
 
-            str->next_out  = bz->buf;
+            str->next_out = bz->buf;
             str->avail_out = bz->bufsiz;
         }
 
         int err = BZ2_bzCompress(str, BZ_RUN);
-        if (err != BZ_OK)  {
+        if (err != BZ_OK) {
             bz->err = err;
             break;
         }
@@ -456,7 +460,7 @@ static void io_bz2finish(io_bz2state *bz)
                 return;
             }
 
-            str->next_out  = bz->buf;
+            str->next_out = bz->buf;
             str->avail_out = bz->bufsiz;
         }
 
@@ -497,14 +501,14 @@ io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...)
         bufsiz = BUFSIZ;
 
     if (unlikely(bufsiz > INT_MAX))
-        bufsiz = INT_MAX; // restrict to signed values for Unix ssize_t
+        bufsiz = INT_MAX;  // restrict to signed values for Unix ssize_t
 
     io_bz2state *bz;
     io_rw_t *io = malloc(io_getsize(sizeof(*bz) + bufsiz));
     if (unlikely(!io))
         return NULL;
 
-    io->read  = io_bz2read;
+    io->read = io_bz2read;
     io->write = io_bz2write;
     io->error = io_bz2error;
     io->close = io_bz2close;
@@ -512,10 +516,10 @@ io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...)
     va_list va;
     va_start(va, mode);
 
-    bz         = io_getstate(io);
-    bz->fd     = fd;
-    bz->err    = 0;
-    bz->mode   = *mode++;
+    bz = io_getstate(io);
+    bz->fd = fd;
+    bz->err = 0;
+    bz->mode = *mode++;
     bz->bufsiz = bufsiz;
 
     bz_stream *str = &bz->stream;
@@ -528,39 +532,43 @@ io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...)
     int factor = 0;
 
     switch (bz->mode) {
-    case 'r':
-        if (*mode == '-') {
-            small = true;
-            mode++;
-        }
+        case 'r':
+            if (*mode == '-') {
+                small = true;
+                mode++;
+            }
 
-        break;
-    case 'w':
-        if (*mode == '*') {
-            compression = va_arg(va, int);
-            mode++;
-        } else if (isdigit(*mode)) {
-            compression = atoi(mode);
-            do mode++; while (isdigit(*mode));
-        }
-
-        if (*mode == '+') {
-            mode++;
+            break;
+        case 'w':
             if (*mode == '*') {
-                factor = va_arg(va, int);
+                compression = va_arg(va, int);
                 mode++;
             } else if (isdigit(*mode)) {
-                factor = atoi(mode);
-                do mode++; while (isdigit(*mode));
+                compression = atoi(mode);
+                do
+                    mode++;
+                while (isdigit(*mode));
             }
-        }
 
-        break;
-    default:
-        // bad mode string
-        va_end(va);
-        errno = EINVAL;
-        goto fail;
+            if (*mode == '+') {
+                mode++;
+                if (*mode == '*') {
+                    factor = va_arg(va, int);
+                    mode++;
+                } else if (isdigit(*mode)) {
+                    factor = atoi(mode);
+                    do
+                        mode++;
+                    while (isdigit(*mode));
+                }
+            }
+
+            break;
+        default:
+            // bad mode string
+            va_end(va);
+            errno = EINVAL;
+            goto fail;
     }
 
     if (*mode == 'v') {
@@ -575,8 +583,8 @@ io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...)
 
     // normalize arguments for BZ2 (silently ignore bad values)
     compression = clamp(compression, 1, 9);
-    verbosity   = clamp(verbosity, 0, 4);
-    factor      = clamp(factor, 0, 255);
+    verbosity = clamp(verbosity, 0, 4);
+    factor = clamp(factor, 0, 255);
 
     int err;
     if (bz->mode == 'r') {
@@ -584,7 +592,7 @@ io_rw_t *io_bz2open(int fd, size_t bufsiz, const char *mode, ...)
     } else {
         err = BZ2_bzCompressInit(str, compression, verbosity, factor);
 
-        str->next_out  = bz->buf;
+        str->next_out = bz->buf;
         str->avail_out = bufsiz;
     }
     if (unlikely(err != BZ_OK)) {
@@ -650,7 +658,7 @@ static size_t io_xzwrite(io_rw_t *io, const void *src, size_t n)
 
     lzma_stream *str = &xz->stream;
 
-    str->next_in  = (void *) src;
+    str->next_in = (void *)src;
     str->avail_in = n;
     while (str->avail_in > 0) {
         if (str->avail_out == 0) {
@@ -660,7 +668,7 @@ static size_t io_xzwrite(io_rw_t *io, const void *src, size_t n)
                 break;
             }
 
-            str->next_out  = xz->buf;
+            str->next_out = xz->buf;
             str->avail_out = xz->bufsiz;
         }
 
@@ -687,24 +695,29 @@ static int io_xzclose(io_rw_t *io)
     lzma_stream *str = &xz->stream;
 
     switch (xz->mode) {
-    case 'w':
-        if (err == LZMA_OK) {
-            // flush LZMA to disk
-            err = lzma_code(str, LZMA_FINISH);
-            if (err == LZMA_STREAM_END) {
-                ssize_t n = xz->bufsiz - str->avail_out;
-                if (write(xz->fd, xz->buf, n) != n)
-                    err = errno;
-            }
-        }
+        case 'w':
+            while (err == LZMA_OK) {
+                // flush LZMA to disk
+                err = lzma_code(str, LZMA_FINISH);
+                if (err == LZMA_STREAM_END || err == LZMA_OK) {
+                    ssize_t n = xz->bufsiz - str->avail_out;
+                    if (write(xz->fd, xz->buf, n) != n)
+                        err = errno;
 
-        // fallthrough
-    case 'r':
-        lzma_end(str);
-        break;
-    default:
-        assert(false);
-        break;
+                    str->next_out = xz->buf;
+                    str->avail_out = xz->bufsiz;
+                }
+            }
+            if (err == LZMA_STREAM_END)
+                err = LZMA_OK;  // flush was successful, make error code consistent with read logic
+
+            // fallthrough
+        case 'r':
+            lzma_end(str);
+            break;
+        default:
+            assert(false);
+            break;
     }
 
     if (close(xz->fd) != 0)
@@ -726,15 +739,15 @@ io_rw_t *io_xzopen(int fd, size_t bufsiz, const char *mode, ...)
     if (unlikely(!io))
         return NULL;
 
-    io->read  = io_xzread;
+    io->read = io_xzread;
     io->write = io_xzwrite;
     io->error = io_xzerror;
     io->close = io_xzclose;
 
-    xz         = io_getstate(io);
-    xz->fd     = fd;
-    xz->err    = LZMA_OK;
-    xz->mode   = *mode++;
+    xz = io_getstate(io);
+    xz->fd = fd;
+    xz->err = LZMA_OK;
+    xz->mode = *mode++;
     xz->bufsiz = bufsiz;
 
     va_list va;
@@ -742,67 +755,71 @@ io_rw_t *io_xzopen(int fd, size_t bufsiz, const char *mode, ...)
     va_start(va, mode);
     uint32_t compression = 6;
     switch (xz->mode) {
-    case 'r':
-        break;
+        case 'r':
+            break;
 
-    case 'w':
-        if (isdigit((unsigned char) *mode)) {
-            compression = atoi(mode);
+        case 'w':
+            if (isdigit((unsigned char)*mode)) {
+                compression = atoi(mode);
 
-            do mode++; while (isdigit((unsigned char) *mode));
-        } else if (*mode == '*') {
-            compression = va_arg(va, int);
+                do
+                    mode++;
+                while (isdigit((unsigned char)*mode));
+            } else if (*mode == '*') {
+                compression = va_arg(va, int);
 
-            mode++;
-        }
-        break;
+                mode++;
+            }
+            break;
 
-    default:
-        va_end(va);
-        goto fail;
+        default:
+            va_end(va);
+            goto fail;
     }
 
     // parse optional arguments
     char c;
-    uint32_t presets  = 0;
-    uint32_t flags    = 0;
+    uint32_t presets = 0;
+    uint32_t flags = 0;
     uint64_t memusage = UINT64_MAX;
-    lzma_check check  = LZMA_CHECK_CRC64;
+    lzma_check check = LZMA_CHECK_CRC64;
     while ((c = *mode++) != '\0') {
         switch (c) {
-        case 'e':
-            presets |= LZMA_PRESET_EXTREME;
-            break;
-        case '-':
-            flags |= LZMA_IGNORE_CHECK;
-            check = LZMA_CHECK_NONE;
-            break;
-        case 'c':
-            check = LZMA_CHECK_CRC32;
-            break;
-        case 'C':
-            check = LZMA_CHECK_CRC64;
-            break;
-        case 's':
-            check = LZMA_CHECK_SHA256;
-            break;
-        case '+':
-            // explicit default checksum settings
-            flags &= ~LZMA_IGNORE_CHECK;
-            check = LZMA_CHECK_CRC64;
-            break;
-        case 'm':
-            if (*mode == '*') {
-                memusage = va_arg(va, uint64_t);
-            } else if (isdigit((unsigned char) *mode)) {
-                memusage = atoll(mode);
+            case 'e':
+                presets |= LZMA_PRESET_EXTREME;
+                break;
+            case '-':
+                flags |= LZMA_IGNORE_CHECK;
+                check = LZMA_CHECK_NONE;
+                break;
+            case 'c':
+                check = LZMA_CHECK_CRC32;
+                break;
+            case 'C':
+                check = LZMA_CHECK_CRC64;
+                break;
+            case 's':
+                check = LZMA_CHECK_SHA256;
+                break;
+            case '+':
+                // explicit default checksum settings
+                flags &= ~LZMA_IGNORE_CHECK;
+                check = LZMA_CHECK_CRC64;
+                break;
+            case 'm':
+                if (*mode == '*') {
+                    memusage = va_arg(va, uint64_t);
+                } else if (isdigit((unsigned char)*mode)) {
+                    memusage = atoll(mode);
 
-                do mode++; while (isdigit((unsigned char) *mode));
-            }
+                    do
+                        mode++;
+                    while (isdigit((unsigned char)*mode));
+                }
 
-            break;
-        default:
-            break;
+                break;
+            default:
+                break;
         }
     }
 
@@ -821,7 +838,7 @@ io_rw_t *io_xzopen(int fd, size_t bufsiz, const char *mode, ...)
     } else {
         err = lzma_easy_encoder(str, compression | presets, check);
 
-        str->next_out  = xz->buf;
+        str->next_out = xz->buf;
         str->avail_out = xz->bufsiz;
     }
 
@@ -869,7 +886,7 @@ static LZ4F_errorCode_t io_lz4begincompress(io_lz4state *lz, const LZ4F_preferen
         return hdrsiz;
     }
 
-    lz->cbufptr   += hdrsiz;
+    lz->cbufptr += hdrsiz;
     lz->cbufavail -= hdrsiz;
     return lz->err;
 }
@@ -884,7 +901,7 @@ static ssize_t io_lz4flush(io_lz4state *lz)
         return -1;
     }
 
-    lz->cbufptr   = &lz->buf[lz->bufsiz];
+    lz->cbufptr = &lz->buf[lz->bufsiz];
     lz->cbufavail = lz->cbufsiz;
     return n;
 }
@@ -898,11 +915,11 @@ static ssize_t io_lz4docompress(io_lz4state *lz)
     }
 
     lz->cbufavail -= cn;
-    lz->cbufptr   += cn;
+    lz->cbufptr += cn;
 
     ssize_t n = io_lz4flush(lz);
     if (likely(n >= 0)) {
-        lz->bufptr   = lz->buf;
+        lz->bufptr = lz->buf;
         lz->bufavail = lz->bufsiz;
     }
     return n;
@@ -913,7 +930,7 @@ static ssize_t io_lz4fillbuf(io_lz4state *lz)
     // LZ4 wants unconsumed data to be available to subsequent calls
     memmove(&lz->buf[lz->bufsiz], lz->cbufptr, lz->cbufavail);
 
-    lz->cbufptr   = &lz->buf[lz->bufsiz] + lz->cbufavail;
+    lz->cbufptr = &lz->buf[lz->bufsiz] + lz->cbufavail;
     lz->cbufavail = lz->cbufsiz - lz->cbufavail;
 
     ssize_t n = read(lz->fd, lz->cbufptr, lz->cbufavail);
@@ -922,9 +939,9 @@ static ssize_t io_lz4fillbuf(io_lz4state *lz)
         return -1;
     }
     if (n == 0)
-        return 0; // FIXME EOF
+        return 0;  // FIXME EOF
 
-    lz->cbufptr   += n;
+    lz->cbufptr += n;
     lz->cbufavail -= n;
 
     size_t dstsize = lz->bufsiz;
@@ -937,9 +954,9 @@ static ssize_t io_lz4fillbuf(io_lz4state *lz)
         const unsigned char *src = &lz->buf[lz->bufsiz];
         dn = LZ4F_getFrameInfo(lz->dctx, &frame, src, &srcsize);
         if (!LZ4F_isError(dn)) {
-            src     += srcsize;
-            srcsize  = (lz->cbufsiz - lz->cbufavail) - srcsize;
-            dstsize  = lz->bufsiz;
+            src += srcsize;
+            srcsize = (lz->cbufsiz - lz->cbufavail) - srcsize;
+            dstsize = lz->bufsiz;
 
             dn = LZ4F_decompress(lz->dctx, lz->buf, &dstsize, src, &srcsize, NULL);
         }
@@ -949,10 +966,10 @@ static ssize_t io_lz4fillbuf(io_lz4state *lz)
         return -1;
     }
 
-    lz->cbufptr   += srcsize;
+    lz->cbufptr += srcsize;
     lz->cbufavail -= srcsize;
 
-    lz->bufptr   = lz->buf;
+    lz->bufptr = lz->buf;
     lz->bufavail = dstsize;
     return n;
 }
@@ -965,15 +982,15 @@ static size_t io_lz4read(io_rw_t *io, void *dst, size_t n)
         return 0;
 
     unsigned char *ptr = dst;
-    size_t avail       = n;
+    size_t avail = n;
     while (avail > 0) {
-        size_t size = min(avail, (size_t) lz->bufavail);
+        size_t size = min(avail, (size_t)lz->bufavail);
         memcpy(ptr, lz->bufptr, size);
 
-        ptr   += size;
+        ptr += size;
         avail -= size;
 
-        lz->bufptr   += size;
+        lz->bufptr += size;
         lz->bufavail -= size;
 
         if (lz->bufavail == 0 && io_lz4fillbuf(lz) <= 0)
@@ -991,17 +1008,17 @@ static size_t io_lz4write(io_rw_t *io, const void *src, size_t n)
         return 0;
 
     const unsigned char *ptr = src;
-    size_t avail             = n;
+    size_t avail = n;
     while (avail > 0) {
-        size_t size = min(avail, (size_t) lz->bufavail);
+        size_t size = min(avail, (size_t)lz->bufavail);
         memcpy(lz->bufptr, ptr, size);
 
-        lz->bufptr   += size;
+        lz->bufptr += size;
         lz->bufavail -= size;
         if (io_lz4docompress(lz) < 0)
             break;
 
-        ptr   += size;
+        ptr += size;
         avail -= size;
     }
     return n - avail;
@@ -1055,27 +1072,26 @@ io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode, ...)
         bufsiz = LZ4F_HEADER_SIZE_MAX;  // at least enough room for LZ4 header
 
     LZ4F_preferences_t prefs = {
-        .frameInfo = { .frameType = LZ4F_frame }
-    };
+        .frameInfo = {.frameType = LZ4F_frame}};
 
     va_list va;
     va_start(va, mode);
 
     int rw = *mode++;
     switch (rw) {
-    case 'r':
-        break;
-    case 'w':
-        if (*mode == '*')
-            prefs.compressionLevel = va_arg(va, int);
-        else
-            prefs.compressionLevel = atoi(mode);
+        case 'r':
+            break;
+        case 'w':
+            if (*mode == '*')
+                prefs.compressionLevel = va_arg(va, int);
+            else
+                prefs.compressionLevel = atoi(mode);
 
-        break;
-    default:
-        va_end(va);
-        errno = EINVAL;
-        return NULL;
+            break;
+        default:
+            va_end(va);
+            errno = EINVAL;
+            return NULL;
     }
     va_end(va);
 
@@ -1086,25 +1102,25 @@ io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode, ...)
     if (unlikely(!io))
         return NULL;
 
-    io->read  = io_lz4read;
+    io->read = io_lz4read;
     io->write = io_lz4write;
     io->error = io_lz4error;
     io->close = io_lz4close;
 
-    lz            = io_getstate(io);
-    lz->fd        = fd;
-    lz->err       = 0;
-    lz->bufptr    = lz->buf;
-    lz->cbufptr   = &lz->buf[bufsiz];
-    lz->bufavail  = bufsiz;
-    lz->bufsiz    = bufsiz;
-    lz->cbufsiz   = bound;
+    lz = io_getstate(io);
+    lz->fd = fd;
+    lz->err = 0;
+    lz->bufptr = lz->buf;
+    lz->cbufptr = &lz->buf[bufsiz];
+    lz->bufavail = bufsiz;
+    lz->bufsiz = bufsiz;
+    lz->cbufsiz = bound;
     lz->cbufavail = bound;
-    lz->cctx      = NULL;
-    lz->dctx      = NULL;
+    lz->cctx = NULL;
+    lz->dctx = NULL;
     if (rw == 'r') {
-        lz->bufavail = 0; // FIXME
-        lz->cbufavail = 0; // FIXME
+        lz->bufavail = 0;   // FIXME
+        lz->cbufavail = 0;  // FIXME
         lz->err = LZ4F_createDecompressionContext(&lz->dctx, LZ4F_VERSION);
     } else {
         lz->err = io_lz4begincompress(lz, &prefs);
@@ -1116,4 +1132,3 @@ io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode, ...)
 
     return io;
 }
-
