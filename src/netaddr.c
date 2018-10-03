@@ -171,3 +171,80 @@ char* naddrtos(const netaddr_t* ip, int mode)
     return buf;
 }
 
+int isnaddrreserved(const netaddr_t *ip)
+{
+    if (ip->family == AF_INET6) {
+        if (ip->bitlen == 0)
+            return 1;
+
+        uint16_t a = ip->u16[0];
+        a = frombig16(a);
+
+        uint16_t b = ip->u16[1];
+        b = frombig16(b);
+
+        // 2000::/3 is the only one routable
+        if (a < 8192 || a > 16383)
+            return 1;
+
+        // 2001:0000::/23
+        if (a == 8193)
+            if (b <= 511)
+                return 1;
+
+        // 2001:db8::/32
+        if (a == 8193 && b == 3512)
+            return 1;
+
+        // 2001:10::/28
+        if (a == 8193)
+            if (b >= 16 && b <= 31)
+                return 1;
+
+        // 2002::/16
+        if (a == 8194)
+            return 1;
+    } else {
+    
+        if (ip->bitlen == 0)
+            return 1;
+
+        unsigned char a = ip->bytes[0];
+        unsigned char b = ip->bytes[1];
+        unsigned char c = ip->bytes[2];
+
+        if (a == 10 || a == 127 || a >= 224)
+            return 1;
+
+        if (a == 100)
+            if (b >= 64 && b <= 127)
+                return 1;
+
+        if (a == 169 && b == 254)
+            return 1;
+
+        if (a == 172)
+            if (b >= 16 && b <= 31)
+                return 1;
+
+        if (a == 192 && b == 0 && c == 2)
+            return 1;
+
+        if (a == 192 && b == 88 && c == 99)
+            return 1;
+
+        if (a == 192 && b == 0 && c == 0)
+            return 1;
+
+        if (a == 198)
+            if (b == 18 || b == 19)
+                return 1;
+
+        if (a == 198 && b == 51 && c == 100)
+            return 1;
+
+        if (a == 203 && b == 0 && c == 113)
+            return 1;
+    }
+    return 0;
+}

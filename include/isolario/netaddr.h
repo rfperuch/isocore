@@ -332,6 +332,18 @@ inline purefunc nonnull(1, 2) int naddreq(const netaddr_t *a, const netaddr_t *b
  * @note The returned pointer refers to a possibly statically allocated
  *       zone managed by the library and must not be free()d.
  */
-nonullreturn char *naddrtos(const netaddr_t *ip, int mode);
+nonullreturn nonnull(1) char *naddrtos(const netaddr_t *ip, int mode);
+
+/**
+ * @brief Determines if the address is reserved according to IANA specs
+ * 
+ * http://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml
+ * http://www.iana.org/assignments/ipv4-address-space/ipv4-address-space.xhtml
+ * [2015-05-11]
+ * 
+ * @return 1 if the address is reserved
+ *
+ */
+purefunc nonnull(1) int isnaddrreserved(const netaddr_t *ip);
 
 #endif
