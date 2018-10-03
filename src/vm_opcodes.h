@@ -41,6 +41,7 @@ static const void *const vm_opcode_table[256] = {
     // opcode table:
     [FOPC_NOP]          = &&EX_NOP,
     [FOPC_BLK]          = &&EX_BLK,
+    [FOPC_ENDBLK]       = &&EX_ENDBLK,
     [FOPC_LOAD]         = &&EX_LOAD,
     [FOPC_LOADK]        = &&EX_LOADK,
     [FOPC_UNPACK]       = &&EX_UNPACK,
@@ -50,6 +51,8 @@ static const void *const vm_opcode_table[256] = {
     [FOPC_NOT]          = &&EX_NOT,
     [FOPC_CPASS]        = &&EX_CPASS,
     [FOPC_CFAIL]        = &&EX_CFAIL,
+
+    [FOPC_SETTLE]       = &&EX_SETTLE,
 
     [FOPC_EXACT]        = &&EX_EXACT,
     [FOPC_SUBNET]       = &&EX_SUBNET,
@@ -130,6 +133,6 @@ static const void *const vm_opcode_table[256] = {
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
-    &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL
+    &&EX_SIGILL, &&EX_SIGILL
 };
 

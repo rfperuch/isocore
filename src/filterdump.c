@@ -42,12 +42,14 @@ enum {
     ARG_K,
     ARG_FN,
     ARG_TRIE,
-    ARG_ACC   // direct packet accessor
+    ARG_ACC_NETS,  // NLRI/WITHDRAWN
+    ARG_ACC_PATH   // AS/AS4/REAL AS path
 };
 
 static const char *const vm_opstr_table[256] = {
     [FOPC_NOP]          = "NOP",
     [FOPC_BLK]          = "BLK",
+    [FOPC_ENDBLK]       = "ENDBLK",
     [FOPC_LOAD]         = "LOAD",
     [FOPC_LOADK]        = "LOADK",
     [FOPC_UNPACK]       = "UNPACK",
@@ -57,6 +59,7 @@ static const char *const vm_opstr_table[256] = {
     [FOPC_NOT]          = "NOT",
     [FOPC_CPASS]        = "CPASS",
     [FOPC_CFAIL]        = "CFAIL",
+    [FOPC_SETTLE]       = "SETTLE",
     [FOPC_EXACT]        = "EXACT",
     [FOPC_SUBNET]       = "SUBNET",
     [FOPC_SUPERNET]     = "SUPERNET",
@@ -80,7 +83,8 @@ static const char *const vm_opstr_table[256] = {
 
 static const int8_t vm_oparg_table[OPCODES_COUNT] = {
     [FOPC_NOP]          = ARG_NONE,
-    [FOPC_BLK]          = ARG_DIRECT,
+    [FOPC_BLK]          = ARG_NONE,
+    [FOPC_ENDBLK]       = ARG_NONE,
     [FOPC_LOAD]         = ARG_DIRECT,
     [FOPC_LOADK]        = ARG_K,
     [FOPC_UNPACK]       = ARG_NONE,
@@ -90,17 +94,18 @@ static const int8_t vm_oparg_table[OPCODES_COUNT] = {
     [FOPC_NOT]          = ARG_NONE,
     [FOPC_CPASS]        = ARG_NONE,
     [FOPC_CFAIL]        = ARG_NONE,
-    [FOPC_EXACT]        = ARG_ACC,
-    [FOPC_SUBNET]       = ARG_ACC,
-    [FOPC_SUPERNET]     = ARG_ACC,
-    [FOPC_RELATED]      = ARG_ACC,
+    [FOPC_SETTLE]       = ARG_NONE,
+    [FOPC_EXACT]        = ARG_ACC_NETS,
+    [FOPC_SUBNET]       = ARG_ACC_NETS,
+    [FOPC_SUPERNET]     = ARG_ACC_NETS,
+    [FOPC_RELATED]      = ARG_ACC_NETS,
     [FOPC_PFXCONTAINS]  = ARG_K,
     [FOPC_ADDRCONTAINS] = ARG_K,
     [FOPC_ASCONTAINS]   = ARG_K,
-    [FOPC_ASPMATCH]     = ARG_ACC,
-    [FOPC_ASPSTARTS]    = ARG_ACC,
-    [FOPC_ASPENDS]      = ARG_ACC,
-    [FOPC_ASPEXACT]     = ARG_ACC,
+    [FOPC_ASPMATCH]     = ARG_ACC_PATH,
+    [FOPC_ASPSTARTS]    = ARG_ACC_PATH,
+    [FOPC_ASPENDS]      = ARG_ACC_PATH,
+    [FOPC_ASPEXACT]     = ARG_ACC_PATH,
     [FOPC_CALL]         = ARG_FN,
     [FOPC_SETTRIE]      = ARG_TRIE,
     [FOPC_SETTRIE6]     = ARG_TRIE,
@@ -166,6 +171,61 @@ static void explain_function(FILE *f, int colors, int fn)
 
     if (name)
         comment(f, COMM_INFO, colors, "calls: %s", name);
+}
+
+static void explain_access(FILE *f, int colors, int access_type, int mask)
+{
+    char buf[256];
+
+    buf[0] = '\0';
+    if (mask & FOPC_ACCESS_SETTLE) {
+        strcat(buf, "SETTLE+");
+        mask &= ~FOPC_ACCESS_SETTLE;
+    }
+    switch (access_type) {
+    case ARG_ACC_NETS:
+        if (mask & FOPC_ACCESS_ALL) {
+            strcat(buf, "ALL_");
+            mask &= ~FOPC_ACCESS_ALL;
+        }
+        if (bitpopcnt(mask) != 1)
+            break; // bad access flags (must have exactly one between NLRI and WITHDRAWN)
+
+        if (mask & FOPC_ACCESS_NLRI) {
+            strcat(buf, "NLRI");
+            mask &= ~FOPC_ACCESS_NLRI;
+        }
+        if (mask & FOPC_ACCESS_WITHDRAWN) {
+            strcat(buf, "WITHDRAWN");
+            mask &= ~FOPC_ACCESS_WITHDRAWN;
+        }
+        break;
+    case ARG_ACC_PATH:
+        if (bitpopcnt(mask) != 1)
+            break; // bad access flags (must have exactly one between AS/AS4 and REAL AS)
+        if (mask & FOPC_ACCESS_AS_PATH) {
+            strcat(buf, "AS_PATH");
+            mask &= ~FOPC_ACCESS_AS_PATH;
+        }
+        if (mask & FOPC_ACCESS_AS4_PATH) {
+            strcat(buf, "AS4_PATH");
+            mask &= ~FOPC_ACCESS_AS4_PATH;
+        }
+        if (mask & FOPC_ACCESS_REAL_AS_PATH) {
+            strcat(buf, "REAL_AS_PATH");
+            mask &= ~FOPC_ACCESS_REAL_AS_PATH;
+        }
+        break;
+    default:
+        assert(false);
+        break;
+    }
+
+    // if mask was empty or it contained errors, print error
+    if (buf[0] != '\0' && mask == 0)
+        comment(f, COMM_INFO, colors, "%s", buf);
+    else
+        comment(f, COMM_ERR, colors, "<BAD_ACCESS:%#x>", (unsigned int) mask);
 }
 
 static void explain_block(FILE *f, int colors, int pc, int codesiz, int blksize)
@@ -237,8 +297,9 @@ static int printop(FILE *f, int pc, int codesiz, bytecode_t code, const char *na
         fprintf(f, "Tr[%d]", arg);
         break;
 
-    case ARG_ACC:
-        fprintf(f, "Ac[%d]", arg);
+    case ARG_ACC_NETS:
+    case ARG_ACC_PATH:
+        fprintf(f, "Ac[%#x]", (unsigned int) arg);
         break;
 
     default:
@@ -253,6 +314,10 @@ static int printop(FILE *f, int pc, int codesiz, bytecode_t code, const char *na
     if (opcode == FOPC_CALL) {
         fputc('\t', f);
         explain_function(f, colors, arg);
+    }
+    if (mode == ARG_ACC_NETS || mode == ARG_ACC_PATH) {
+        fputc('\t', f);
+        explain_access(f, colors, mode, arg);
     }
     if (opcode == FOPC_BLK) {
         fputc('\t', f);
