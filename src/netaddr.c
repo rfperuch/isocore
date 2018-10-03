@@ -35,6 +35,10 @@ int stonaddr(netaddr_t *ip, const char *s)
         dst = &ip->sin6;
         maxbitlen = 128;
     }
+    
+    ip->bitlen = 0;
+    ip->family = AF_UNSPEC;
+    memset(&ip->sin6, 0, sizeof(ip->sin6));
 
     size_t n;
     long bitlen;
