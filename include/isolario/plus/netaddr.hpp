@@ -19,8 +19,20 @@ namespace isocore {
         IPv6_BIT_SIZE = IPv6_BYTE_SIZE * 8,
     };
     
+    enum {
+        AFI_IPv4 = 1,
+        AFI_IPv6 = 2,
+        SAFI_UNICAST = 1,
+        AF_INVALID = AF_UNSPEC,
+    };
+    
+    inline constexpr uint8_t bit_to_byte_len(uint8_t bitlen) noexcept
+    {
+        return (bitlen >> 3) + ((bitlen & 7) != 0);
+    }
+    
     class netaddr {
-    public:
+    public:        
         netaddr()
         {
             addr.bitlen = 0;
