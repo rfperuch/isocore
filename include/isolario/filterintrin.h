@@ -52,7 +52,8 @@ enum {
 
     FOPC_NOP,      ///< NOP: No operation, does nothing.
 
-    FOPC_BLK,      ///< NONE: push a new block in expressions stack.
+    FOPC_BLK,      ///< NONE: push a new block in block stack.
+    FOPC_ENDBLK,   ///< NONE: mark the end of the latest opened block.
     FOPC_LOAD,     ///< PUSH: direct value load
     FOPC_LOADK,    ///< PUSH: load from constants environment
     FOPC_UNPACK,   ///< POP-PUSH: unpack an array constant into stack.
@@ -62,6 +63,8 @@ enum {
     FOPC_NOT,      ///< POP-PUSH: pops stack topmost value, negates it and pushes it back.
     FOPC_CPASS,    ///< POP: pops topmost stack element and terminates with PASS if value is true.
     FOPC_CFAIL,    ///< POP: pops topmost stack element and terminates with FAIL if value is false.
+
+    FOPC_SETTLE,   ///< NONE: forcefully close an iteration sequence
 
     FOPC_EXACT,
         /**<
@@ -99,25 +102,19 @@ enum {
     OPCODES_COUNT
 };
 
+// operator accessors (8 bits)
 enum {
-    PKT_ACC_BAD = 0,
+    FOPC_ACCESS_SETTLE        = 1 << 7,  // General flag to rewind the iterator (equivalent to call settle from the beginning)
 
-    PKT_ACC_STACK          = 1 << 0,
+    // NLRI/Withdrawn accessors
+    FOPC_ACCESS_NLRI          = 1 << 0,
+    FOPC_ACCESS_WITHDRAWN     = 1 << 1,
+    FOPC_ACCESS_ALL           = 1 << 2,
 
-    PKT_ACC_WITHDRAWN      = 1 << 1,
-    PKT_ACC_ALL_WITHDRAWN  = 1 << 2,
-    PKT_ACC_WITHDRAWN_MASK = PKT_ACC_WITHDRAWN | PKT_ACC_ALL_WITHDRAWN,
-
-    PKT_ACC_NLRI          = 1 << 3,
-    PKT_ACC_ALL_NLRI      = 1 << 4,
-    PKT_ACC_NLRI_MASK     = PKT_ACC_NLRI | PKT_ACC_ALL_NLRI,
-
-    PKT_ACC_ALL_NETS      = PKT_ACC_ALL_WITHDRAWN | PKT_ACC_ALL_NLRI,
-    PKT_ACC_NETS_MASK     = PKT_ACC_WITHDRAWN_MASK | PKT_ACC_NLRI_MASK,
-
-    PKT_ACC_AS_PATH       = 1 << 5,
-    PKT_ACC_AS4_PATH      = 1 << 6,
-    PKT_ACC_REAL_AS_PATH  = PKT_ACC_AS_PATH | PKT_ACC_AS4_PATH
+    // AS access
+    FOPC_ACCESS_AS_PATH       = 1 << 0,
+    FOPC_ACCESS_AS4_PATH      = 1 << 1,
+    FOPC_ACCESS_REAL_AS_PATH  = 1 << 2
 };
 
 void vm_growstack(filter_vm_t *vm);
@@ -250,6 +247,25 @@ inline void vm_exec_loadk(filter_vm_t *vm, int kidx)
     vm_push(vm, &vm->kp[kidx]);
 }
 
+/// @brief Breaks from the current BLK, leaves vm->pc at the corresponding ENDBLK,
+///        vm->pc is assumed to be inside the BLK
+inline void vm_exec_break(filter_vm_t *vm)
+{
+    int nblk = 1; // encountered blocks
+
+    while (vm->pc < vm->codesiz) {
+        if (vm->code[vm->pc] == FOPC_ENDBLK)
+            nblk--;
+        if (vm->code[vm->pc] == FOPC_BLK)
+            nblk++;
+
+        if (nblk == 0)
+            break;
+
+        vm->pc++;
+    }
+}
+
 inline void vm_exec_not(filter_vm_t *vm)
 {
     stack_cell_t *cell = vm_peek(vm);
@@ -307,7 +323,8 @@ inline void vm_exec_discard(filter_vm_t *vm)
         patremoven(trie, addr);
         break;
     default:
-        vm_abort(vm, VM_SURPRISING_BYTES); // should never happen
+        vm_abort(vm, VM_SURPRISING_BYTES);  // should never happen
+        break;
     }
 }
 
@@ -370,6 +387,16 @@ inline void vm_exec_pfxcmp(filter_vm_t *vm, int kidx)
     stack_cell_t *a = vm_peek(vm);
     stack_cell_t *b = &vm->kp[kidx];
     a->value = prefixeq(&a->addr, &b->addr);
+}
+
+inline void vm_exec_settle(filter_vm_t *vm)
+{
+    if (vm->settle_func) {
+        vm->settle_func(vm->bgp);
+        vm->settle_func = NULL;
+
+        vm->access_mask = 0;
+    }
 }
 
 inline void vm_exec_all_withdrawn_insert(filter_vm_t *vm)
@@ -548,10 +575,10 @@ inline void vm_exec_nlri_accumulate(filter_vm_t *vm)
         vm_abort(vm, VM_BAD_PACKET);
 }
 
-void vm_exec_exact(filter_vm_t *vm, int acc);
-void vm_exec_subnet(filter_vm_t *vm, int acc);
-void vm_exec_supernet(filter_vm_t *vm, int acc);
-void vm_exec_related(filter_vm_t *vm, int acc);
+void vm_exec_exact(filter_vm_t *vm, int access);
+void vm_exec_subnet(filter_vm_t *vm, int access);
+void vm_exec_supernet(filter_vm_t *vm, int access);
+void vm_exec_related(filter_vm_t *vm, int access);
 
 inline void vm_exec_pfxcontains(filter_vm_t *vm, int kidx)
 {
@@ -609,10 +636,10 @@ inline void vm_exec_ascontains(filter_vm_t *vm, int kidx)
     vm_pushvalue(vm, false);
 }
 
-void vm_exec_aspmatch(filter_vm_t *vm, int acc);
-void vm_exec_aspstarts(filter_vm_t *vm, int acc);
-void vm_exec_aspends(filter_vm_t *vm, int acc);
-void vm_exec_aspexact(filter_vm_t *vm, int acc);
+void vm_exec_aspmatch(filter_vm_t *vm, int access);
+void vm_exec_aspstarts(filter_vm_t *vm, int access);
+void vm_exec_aspends(filter_vm_t *vm, int access);
+void vm_exec_aspexact(filter_vm_t *vm, int access);
 
 #endif
 

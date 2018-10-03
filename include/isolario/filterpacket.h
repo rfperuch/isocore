@@ -52,10 +52,7 @@ enum {
     BLKSTACKSIZ = 32
 };
 
-enum {
-    VM_TMPTRIE,
-    VM_TMPTRIE6
-};
+enum { VM_TMPTRIE, VM_TMPTRIE6 };
 
 enum {
     VM_FUNCS_MAX = 16,
@@ -98,11 +95,12 @@ typedef struct filter_vm_s {
     stack_cell_t *sp, *kp;  // stack and constant segment pointers
     patricia_trie_t *tries;
     filter_func_t funcs[VM_FUNCS_COUNT];
-    unsigned short flags;
+    unsigned short flags;         // general VM flags
 
     // private state
     unsigned short pc;
-    unsigned short si;    // stack index
+    unsigned short si;           // stack index
+    unsigned short access_mask;  // current packet access mask
     unsigned short ntries;
     unsigned short maxtries;
     unsigned short stacksiz;
@@ -111,7 +109,6 @@ typedef struct filter_vm_s {
     unsigned short ksiz;
     unsigned short maxk;
     unsigned short curblk;
-    unsigned short blkstack[BLKSTACKSIZ];
     stack_cell_t stackbuf[STACKBUFSIZ];
     stack_cell_t kbuf[KBUFSIZ];
     patricia_trie_t triebuf[2];
@@ -120,6 +117,7 @@ typedef struct filter_vm_s {
     unsigned int highwater;
     unsigned int dynmarker;
     unsigned int heapsiz;
+    int (*settle_func)(bgp_msg_t *); // SETTLE function (if not NULL has to be called to terminate the iteration)
     int error;
     jmp_buf except;
 } filter_vm_t;
@@ -142,8 +140,8 @@ enum {
     VM_PACKET_MISMATCH  = -9,
     VM_BAD_PACKET       = -10,
     VM_ILLEGAL_OPCODE   = -11,
-    VM_BAD_BLOCK        = -12,
-    VM_BLOCKS_OVERFLOW  = -13,
+    VM_DANGLING_BLK     = -12,
+    VM_SPURIOUS_ENDBLK  = -13,
     VM_SURPRISING_BYTES = -14,
     VM_BAD_ARRAY        = -15
 };
@@ -178,10 +176,10 @@ inline char *filter_strerror(int err)
         return "Packet corruption detected";
     case VM_ILLEGAL_OPCODE:
         return "Illegal instruction";
-    case VM_BAD_BLOCK:
-        return "BLK instruction targets out of bounds code";
-    case VM_BLOCKS_OVERFLOW:
-        return "Blocks overflow, too many nested blocks";
+    case VM_DANGLING_BLK:
+        return "Dangling BLK at execution end";
+    case VM_SPURIOUS_ENDBLK:
+        return "ENDBLK with no BLK";
     case VM_SURPRISING_BYTES:
         return "Sorry, I cannot make sense of these bytes";
     case VM_BAD_ARRAY:

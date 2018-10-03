@@ -126,8 +126,11 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
 #define EXECUTE_SIGILL  default
 #endif
 
-    if (setjmp(vm->except) != 0)
+    if (setjmp(vm->except) != 0) {
+        // TODO cleanup temporary patricias!
+        vm_exec_settle(vm);
         return vm->error;
+    }
 
     bytecode_t ip, np;
     int arg, exarg;
@@ -154,14 +157,16 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
             DISPATCH();
 
         EXECUTE(BLK):
-            arg = vm_extendarg(vm_getarg(ip), exarg);
-            if (unlikely(vm->pc + arg > vm->codesiz))
-                vm_abort(vm, VM_BAD_BLOCK);
-            if (unlikely(vm->curblk == nelems(vm->blkstack)))
-                vm_abort(vm, VM_BLOCKS_OVERFLOW);
+            vm->curblk++;
+            DISPATCH();
 
-            vm->blkstack[vm->curblk++] = vm->pc + arg;
-            exarg = 0;
+        EXECUTE(ENDBLK):
+            if (unlikely(vm->curblk == 0))
+                vm_abort(vm, VM_SPURIOUS_ENDBLK);
+
+            vm->curblk--;
+            PREDICT(CPASS); // OR chain case
+            PREDICT(NOT);   // usually at end of chain
             DISPATCH();
 
         EXECUTE(LOAD):
@@ -211,10 +216,10 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
                 if (vm->curblk == 0)
                     goto done; // no more blocks, we're done
 
-                // pop one block and go on
-                vm->pc = vm->blkstack[--vm->curblk];
+                // advance up to the next ENDBLK
+                vm_exec_break(vm);
             } else {
-                vm_pop(vm);  // discard and proceed
+                vm->si--;  // discard and proceed
             }
             DISPATCH();
 
@@ -225,38 +230,29 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
                 if (vm->curblk == 0)
                     goto done;    // no more blocks, we're done
 
-                // pop one block and see what happens
-                vm->pc = vm->blkstack[--vm->curblk];
+                // advance up to the next ENDBLK
+                vm_exec_break(vm);
             } else {
-                vm_pop(vm);  // discard and proceed
+                vm->si--;  // discard and proceed
             }
             DISPATCH();
 
         EXECUTE(ASPMATCH):
             vm_exec_aspmatch(vm, vm_getarg(ip));
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
+
         EXECUTE(ASPSTARTS):
             vm_exec_aspstarts(vm, vm_getarg(ip));
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
+
         EXECUTE(ASPENDS):
             vm_exec_aspends(vm, vm_getarg(ip));
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
+
         EXECUTE(ASPEXACT):
             vm_exec_aspexact(vm, vm_getarg(ip));
-            exarg = 0;
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
+
         EXECUTE(CALL):
             arg = vm_extendarg(vm_getarg(ip), exarg);
             if (unlikely(arg >= VM_FUNCS_COUNT))
@@ -268,59 +264,42 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
             exarg = 0;
             DISPATCH();
 
+        EXECUTE(SETTLE):
+            vm_exec_settle(vm);
+            DISPATCH();
+
         EXECUTE(EXACT):
             vm_exec_exact(vm, vm_getarg(ip));
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(SUBNET):
             vm_exec_subnet(vm, vm_getarg(ip));
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(SUPERNET):
             vm_exec_supernet(vm, vm_getarg(ip));
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(RELATED):
             vm_exec_related(vm, vm_getarg(ip));
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(PFXCONTAINS):
             arg = vm_extendarg(vm_getarg(ip), exarg);
             vm_exec_pfxcontains(vm, arg);
             exarg = 0;
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(ADDRCONTAINS):
             arg = vm_extendarg(vm_getarg(ip), exarg);
             vm_exec_addrcontains(vm, arg);
             exarg = 0;
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(ASCONTAINS):
             arg = vm_extendarg(vm_getarg(ip), exarg);
             vm_exec_ascontains(vm, arg);
             exarg = 0;
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(SETTRIE):
@@ -347,27 +326,18 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
             arg = vm_extendarg(vm_getarg(ip), exarg);
             vm_exec_addrcmp(vm, arg);
             exarg = 0;
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(PFXCMP):
             arg = vm_extendarg(vm_getarg(ip), exarg);
             vm_exec_pfxcmp(vm, arg);
             exarg = 0;
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE(ASCMP):
             arg = vm_extendarg(vm_getarg(ip), exarg);
             vm_exec_ascmp(vm, arg);
             exarg = 0;
-            PREDICT(CPASS);
-            PREDICT(CFAIL);
-            PREDICT(NOT);
             DISPATCH();
 
         EXECUTE_SIGILL:
@@ -377,6 +347,10 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
     }
 
 done:
+    vm_exec_settle(vm);
+    if (unlikely(vm->curblk > 0))
+        vm_abort(vm, VM_DANGLING_BLK);
+
     cell = vm_pop(vm);
     return cell->value != 0;
 
