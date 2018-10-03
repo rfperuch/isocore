@@ -33,7 +33,6 @@ int stonaddr(netaddr_t *ip, const char *s)
 
     if (af == AF_INET6) {
         dst = &ip->sin6;
-        dst = &ip->sin6;
         maxbitlen = 128;
     }
 
