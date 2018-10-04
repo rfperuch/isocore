@@ -29,13 +29,13 @@
 //
 
 #include <CUnit/CUnit.h>
-#include <isolario/uint128_t.h>
+#include <isolario/u128_t.h>
 #include <stdlib.h>
 
 void testu128iter(void)
 {
     int expect = 0;
-    for (uint128_t i = UINT128_ZERO; u128cmpu(i, 100) < 0; i = u128addu(i, 1)) {
+    for (u128_t i = UINT128_ZERO; u128cmpu(i, 100) < 0; i = u128addu(i, 1)) {
         CU_ASSERT(u128cmpu(i, expect) == 0);
         expect++;
     }
@@ -48,10 +48,10 @@ enum {
 
 void testu128conv(void)
 {
-    uint128_t u;
+    u128_t u;
     char *s;
 
-    uint128_t limit = u128divu(UINT128_MAX, CONV_SCALE);
+    u128_t limit = u128divu(UINT128_MAX, CONV_SCALE);
     limit = u128subu(limit, CONV_STEP);
 
     for (u = UINT128_ZERO; u128cmp(u, limit) < 0; u = u128muladdu(u, CONV_SCALE, CONV_STEP)) {

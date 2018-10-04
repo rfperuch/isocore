@@ -41,10 +41,10 @@ int main(void)
     if (!suite)
         goto error;
 
-    if (!CU_add_test(suite, "simple uint128_t iteration", testu128iter))
+    if (!CU_add_test(suite, "simple u128_t iteration", testu128iter))
         goto error;
 
-    if (!CU_add_test(suite, "uint128_t to string and string to uint128_t conversion", testu128conv))
+    if (!CU_add_test(suite, "u128_t to string and string to u128_t conversion", testu128conv))
         goto error;
 
     if (!CU_add_test(suite, "simple hexdump", testhexdump))

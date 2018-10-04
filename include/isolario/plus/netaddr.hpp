@@ -4,7 +4,7 @@
 extern "C" {
 #include <isolario/netaddr.h>
 #include <isolario/endian.h>
-//#include <isolario/uint128_t.h>
+//#include <isolario/u128_t.h>
 }
 
 #include <cstdint>
@@ -68,7 +68,7 @@ namespace isocore {
                 uint64_t *ptr = reinterpret_cast<uint64_t*>(&this->addr.sin6);
                 uint64_t upper = frombig64(*ptr++);
                 uint64_t lower = frombig64(*ptr--);
-                uint128_t num = u128from(upper, lower);
+                u128_t num = u128from(upper, lower);
                 num = u128addu(num, 1);
                 *ptr = tobig64(u128upper(num));
                 ptr++;
@@ -129,7 +129,7 @@ namespace isocore {
             return bits == 0 || (this->raw_ptr()[bytes] & b) == (p2.raw_ptr()[bytes] & b);
         }
         
-        /*uint128_t cov()
+        /*u128_t cov()
         {
         
         }*/

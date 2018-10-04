@@ -135,7 +135,7 @@ void testpatcoverage(void)
     patinsertc(&pt, "0.0.0.0/0", NULL);
     patinsertc(&pt, "8.0.0.0/8", NULL);
 
-    uint128_t coverage = patcoverage(&pt);
+    u128_t coverage = patcoverage(&pt);
     CU_ASSERT(u128cmpu(coverage, 16777216) == 0);
 
     patinsertc(&pt, "8.2.0.0/16", NULL);
@@ -154,7 +154,7 @@ void testpatcoverage(void)
     patinsertc(&pt, "2a00::/8", NULL);
 
     coverage = patcoverage(&pt);
-    uint128_t expected = u128shl(UINT128_ONE, 120);
+    u128_t expected = u128shl(UINT128_ONE, 120);
     CU_ASSERT(u128cmp(coverage, expected) == 0);
 
     patdestroy(&pt);

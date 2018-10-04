@@ -39,7 +39,7 @@
 
 #include <isolario/funcattribs.h>
 #include <isolario/netaddr.h>
-#include <isolario/uint128_t.h>
+#include <isolario/u128_t.h>
 
 enum {
     PREFIX_INSERTED,
@@ -198,7 +198,7 @@ int patisrelatedofc(const patricia_trie_t *pt, const char *cprefix);
  * @note the default route is ignored
  *
  */
-uint128_t patcoverage(const patricia_trie_t *pt);
+u128_t patcoverage(const patricia_trie_t *pt);
 
 /**
  * @brief Get the first subnets of a given prefix

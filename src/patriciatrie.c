@@ -791,9 +791,9 @@ int patisrelatedofc(const patricia_trie_t *pt, const char *cprefix)
     return patisrelatedofn(pt, &prefix);
 }
 
-uint128_t patcoverage(const patricia_trie_t *pt)
+u128_t patcoverage(const patricia_trie_t *pt)
 {
-    uint128_t coverage = UINT128_ZERO;
+    u128_t coverage = UINT128_ZERO;
 
     pnode_t *n;
     pnode_t *stack[pt->maxbitlen + 1];

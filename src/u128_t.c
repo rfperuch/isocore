@@ -30,7 +30,7 @@
 
 #include <ctype.h>
 #include <errno.h>
-#include <isolario/uint128_t.h>
+#include <isolario/u128_t.h>
 #include <isolario/util.h>
 #include <stdbool.h>
 
@@ -46,7 +46,7 @@ static int digval(int ch)
         return -1;
 }
 
-uint128_t stou128(const char *s, char **eptr, int base)
+u128_t stou128(const char *s, char **eptr, int base)
 {
     while (isspace((unsigned char) *s)) s++;
 
@@ -70,9 +70,9 @@ uint128_t stou128(const char *s, char **eptr, int base)
     }
 
     int dig;
-    uint128_t u = UINT128_ZERO;
+    u128_t u = UINT128_ZERO;
     while ((dig = digval(*s)) >= 0 && dig < base) {
-        uint128_t v = u128muladdu(u, base, dig);
+        u128_t v = u128muladdu(u, base, dig);
         if (unlikely(u128cmp(u, v) > 0)) {
             // overflow (keep going to consume all digits in string)
             errno = ERANGE;
@@ -92,31 +92,31 @@ uint128_t stou128(const char *s, char **eptr, int base)
     return u;
 }
 
-extern uint128_t u128init(uint64_t up, uint64_t lw);
+extern u128_t u128init(uint64_t up, uint64_t lw);
 
-extern uint128_t tou128(uint64_t u);
+extern u128_t tou128(uint64_t u);
 
-extern uint64_t u128upper(uint128_t u);
+extern uint64_t u128upper(u128_t u);
 
-extern uint64_t u128lower(uint128_t u);
+extern uint64_t u128lower(u128_t u);
 
-extern uint128_t u128add(uint128_t a, uint128_t b);
+extern u128_t u128add(u128_t a, u128_t b);
 
-extern uint128_t u128addu(uint128_t a, uint64_t b);
+extern u128_t u128addu(u128_t a, uint64_t b);
 
-extern uint128_t u128sub(uint128_t a, uint128_t b);
+extern u128_t u128sub(u128_t a, u128_t b);
 
-extern uint128_t u128subu(uint128_t a, uint64_t b);
+extern u128_t u128subu(u128_t a, uint64_t b);
 
-extern uint128_t u128neg(uint128_t u);
+extern u128_t u128neg(u128_t u);
 
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
-extern uint128_t u128mul(uint128_t a, uint128_t b);
+extern u128_t u128mul(u128_t a, u128_t b);
 
 #else
 
-uint128_t u128mul(uint128_t a, uint128_t b)
+u128_t u128mul(u128_t a, u128_t b)
 {
     // split values into 4 32-bit parts
     uint64_t top[4] = {
@@ -158,12 +158,12 @@ uint128_t u128mul(uint128_t a, uint128_t b)
     first32 += products[3][3] & 0xffffffff;
 
     // combines the values, taking care of carry over
-    uint128_t x = u128from(first32 << 32, 0);
-    uint128_t y = u128from(third32 >> 32, third32 << 32);
-    uint128_t z = u128from(second32, 0);
-    uint128_t w = tou128(fourth32);
+    u128_t x = u128from(first32 << 32, 0);
+    u128_t y = u128from(third32 >> 32, third32 << 32);
+    u128_t z = u128from(second32, 0);
+    u128_t w = tou128(fourth32);
 
-    uint128_t r = u128add(x, y);
+    u128_t r = u128add(x, y);
     r           = u128add(r, z);
     r           = u128add(r, w);
     return r;
@@ -171,19 +171,19 @@ uint128_t u128mul(uint128_t a, uint128_t b)
 
 #endif
 
-extern uint128_t u128mulu(uint128_t a, uint64_t b);
+extern u128_t u128mulu(u128_t a, uint64_t b);
 
-extern uint128_t u128muladd(uint128_t a, uint128_t b, uint128_t c);
+extern u128_t u128muladd(u128_t a, u128_t b, u128_t c);
 
-extern uint128_t u128muladdu(uint128_t a, uint64_t b, uint64_t c);
+extern u128_t u128muladdu(u128_t a, uint64_t b, uint64_t c);
 
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
-extern udiv128_t u128divqr(uint128_t a, uint128_t b);
+extern udiv128_t u128divqr(u128_t a, u128_t b);
 
 #else
 
-udiv128_t u128divqr(uint128_t a, uint128_t b)
+udiv128_t u128divqr(u128_t a, u128_t b)
 {
     udiv128_t qr = {
         .quot = 0,
@@ -210,8 +210,8 @@ udiv128_t u128divqr(uint128_t a, uint128_t b)
     // sorry state of affairs...
     int abits = u128bits(a);
     int bbits = u128bits(b);
-    uint128_t copyd = u128shl(b, abits - bbits);
-    uint128_t adder = u128shl(UINT128_ONE, abits - bbits);
+    u128_t copyd = u128shl(b, abits - bbits);
+    u128_t adder = u128shl(UINT128_ONE, abits - bbits);
     if (u128cmp(copyd, qr.rem) > 0) {
         u128shru(copyd, 1);
         u128shru(adder, 1);
@@ -229,43 +229,43 @@ udiv128_t u128divqr(uint128_t a, uint128_t b)
 
 #endif
 
-extern uint128_t u128div(uint128_t a, uint128_t b);
+extern u128_t u128div(u128_t a, u128_t b);
 
-extern uint128_t u128divu(uint128_t a, uint64_t b);
+extern u128_t u128divu(u128_t a, uint64_t b);
 
-extern uint128_t u128mod(uint128_t a, uint128_t b);
+extern u128_t u128mod(u128_t a, u128_t b);
 
-extern uint128_t u128modu(uint128_t a, uint64_t b);
+extern u128_t u128modu(u128_t a, uint64_t b);
 
-extern udiv128_t u128divqr(uint128_t a, uint128_t b);
+extern udiv128_t u128divqr(u128_t a, u128_t b);
 
-extern udiv128_t u128divqru(uint128_t a, uint64_t b);
+extern udiv128_t u128divqru(u128_t a, uint64_t b);
 
-extern uint128_t u128and(uint128_t a, uint128_t b);
+extern u128_t u128and(u128_t a, u128_t b);
 
-extern uint128_t u128andu(uint128_t a, uint64_t b);
+extern u128_t u128andu(u128_t a, uint64_t b);
 
-extern uint128_t u128or(uint128_t a, uint128_t b);
+extern u128_t u128or(u128_t a, u128_t b);
 
-extern uint128_t u128oru(uint128_t a, uint64_t b);
+extern u128_t u128oru(u128_t a, uint64_t b);
 
-extern uint128_t u128xor(uint128_t a, uint128_t b);
+extern u128_t u128xor(u128_t a, u128_t b);
 
-extern uint128_t u128xoru(uint128_t a, uint64_t b);
+extern u128_t u128xoru(u128_t a, uint64_t b);
 
-extern uint128_t u128cpl(uint128_t u);
+extern u128_t u128cpl(u128_t u);
 
-extern uint128_t u128shl(uint128_t u, int bits);
+extern u128_t u128shl(u128_t u, int bits);
 
-extern uint128_t u128shr(uint128_t u, int bits);
+extern u128_t u128shr(u128_t u, int bits);
 
-extern int u128bits(uint128_t u);
+extern int u128bits(u128_t u);
 
-extern int u128cmp(uint128_t a, uint128_t b);
+extern int u128cmp(u128_t a, u128_t b);
 
-extern int u128cmpu(uint128_t a, uint64_t b);
+extern int u128cmpu(u128_t a, uint64_t b);
 
-char *u128tos(uint128_t u, int base)
+char *u128tos(u128_t u, int base)
 {
     static _Thread_local char buf[2 + digsof(u) + 1];
 

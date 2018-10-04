@@ -29,7 +29,7 @@
 //
 
 /**
- * @file isolario/uint128_t.h
+ * @file isolario/u128_t.h
  *
  * @brief 128-bits precision unsigned integer types and functions.
  *
@@ -62,37 +62,37 @@ typedef struct {
     // emulate in plain C
     uint64_t upper, lower;
 #endif
-} uint128_t;
+} u128_t;
 
-static_assert(sizeof(uint128_t) == 16, "Unsupported platform");
+static_assert(sizeof(u128_t) == 16, "Unsupported platform");
 
 /// @brief Result returned by u128divqr().
 typedef struct {
-    uint128_t quot, rem;  ///< Quotient and remainder.
+    u128_t quot, rem;  ///< Quotient and remainder.
 } udiv128_t;
 
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
-static const uint128_t UINT128_ZERO = { .u128 = 0  };
-static const uint128_t UINT128_ONE  = { .u128 = 1  };
-static const uint128_t UINT128_TEN  = { .u128 = 10 };
-static const uint128_t UINT128_MAX  = { .u128 = -1 };
+static const u128_t UINT128_ZERO = { .u128 = 0  };
+static const u128_t UINT128_ONE  = { .u128 = 1  };
+static const u128_t UINT128_TEN  = { .u128 = 10 };
+static const u128_t UINT128_MAX  = { .u128 = -1 };
 
 #else
 
-static const uint128_t UINT128_ZERO = { .upper = 0, .lower = 0  };
-static const uint128_t UINT128_ONE  = { .upper = 0, .lower = 1  };
-static const uint128_t UINT128_TEN  = { .upper = 0, .lower = 10 };
-static const uint128_t UINT128_MAX  = {
+static const u128_t UINT128_ZERO = { .upper = 0, .lower = 0  };
+static const u128_t UINT128_ONE  = { .upper = 0, .lower = 1  };
+static const u128_t UINT128_TEN  = { .upper = 0, .lower = 10 };
+static const u128_t UINT128_MAX  = {
     .upper = UINT64_MAX,
     .lower = UINT64_MAX
 };
 
 #endif
 
-inline constfunc uint128_t u128from(uint64_t up, uint64_t lw)
+inline constfunc u128_t u128from(uint64_t up, uint64_t lw)
 {
-    uint128_t r;
+    u128_t r;
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
     r.u128 =   up;
     r.u128 <<= 64;
@@ -104,9 +104,9 @@ inline constfunc uint128_t u128from(uint64_t up, uint64_t lw)
     return r;
 }
 
-inline constfunc uint128_t tou128(uint64_t u)
+inline constfunc u128_t tou128(uint64_t u)
 {
-    uint128_t r;
+    u128_t r;
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
     r.u128 = u;
 #else
@@ -116,7 +116,7 @@ inline constfunc uint128_t tou128(uint64_t u)
     return r;
 }
 
-inline constfunc uint64_t u128upper(uint128_t u)
+inline constfunc uint64_t u128upper(u128_t u)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
     return u.u128 >> 64;
@@ -125,7 +125,7 @@ inline constfunc uint64_t u128upper(uint128_t u)
 #endif
 }
 
-inline constfunc uint64_t u128lower(uint128_t u)
+inline constfunc uint64_t u128lower(u128_t u)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
     return u.u128 & 0xffffffffffffffffull;
@@ -134,7 +134,7 @@ inline constfunc uint64_t u128lower(uint128_t u)
 #endif
 }
 
-inline constfunc uint128_t u128add(uint128_t a, uint128_t b)
+inline constfunc u128_t u128add(u128_t a, u128_t b)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
@@ -151,12 +151,12 @@ inline constfunc uint128_t u128add(uint128_t a, uint128_t b)
     return a;
 }
 
-inline constfunc uint128_t u128addu(uint128_t a, uint64_t b)
+inline constfunc u128_t u128addu(u128_t a, uint64_t b)
 {
     return u128add(a, tou128(b));
 }
 
-inline constfunc uint128_t u128sub(uint128_t a, uint128_t b)
+inline constfunc u128_t u128sub(u128_t a, u128_t b)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
@@ -172,18 +172,18 @@ inline constfunc uint128_t u128sub(uint128_t a, uint128_t b)
     return a;
 }
 
-inline constfunc uint128_t u128subu(uint128_t a, uint64_t b)
+inline constfunc u128_t u128subu(u128_t a, uint64_t b)
 {
     return u128sub(a, tou128(b));
 }
 
-inline constfunc uint128_t u128neg(uint128_t u)
+inline constfunc u128_t u128neg(u128_t u)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
     u.u128 = -u.u128;
 #else
     // don't use UINT128_ZERO, otherwise it wouldn't be constfunc!
-    const uint128_t zero = { .upper = 0, .lower = 0 };
+    const u128_t zero = { .upper = 0, .lower = 0 };
     u = u128sub(zero, u);
 
 #endif
@@ -192,7 +192,7 @@ inline constfunc uint128_t u128neg(uint128_t u)
 
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
-inline constfunc uint128_t u128mul(uint128_t a, uint128_t b)
+inline constfunc u128_t u128mul(u128_t a, u128_t b)
 {
     a.u128 *= b.u128;
     return a;
@@ -200,11 +200,11 @@ inline constfunc uint128_t u128mul(uint128_t a, uint128_t b)
 
 #else
 
-constfunc  uint128_t u128mul(uint128_t a, uint128_t b);
+constfunc  u128_t u128mul(u128_t a, u128_t b);
 
 #endif
 
-inline constfunc uint128_t u128mulu(uint128_t a, uint64_t b)
+inline constfunc u128_t u128mulu(u128_t a, uint64_t b)
 {
     return u128mul(a, tou128(b));
 }
@@ -217,27 +217,27 @@ inline constfunc uint128_t u128mulu(uint128_t a, uint64_t b)
  *    u128add(u128mul(a, b), c);
  * @endcode
  */
-inline constfunc uint128_t u128muladd(uint128_t a, uint128_t b, uint128_t c)
+inline constfunc u128_t u128muladd(u128_t a, u128_t b, u128_t c)
 {
     return u128add(u128mul(a, b), c);
 }
 
 /**
- * @brief Multiply-add between \a uint128_t and plain unsigned integers.
+ * @brief Multiply-add between \a u128_t and plain unsigned integers.
  *
  * Shorthand for:
  * @code
  *    u128muladd(a, tou128(b), tou128(c));
  * @endcode
  */
-inline constfunc uint128_t u128muladdu(uint128_t a, uint64_t b, uint64_t c)
+inline constfunc u128_t u128muladdu(u128_t a, uint64_t b, uint64_t c)
 {
     return u128muladd(a, tou128(b), tou128(c));
 }
 
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
-inline constfunc udiv128_t u128divqr(uint128_t a, uint128_t b)
+inline constfunc udiv128_t u128divqr(u128_t a, u128_t b)
 {
     udiv128_t qr;
     qr.quot.u128 = a.u128 / b.u128;
@@ -247,16 +247,16 @@ inline constfunc udiv128_t u128divqr(uint128_t a, uint128_t b)
 
 #else
 
-constfunc udiv128_t u128divqr(uint128_t a, uint128_t b);
+constfunc udiv128_t u128divqr(u128_t a, u128_t b);
 
 #endif
 
-inline constfunc udiv128_t u128divqru(uint128_t a, uint64_t b)
+inline constfunc udiv128_t u128divqru(u128_t a, uint64_t b)
 {
     return u128divqr(a, tou128(b));
 }
 
-inline constfunc uint128_t u128div(uint128_t a, uint128_t b)
+inline constfunc u128_t u128div(u128_t a, u128_t b)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
@@ -270,12 +270,12 @@ inline constfunc uint128_t u128div(uint128_t a, uint128_t b)
 #endif
 }
 
-inline constfunc uint128_t u128divu(uint128_t a, uint64_t b)
+inline constfunc u128_t u128divu(u128_t a, uint64_t b)
 {
     return u128div(a, tou128(b));
 }
 
-inline constfunc uint128_t u128mod(uint128_t a, uint128_t b)
+inline constfunc u128_t u128mod(u128_t a, u128_t b)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
@@ -289,12 +289,12 @@ inline constfunc uint128_t u128mod(uint128_t a, uint128_t b)
 #endif
 }
 
-inline constfunc uint128_t u128modu(uint128_t a, uint64_t b)
+inline constfunc u128_t u128modu(u128_t a, uint64_t b)
 {
     return u128mod(a, tou128(b));
 }
 
-inline constfunc uint128_t u128and(uint128_t a, uint128_t b)
+inline constfunc u128_t u128and(u128_t a, u128_t b)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
     a.u128 &= b.u128;
@@ -305,12 +305,12 @@ inline constfunc uint128_t u128and(uint128_t a, uint128_t b)
     return a;
 }
 
-inline constfunc uint128_t u128andu(uint128_t a, uint64_t b)
+inline constfunc u128_t u128andu(u128_t a, uint64_t b)
 {
     return u128and(a, tou128(b));
 }
 
-inline constfunc uint128_t u128or(uint128_t a, uint128_t b)
+inline constfunc u128_t u128or(u128_t a, u128_t b)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
     a.u128 |= b.u128;
@@ -321,12 +321,12 @@ inline constfunc uint128_t u128or(uint128_t a, uint128_t b)
     return a;
 }
 
-inline constfunc uint128_t u128oru(uint128_t a, uint64_t b)
+inline constfunc u128_t u128oru(u128_t a, uint64_t b)
 {
     return u128or(a, tou128(b));
 }
 
-inline constfunc uint128_t u128xor(uint128_t a, uint128_t b)
+inline constfunc u128_t u128xor(u128_t a, u128_t b)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
     a.u128 ^= b.u128;
@@ -337,12 +337,12 @@ inline constfunc uint128_t u128xor(uint128_t a, uint128_t b)
     return a;
 }
 
-inline constfunc uint128_t u128xoru(uint128_t a, uint64_t b)
+inline constfunc u128_t u128xoru(u128_t a, uint64_t b)
 {
     return u128xor(a, tou128(b));
 }
 
-inline constfunc uint128_t u128cpl(uint128_t u)
+inline constfunc u128_t u128cpl(u128_t u)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
     u.u128 = ~u.u128;
@@ -353,7 +353,7 @@ inline constfunc uint128_t u128cpl(uint128_t u)
     return u;
 }
 
-inline constfunc uint128_t u128shl(uint128_t u, int bits)
+inline constfunc u128_t u128shl(u128_t u, int bits)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
@@ -364,7 +364,7 @@ inline constfunc uint128_t u128shl(uint128_t u, int bits)
 
     // don't access UINT128_ZERO, otherwise it wouldn't be constfunc!
     if (unlikely(bits < 0 || bits >= 128))
-        return uint128_t{ .upper = 0, .lower = 0};
+        return u128_t{ .upper = 0, .lower = 0};
 
     if (bits < 64) {
         u.upper = (u.upper << bits) | (u.lower >> (64 - bits));
@@ -378,7 +378,7 @@ inline constfunc uint128_t u128shl(uint128_t u, int bits)
 #endif
 }
 
-inline constfunc uint128_t u128shr(uint128_t u, int bits)
+inline constfunc u128_t u128shr(u128_t u, int bits)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
@@ -389,7 +389,7 @@ inline constfunc uint128_t u128shr(uint128_t u, int bits)
 
     // don't access UINT128_ZERO, otherwise it wouldn't be constfunc!
     if (unlikely(bits < 0 || bits >= 128))
-        return uint128_t{ .upper = 0, .lower = 0 };
+        return u128_t{ .upper = 0, .lower = 0 };
 
     if (bits < 64) {
         u.lower = (u.upper << (64 - bits)) | (u.lower >> bits);
@@ -405,7 +405,7 @@ inline constfunc uint128_t u128shr(uint128_t u, int bits)
 }
 
 /// @brief Calculate the number of bits necessary to represent a value.
-inline constfunc int u128bits(uint128_t u)
+inline constfunc int u128bits(u128_t u)
 {
     uint64_t up = u128upper(u);
     uint64_t lw = u128lower(u);
@@ -417,7 +417,7 @@ inline constfunc int u128bits(uint128_t u)
     return 128 - lz;
 }
 
-inline constfunc int u128cmp(uint128_t a, uint128_t b)
+inline constfunc int u128cmp(u128_t a, u128_t b)
 {
 #if defined(__GNUC__) && !defined(ISOLARIO_C_UINT128_T)
 
@@ -433,26 +433,26 @@ inline constfunc int u128cmp(uint128_t a, uint128_t b)
 #endif
 }
 
-inline constfunc int u128cmpu(uint128_t a, uint64_t b)
+inline constfunc int u128cmpu(u128_t a, uint64_t b)
 {
     return u128cmp(a, tou128(b));
 }
 
 /**
- * @brief Convert a \a uint128_t to its string representation.
+ * @brief Convert a \a u128_t to its string representation.
  *
  * @return The string representation of the provided unsigned integer in the
  *         requested base, the returned pointer references a possibly statically
  *         allocated storage managed by the library, it must not be free()d.
  */
-nonullreturn char *u128tos(uint128_t u, int base);
+nonullreturn char *u128tos(u128_t u, int base);
 
 /**
- * @brief Convert string to \a uint128_t.
+ * @brief Convert string to \a u128_t.
  *
- * @return The integer value in string as a \a uint128_t, sets \a errno
+ * @return The integer value in string as a \a u128_t, sets \a errno
  *         on error.
  */
-purefunc nonnull(1) uint128_t stou128(const char *s, char **eptr, int base);
+purefunc nonnull(1) u128_t stou128(const char *s, char **eptr, int base);
 
 #endif

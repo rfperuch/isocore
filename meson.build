@@ -52,7 +52,7 @@ isocore = both_libraries('isocore',
         'src/sockets.c',
         'src/threading.c',
         'src/strutil.c',
-        'src/uint128_t.c',
+        'src/u128_t.c',
         'src/vt100.c'
     ],
     include_directories : incdir,
@@ -105,7 +105,7 @@ if get_option('build-tests')
 			'test/core/netaddr_t.c',
 			'test/core/patriciatrie_t.c',
 			'test/core/strutil_t.c',
-			'test/core/uint128_t.c'
+			'test/core/u128_t.c'
 		],
 		dependencies : [
 			isocore_dep,
