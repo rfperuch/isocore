@@ -143,7 +143,7 @@ inline uint32_t getasn32bit(const bgpcap_t *cap)
     assert(cap->len  == ASN32BIT_LENGTH);
 
     uint32_t asn32bit;
-    memcpy(&asn32bit, &cap->data[CAPABILITY_HEADER_SIZE], sizeof(asn32bit));
+    memcpy(&asn32bit, cap->data, sizeof(asn32bit));
     return frombig32(asn32bit);
 }
 
