@@ -69,7 +69,6 @@ size_t getgracefulrestarttuples(afi_safi_t *dst, size_t n, const bgpcap_t *cap)
     return size;
 }
 
-
 size_t getaddpathtuples(afi_safi_t* dst, size_t n, const bgpcap_t *cap)
 {
     assert(cap->code == ADD_PATH_CODE);
