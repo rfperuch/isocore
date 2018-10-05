@@ -73,11 +73,10 @@ enum {
          *
          * This opcode expects that the entire stack is composed of cells containing \a netaddr_t.
          *
-         * @note Stack operation mode is POPA-PUSH, this opcode has no arguments.
+         * @note Stack operation mode is POPA-PUSH, this opcode has an announce/withdrawn accessor argument.
          */
 
     FOPC_SUBNET,
-    FOPC_PSUBNET,
     FOPC_SUPERNET,
     FOPC_RELATED,
 
@@ -86,6 +85,15 @@ enum {
     FOPC_ASCONTAINS,
 
     FOPC_ASPMATCH,
+        /**<
+         * Pops the entire stack and verifies that each AS in the stack
+         * appears within the PATH field identified by this instruction argument.
+         *
+         * This opcode expects that the entire stack is composed of cells containing \a wide_as_t.
+         *
+         * @note Stack operation mode is POPA-PUSH, this opcode has an AS PATH accessor argument.
+         */
+
     FOPC_ASPSTARTS,
     FOPC_ASPENDS,
     FOPC_ASPEXACT,
@@ -231,7 +239,7 @@ inline void vm_pushvalue(filter_vm_t *vm, int value)
     vm->sp[vm->si++].value = value;
 }
 
-inline void vm_pushas(filter_vm_t *vm, uint32_t as)
+inline void vm_pushas(filter_vm_t *vm, wide_as_t as)
 {
     if (unlikely(vm->si == vm->stacksiz))
         vm_growstack(vm);
