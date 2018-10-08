@@ -434,7 +434,7 @@ void vm_exec_aspmatch(filter_vm_t *vm, int access)
 
                 asbuf[buffered++] = ent->as;
             }
-            if (cell->as != asbuf[i])
+            if (cell->as != asbuf[i] && cell->as != AS_ANY)
                 break;
         }
 
