@@ -586,13 +586,13 @@ intptr_t vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone)
 
     intptr_t ptr;
     if (unlikely(!vm_heap_ensure(vm, size)))
-        return -1;
+        return VM_BAD_HEAP_PTR;
 
     switch (zone) {
     case VM_HEAP_PERM:
         if (unlikely(vm->dynmarker > 0)) {
             assert(false);
-            return -1; // illegal!
+            return VM_BAD_HEAP_PTR; // illegal!
         }
 
         ptr = vm->highwater;
@@ -609,6 +609,28 @@ intptr_t vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone)
     default:
         // should never happen
         assert(false);
-        return -1;
+        return VM_BAD_HEAP_PTR;
     }
+}
+
+extern void vm_heap_return(filter_vm_t *vm, size_t size);
+
+intptr_t vm_heap_grow(filter_vm_t *vm, intptr_t addr, size_t newsize)
+{
+    newsize += sizeof(max_align_t) - 1;
+    newsize -= (newsize & (sizeof(max_align_t) - 1));
+
+    if (addr == 0)
+        addr = vm->highwater; // never did a VM_HEAP_TEMP alloc before
+
+    size_t oldsize = vm->highwater + vm->dynmarker - addr;
+    if (unlikely(newsize < oldsize))
+        return addr;
+
+    size_t amount = newsize - oldsize;
+    if (unlikely(!vm_heap_ensure(vm, amount)))
+        return VM_BAD_HEAP_PTR;
+
+    vm->dynmarker += amount;
+    return addr;
 }
