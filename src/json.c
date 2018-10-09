@@ -524,7 +524,7 @@ static int jsonparseaggregate(char *text, jsontok_t *tok, int type)
                 return err;
         }
         if (tmp.type == JSON_OBJ || tmp.type == JSON_ARR)
-            tmp.next = tmp.end + 1;  // skip nested aggregates
+            tmp.next = tmp.end;  // skip nested aggregates
 
         count++;
     }
@@ -534,8 +534,8 @@ static int jsonparseaggregate(char *text, jsontok_t *tok, int type)
 
     tok->type  = type;
     tok->size  = count;
-    tok->start = start;
-    tok->end   = tmp.start;
+    tok->start = start - 1;
+    tok->end   = tmp.end;
     tok->next  = start;  // start parsing the object itself
     return JSON_SUCCESS;
 }
