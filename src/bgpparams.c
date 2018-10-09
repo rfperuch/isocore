@@ -69,3 +69,21 @@ size_t getgracefulrestarttuples(afi_safi_t *dst, size_t n, const bgpcap_t *cap)
     return size;
 }
 
+size_t getaddpathtuples(afi_safi_t* dst, size_t n, const bgpcap_t *cap)
+{
+    assert(cap->code == ADD_PATH_CODE);
+
+    const afi_safi_t *src = (const afi_safi_t *) cap->data;
+
+    size_t size = cap->len / sizeof(*src);
+    if (n > size)
+        n = size;
+
+    // copy and swap bytes
+    for (size_t i = 0; i < n; i++) {
+        dst[i].afi   = frombig16(src[i].afi);
+        dst[i].safi  = src[i].safi;
+        dst[i].flags = src[i].flags;
+    }
+    return size;
+}

@@ -32,7 +32,7 @@
 // NOTE: THIS FILE HAS NO INCLUDE GUARDS, BECAUSE IT NEEDS TO COPY-PASTE
 //       A STATIC OPCODE TABLE FOR A COMPUTED GOTO STATEMENT
 //
-// KEEP THIS TABLE IN SYNC WITH isolario/filterpacket.h
+// KEEP THIS TABLE IN SYNC WITH isolario/filterintrin.h
 // =====================================================================
 
 static const void *const vm_opcode_table[256] = {
@@ -133,6 +133,6 @@ static const void *const vm_opcode_table[256] = {
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
-    &&EX_SIGILL, &&EX_SIGILL
+    &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL
 };
 

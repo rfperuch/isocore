@@ -65,9 +65,15 @@ enum {
     VM_FUNCS_COUNT
 };
 
+typedef long long wide_as_t; ///< A type able to hold any AS32 value, plus AS_ANY
+
+enum {
+    AS_ANY = -1 ///< Special value for filter operations that matches any AS32
+};
+
 typedef union {
     netaddr_t addr;
-    uint32_t as;
+    wide_as_t as;
     community_t comm;
     ex_community_t excomm;
     large_community_t lrgcomm;

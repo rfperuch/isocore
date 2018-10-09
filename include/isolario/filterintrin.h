@@ -73,11 +73,10 @@ enum {
          *
          * This opcode expects that the entire stack is composed of cells containing \a netaddr_t.
          *
-         * @note Stack operation mode is POPA-PUSH, this opcode has no arguments.
+         * @note Stack operation mode is POPA-PUSH, this opcode has an announce/withdrawn accessor argument.
          */
 
     FOPC_SUBNET,
-    FOPC_PSUBNET,
     FOPC_SUPERNET,
     FOPC_RELATED,
 
@@ -86,6 +85,15 @@ enum {
     FOPC_ASCONTAINS,
 
     FOPC_ASPMATCH,
+        /**<
+         * Pops the entire stack and verifies that each AS in the stack
+         * appears within the PATH field identified by this instruction argument.
+         *
+         * This opcode expects that the entire stack is composed of cells containing \a wide_as_t.
+         *
+         * @note Stack operation mode is POPA-PUSH, this opcode has an AS PATH accessor argument.
+         */
+
     FOPC_ASPSTARTS,
     FOPC_ASPENDS,
     FOPC_ASPEXACT,
@@ -178,11 +186,31 @@ inline void vm_emit(filter_vm_t *vm, bytecode_t opcode)
 
 void vm_emit_ex(filter_vm_t *vm, int opcode, int idx);
 
+// Virtual Machine dynamic memory:
+
 typedef enum { VM_HEAP_PERM, VM_HEAP_TEMP } vm_heap_zone_t;
 
 enum { VM_BAD_HEAP_PTR = -1 };
 
 intptr_t vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone);
+
+/// @warning Only valid for the last allocated VM_HEAP_TEMP chunk!!!
+inline void vm_heap_return(filter_vm_t* vm, size_t size)
+{
+    // align allocation
+    size += sizeof(max_align_t) - 1;
+    size -= (size & (sizeof(max_align_t) - 1));
+
+    assert(vm->dynmarker >= size);
+
+    vm->dynmarker -= size;
+}
+
+/// @warning Only valid for the last allocated VM_HEAP_TEMP chunk!!!
+intptr_t vm_heap_grow(filter_vm_t *vm, intptr_t addr, size_t newsize);
+
+
+// General Virtual Machine operations:
 
 inline void vm_clearstack(filter_vm_t *vm)
 {
@@ -231,7 +259,7 @@ inline void vm_pushvalue(filter_vm_t *vm, int value)
     vm->sp[vm->si++].value = value;
 }
 
-inline void vm_pushas(filter_vm_t *vm, uint32_t as)
+inline void vm_pushas(filter_vm_t *vm, wide_as_t as)
 {
     if (unlikely(vm->si == vm->stacksiz))
         vm_growstack(vm);

@@ -133,7 +133,7 @@ extern void vm_pushaddr(filter_vm_t *vm, const netaddr_t *addr);
 
 extern void vm_pushvalue(filter_vm_t *vm, int value);
 
-extern void vm_pushas(filter_vm_t *vm, uint32_t as);
+extern void vm_pushas(filter_vm_t *vm, wide_as_t as);
 
 extern void vm_exec_loadk(filter_vm_t *vm, int kidx);
 
@@ -434,7 +434,7 @@ void vm_exec_aspmatch(filter_vm_t *vm, int access)
 
                 asbuf[buffered++] = ent->as;
             }
-            if (cell->as != asbuf[i])
+            if (cell->as != asbuf[i] && cell->as != AS_ANY)
                 break;
         }
 
@@ -461,7 +461,9 @@ void vm_exec_aspstarts(filter_vm_t *vm, int access)
     int i;
     for (i = 0; i < vm->si; i++) {
         as_pathent_t *ent = nextaspath_r(vm->bgp);
-        if (!ent || vm->sp[i].as != ent->as)
+        if (!ent)
+            break;
+        if (vm->sp[i].as != ent->as && vm->sp[i].as != AS_ANY)
             break;  // does not match
     }
 
@@ -504,19 +506,17 @@ void vm_exec_aspends(filter_vm_t *vm, int access)
     // NOTE: technically we cleared the stack, but we know it was N elements long before...
     int i;
     for (i = 0; i < n; i++) {
-        if (asbuf[i] != vm->sp[i].as)
+        if (asbuf[i] != vm->sp[i].as && vm->sp[i].as != AS_ANY)
             break;
     }
 
     vm->sp[vm->si++].value = (i == n);
 }
 
-
 void vm_exec_aspexact(filter_vm_t *vm, int access)
 {
     if (getbgptype_r(vm->bgp) != BGP_UPDATE)
         vm_abort(vm, VM_PACKET_MISMATCH);
-
 
     vm_prepare_as_access(vm, access);
 
@@ -524,7 +524,9 @@ void vm_exec_aspexact(filter_vm_t *vm, int access)
     int i;
     for (i = 0; i < vm->si; i++) {
         ent = nextaspath_r(vm->bgp);
-        if (!ent || vm->sp[i].as != ent->as)
+        if (!ent)
+            break;
+        if (vm->sp[i].as != ent->as && vm->sp[i].as != AS_ANY)
             break;  // does not match
     }
 
@@ -584,13 +586,13 @@ intptr_t vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone)
 
     intptr_t ptr;
     if (unlikely(!vm_heap_ensure(vm, size)))
-        return -1;
+        return VM_BAD_HEAP_PTR;
 
     switch (zone) {
     case VM_HEAP_PERM:
         if (unlikely(vm->dynmarker > 0)) {
             assert(false);
-            return -1; // illegal!
+            return VM_BAD_HEAP_PTR; // illegal!
         }
 
         ptr = vm->highwater;
@@ -607,6 +609,28 @@ intptr_t vm_heap_alloc(filter_vm_t *vm, size_t size, vm_heap_zone_t zone)
     default:
         // should never happen
         assert(false);
-        return -1;
+        return VM_BAD_HEAP_PTR;
     }
+}
+
+extern void vm_heap_return(filter_vm_t *vm, size_t size);
+
+intptr_t vm_heap_grow(filter_vm_t *vm, intptr_t addr, size_t newsize)
+{
+    newsize += sizeof(max_align_t) - 1;
+    newsize -= (newsize & (sizeof(max_align_t) - 1));
+
+    if (addr == 0)
+        addr = vm->highwater; // never did a VM_HEAP_TEMP alloc before
+
+    size_t oldsize = vm->highwater + vm->dynmarker - addr;
+    if (unlikely(newsize < oldsize))
+        return addr;
+
+    size_t amount = newsize - oldsize;
+    if (unlikely(!vm_heap_ensure(vm, amount)))
+        return VM_BAD_HEAP_PTR;
+
+    vm->dynmarker += amount;
+    return addr;
 }

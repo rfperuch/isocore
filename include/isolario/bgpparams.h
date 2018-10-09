@@ -129,6 +129,12 @@ enum {
     FORWARDING_STATE = 1 << 7 ///< Most significant bit, Forwarding State (F).
 };
 
+/// @brief ADD_PATH SEND/RECEIVE flags
+enum {
+    ADD_PATH_RX = 1 << 0,
+    ADD_PATH_TX = 1 << 1
+};
+
 typedef struct {
     afi_t afi;
     safi_t safi;
@@ -143,7 +149,7 @@ inline uint32_t getasn32bit(const bgpcap_t *cap)
     assert(cap->len  == ASN32BIT_LENGTH);
 
     uint32_t asn32bit;
-    memcpy(&asn32bit, &cap->data[CAPABILITY_HEADER_SIZE], sizeof(asn32bit));
+    memcpy(&asn32bit, cap->data, sizeof(asn32bit));
     return frombig32(asn32bit);
 }
 
@@ -245,5 +251,24 @@ inline int getgracefulrestartflags(const bgpcap_t *cap)
 
 /// @brief Get tuples from a graceful restart capability into a buffer
 size_t getgracefulrestarttuples(afi_safi_t *dst, size_t n, const bgpcap_t *cap);
+
+inline bgpcap_t *putaddpathtuple(bgpcap_t *cap, afi_t afi, safi_t safi, int flags)
+{
+    assert(cap->code == ADD_PATH_CODE);
+
+    afi_safi_t t = {
+        .afi   = tobig16(afi),
+        .safi  = safi,
+        .flags = flags
+    };
+
+    assert(cap->len + sizeof(t) <= CAPABILITY_LENGTH_MAX);
+
+    memcpy(&cap->data[cap->len], &t, sizeof(t));  // append tuple
+    cap->len += sizeof(t);
+    return cap;
+}
+
+size_t getaddpathtuples(afi_safi_t* dst, size_t n, const bgpcap_t *cap);
 
 #endif
