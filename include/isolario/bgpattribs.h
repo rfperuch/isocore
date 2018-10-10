@@ -361,7 +361,7 @@ bgpattr_t *setmpafisafi(bgpattr_t *dst, afi_t afi, safi_t safi);
 
 bgpattr_t *putmpnexthop(bgpattr_t *dst, int family, const void *addr);
 
-bgpattr_t *putmpnrli(bgpattr_t *dst, const netaddr_t *addr);
+bgpattr_t *putmpnlri(bgpattr_t *dst, const netaddr_t *addr);
 
 inline void *getaspath(const bgpattr_t *attr, size_t *pn)
 {
