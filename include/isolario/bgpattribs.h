@@ -363,6 +363,8 @@ bgpattr_t *putmpnexthop(bgpattr_t *dst, int family, const void *addr);
 
 bgpattr_t *putmpnlri(bgpattr_t *dst, const netaddr_t *addr);
 
+bgpattr_t *putmpnlriap(bgpattr_t *dst, const netaddrap_t *addr);
+
 inline void *getaspath(const bgpattr_t *attr, size_t *pn)
 {
     assert(attr->code == AS_PATH_CODE || attr->code == AS4_PATH_CODE);

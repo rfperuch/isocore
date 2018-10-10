@@ -316,6 +316,44 @@ bgpattr_t *putmpnlri(bgpattr_t *dst, const netaddr_t *addr)
     return dst;
 }
 
+bgpattr_t *putmpnlriap(bgpattr_t *dst, const netaddrap_t *addr)
+{
+    assert(dst->code == MP_REACH_NLRI_CODE || dst->code == MP_UNREACH_NLRI_CODE);
+
+    unsigned char *ptr = &dst->len;
+    
+    int extended = dst->flags & ATTR_EXTENDED_LENGTH;
+    size_t len   = *ptr++;
+    size_t limit = ATTR_LENGTH_MAX;
+    if (extended) {
+        len <<= 8;
+        len |= *ptr++;
+
+        limit = ATTR_EXTENDED_LENGTH_MAX;
+    }
+
+    size_t n = naddrsize(addr->pfx.bitlen);
+    uint32_t netpathid = tobig32(addr->pathid);
+    if (unlikely(len + n + 1 + sizeof(netpathid) > limit))
+        return NULL;  // would overflow attribute length
+    
+    ptr   += len;
+    memcpy(ptr, &netpathid, sizeof(netpathid));
+    ptr   += sizeof(netpathid);
+    *ptr++ = addr->pfx.bitlen;
+    memcpy(ptr, addr->pfx.bytes, n);
+
+    // write updated length
+    ptr  = &dst->len;
+    len += n + 1 + sizeof(netpathid);
+    if (extended) {
+        *ptr++ = (len >> 8);
+        len &= 0xff;
+    }
+    *ptr++ = len;
+    return dst;
+}
+
 /*
 static size_t appendsegment(unsigned char **pptr, unsigned char *end, int type, const void *ases, size_t as_size, size_t count)
 {
