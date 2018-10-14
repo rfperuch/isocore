@@ -972,6 +972,11 @@ int startwithdrawn(void)
     return startwithdrawn_r(&curmsg);
 }
 
+int startmpunreachnlri(void)
+{
+    return startmpunreachnlri_r(&curmsg);
+}
+
 int startallwithdrawn(void)
 {
     return startallwithdrawn_r(&curmsg);
@@ -1006,6 +1011,16 @@ int startwithdrawn_r(bgp_msg_t *msg)
         return msg->err;
 
     return dostartwithdrawn(msg, F_WITHDRN);
+}
+
+int startmpunreachnlri_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_UPDATE, F_RD))
+        return msg->err;
+    
+    msg->uptr = msg->ustart = msg->uend = NULL; // causes nextwithdrawn_r to immediately switch to mp_reach attribute
+    msg->flags |= F_WITHDRN | F_ALLWITHDRN;
+    return msg->err;
 }
 
 int startallwithdrawn_r(bgp_msg_t *msg)
@@ -1401,6 +1416,11 @@ int startnlri(void)
     return startnlri_r(&curmsg);
 }
 
+int startmpreachnlri(void)
+{
+    return startmpreachnlri_r(&curmsg);
+}
+
 int startallnlri(void)
 {
     return startallnlri_r(&curmsg);
@@ -1430,6 +1450,16 @@ int startnlri_r(bgp_msg_t *msg)
         return msg->err;
 
     return dostartnlri(msg, F_NLRI);
+}
+
+int startmpreachnlri_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_UPDATE, F_RD))
+        return msg->err;
+    
+    msg->uptr = msg->ustart = msg->uend = NULL; // causes nextnlri_r to immediately switch to mp_reach attribute
+    msg->flags |= F_NLRI | F_ALLNLRI;
+    return msg->err;
 }
 
 int startallnlri_r(bgp_msg_t *msg)

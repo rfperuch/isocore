@@ -239,6 +239,8 @@ void *getwithdrawn(size_t *pn);
 
 int startwithdrawn(void);
 
+int startmpunreachnlri(void);
+
 int startallwithdrawn(void);
 /**
  * @warning This function returns either a \a netaddr_t or a \a netaddrap_t,
@@ -271,6 +273,8 @@ int setnlri(const void *data, size_t n);
 void *getnlri(size_t *pn);
 
 int startnlri(void);
+
+int startmpreachnlri(void);
 
 int startallnlri(void);
 /**
@@ -456,6 +460,9 @@ nonnull(1) void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn);
 nonnull(1) int startallwithdrawn_r(bgp_msg_t *msg);
 
 nonnull(1) int startwithdrawn_r(bgp_msg_t *msg);
+
+nonnull(1) int startmpunreachnlri_r(bgp_msg_t *msg);
+
 /**
  * @warning This function returns either a \a netaddr_t or a \a netaddrap_t,
  *          depending on the package being ADDPATH enabled.
@@ -489,6 +496,8 @@ nonnull(1) void *getnlri_r(bgp_msg_t *msg, size_t *pn);
 nonnull(1) int startallnlri_r(bgp_msg_t *msg);
 
 nonnull(1) int startnlri_r(bgp_msg_t *msg);
+
+nonnull(1) int startmpreachnlri_r(bgp_msg_t *msg);
 
 /**
  * @warning \a p may be either a \a netaddr_t or a \a netaddrap_t, depending on
