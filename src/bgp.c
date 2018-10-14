@@ -1563,6 +1563,7 @@ static int dostartaspath(bgp_msg_t *msg, bgpattr_t *attr, size_t as_size)
 {
     endpending(msg);
 
+    msg->segi        = 0;
     msg->seglen      = 0;
     msg->asp.as_size = as_size;
     // don't do any AS count verification on regular AS_PATH iteration
