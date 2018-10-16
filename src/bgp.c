@@ -439,6 +439,8 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
             if ((flags & BGPF_STRIPUNREACH) == 0) {
                 memcpy(dst, attr, size);
                 dst += size;
+            } else {
+                msg->offtab[idx] = OFFSET_NOT_FOUND;  // discard entry from the notable attribute offset table
             }
             break;
         case AS_PATH_CODE:
