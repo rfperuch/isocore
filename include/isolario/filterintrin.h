@@ -66,6 +66,8 @@ enum {
 
     FOPC_SETTLE,   ///< NONE: forcefully close an iteration sequence
 
+    FOPC_HASATTR,  ///< HASATTR: push true if attribute is present, false otherwise.
+
     FOPC_EXACT,
         /**<
          * Pops the entire stack and verifies that at least one *address* has an *exact* relationship with
@@ -426,6 +428,8 @@ inline void vm_exec_settle(filter_vm_t *vm)
         vm->access_mask = 0;
     }
 }
+
+void vm_exec_hasattr(filter_vm_t *vm, int code);
 
 inline void vm_exec_all_withdrawn_insert(filter_vm_t *vm)
 {

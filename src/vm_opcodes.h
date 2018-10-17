@@ -53,6 +53,7 @@ static const void *const vm_opcode_table[256] = {
     [FOPC_CFAIL]        = &&EX_CFAIL,
 
     [FOPC_SETTLE]       = &&EX_SETTLE,
+    [FOPC_HASATTR]      = &&EX_HASATTR,
 
     [FOPC_EXACT]        = &&EX_EXACT,
     [FOPC_SUBNET]       = &&EX_SUBNET,

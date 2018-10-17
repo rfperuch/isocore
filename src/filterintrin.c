@@ -179,6 +179,67 @@ extern void vm_exec_pfxcmp(filter_vm_t *vm, int kidx);
 
 extern void vm_exec_settle(filter_vm_t *vm);
 
+void vm_exec_hasattr(filter_vm_t *vm, int code)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    vm_exec_settle(vm);
+
+    // optimize notable attributes
+    bgpattr_t *ptr = NULL;
+    switch (code) {
+    case ORIGIN_CODE:
+        ptr = getbgporigin_r(vm->bgp);
+        break;
+    case NEXT_HOP_CODE:
+        ptr = getbgpnexthop_r(vm->bgp);
+        break;
+    case AGGREGATOR_CODE:
+        ptr = getbgpaggregator_r(vm->bgp);
+        break;
+    case AS4_AGGREGATOR_CODE:
+        ptr = getbgpas4aggregator_r(vm->bgp);
+        break;
+    case ATOMIC_AGGREGATE_CODE:
+        ptr = getbgpatomicaggregate_r(vm->bgp);
+        break;
+    case AS_PATH_CODE:
+        ptr = getbgpaspath_r(vm->bgp);
+        break;
+    case AS4_PATH_CODE:
+        ptr = getbgpas4path_r(vm->bgp);
+        break;
+    case MP_REACH_NLRI_CODE:
+        ptr = getbgpmpreach_r(vm->bgp);
+        break;
+    case MP_UNREACH_NLRI_CODE:
+        ptr = getbgpmpunreach_r(vm->bgp);
+        break;
+    case COMMUNITY_CODE:
+        ptr = getbgpcommunities_r(vm->bgp);
+        break;
+    case EXTENDED_COMMUNITY_CODE:
+        ptr = getbgpexcommunities_r(vm->bgp);
+        break;
+    case LARGE_COMMUNITY_CODE:
+        ptr = getbgplargecommunities_r(vm->bgp);
+        break;
+    default:
+        // no luck, plain iteration
+        startbgpattribs_r(vm->bgp);
+        while ((ptr = nextbgpattrib_r(vm->bgp)) != NULL) {
+            if (ptr->code == code)
+                break;
+        }
+        endbgpattribs_r(vm->bgp);
+    }
+
+    assert(ptr == NULL || ptr->code == code);
+
+    vm_pushvalue(vm, ptr != NULL);
+}
+
 extern void vm_exec_all_withdrawn_insert(filter_vm_t *vm);
 extern void vm_exec_all_withdrawn_accumulate(filter_vm_t *vm);
 extern void vm_exec_withdrawn_accumulate(filter_vm_t *vm);

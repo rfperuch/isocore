@@ -268,6 +268,11 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
             vm_exec_settle(vm);
             DISPATCH();
 
+        EXECUTE(HASATTR):
+            vm_exec_hasattr(vm, vm_getarg(ip));
+            PREDICT(NOT);
+            DISPATCH();
+
         EXECUTE(EXACT):
             vm_exec_exact(vm, vm_getarg(ip));
             DISPATCH();

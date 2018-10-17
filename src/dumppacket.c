@@ -5,6 +5,7 @@
 #include <isolario/bgpattribs.h>
 #include <isolario/branch.h>
 #include <isolario/dumppacket.h>
+#include <isolario/hexdump.h>
 #include <isolario/strutil.h>
 #include <isolario/util.h>
 #include <stdbool.h>
@@ -377,6 +378,19 @@ static void printstatechange_row(FILE *out, const bgp4mp_header_t *bgphdr, const
     putc_unlocked('\n', out);
 }
 
+static void printbgp_hex(FILE *out, bgp_msg_t *pkt, const bgp_formatter_t *fmt)
+{
+    // hexadecimal BGP dump
+    (void) fmt;
+
+    size_t n;
+    void *data = getbgpdata_r(pkt, &n);
+    if (data) {
+        hexdump(out, data, n, HEX_C_ARRAY_N(80));
+        putc_unlocked('\n', out);
+    }
+}
+
 static void parse_varargs(bgp_formatter_t *dst, const char *fmt, va_list va)
 {
     memset(dst, 0, sizeof(*dst));
@@ -388,12 +402,15 @@ static void parse_varargs(bgp_formatter_t *dst, const char *fmt, va_list va)
 
     switch (*fmt) {
     case 'r':
-        dst->dumpbgp         = printbgp_row;
-        dst->dumpstatechange = printstatechange_row;
         fmt++;
-        break;
+        // fallthrough
     default:
         dst->dumpbgp         = printbgp_row;
+        dst->dumpstatechange = printstatechange_row;
+        break;
+    case 'x':
+        fmt++;
+        dst->dumpbgp         = printbgp_hex;
         dst->dumpstatechange = printstatechange_row;
         break;
     }
@@ -547,7 +564,6 @@ void printpeerent(FILE* out, const peer_entry_t* ent, const char *fmt, ...)
     printpeerentv(out, ent, fmt, va);
     va_end(va);
 }
-
 
 void printstatechangev(FILE *out, const bgp4mp_header_t *bgphdr, const char *fmt, va_list va)
 {
