@@ -134,6 +134,6 @@ static const void *const vm_opcode_table[256] = {
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
-    &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL
+    &&EX_SIGILL, &&EX_SIGILL
 };
 
