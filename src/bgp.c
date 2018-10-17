@@ -465,27 +465,14 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
                     if (unlikely((size_t) (end - ptr) != segcount * sizeof(uint32_t)))
                         goto error;
 
-                    // FIXME
+                    // FIXME bounds check on dst
                     for (int i = 0; i < segcount; i++) {
-#if 0
-                        // the good...
-                        uint32_t as;
-                        memcpy(&as, ptr, sizeof(as));
-                        as = frombig32(as);
-                        if (unlikely(as > 0xffff))
+                        if (unlikely(ptr[0] != 0 || ptr[1] != 0))
                             goto error;
 
-                        uint16_t as16 = tobig16(as);
-                        memcpy(dst, &as16, sizeof(as16));
-
-                        ptr += sizeof(as);
-                        dst += sizeof(as16);
-#else
-                        // the bad AND ugly
-                        memcpy(dst, ptr + 2, sizeof(uint16_t));
+                        memcpy(dst, &ptr[2], sizeof(uint16_t));
                         ptr += sizeof(uint32_t);
                         dst += sizeof(uint16_t);
-#endif
                     }
 
                     // rewrite length
