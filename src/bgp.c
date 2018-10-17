@@ -1189,7 +1189,8 @@ int putwithdrawn_r(bgp_msg_t *msg, const void *p)
 
         ap = tobig32(ap);
         memcpy(msg->uptr, &ap, sizeof(ap));
-        msg->uptr += sizeof(ap);
+        msg->uptr   += sizeof(ap);
+        msg->pktlen += sizeof(ap);
     }
 
     const netaddr_t *addr = p;
@@ -1562,7 +1563,8 @@ int putnlri_r(bgp_msg_t *msg, const void *p)
 
         pathid = tobig32(pathid);
         memcpy(msg->uptr, &pathid, sizeof(pathid));
-        msg->uptr += sizeof(pathid);
+        msg->uptr   += sizeof(pathid);
+        msg->pktlen += sizeof(pathid);
     }
 
     const netaddr_t *addr = p;
