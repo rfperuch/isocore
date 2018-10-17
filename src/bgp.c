@@ -446,22 +446,23 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
         case AS_PATH_CODE:
             if ((msg->flags & F_ASN32BIT) == 0) {
                 // truncate ASes to 16-bits
-                unsigned char *start = dst;
+                unsigned char *start     = dst;
+                const unsigned char *ptr = src; // don't alter src during AS_PATH rebuild
+                const unsigned char *end = src + len;
 
                 memcpy(dst, attr, hdrsize);
                 dst += hdrsize;
 
-                const unsigned char *end = src + len;
-                while (src < end) {
-                    if (unlikely(end - src < AS_SEGMENT_HEADER_SIZE))
+                while (ptr < end) {
+                    if (unlikely(end - ptr < AS_SEGMENT_HEADER_SIZE))
                         goto error;
 
-                    int segtype  = *src++;
-                    int segcount = *src++;
+                    int segtype  = *ptr++;
+                    int segcount = *ptr++;
 
                     *dst++ = segtype;
                     *dst++ = segcount;
-                    if (unlikely((size_t) (end - src) != segcount * sizeof(uint32_t)))
+                    if (unlikely((size_t) (end - ptr) != segcount * sizeof(uint32_t)))
                         goto error;
 
                     // FIXME
@@ -469,7 +470,7 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
 #if 0
                         // the good...
                         uint32_t as;
-                        memcpy(&as, src, sizeof(as));
+                        memcpy(&as, ptr, sizeof(as));
                         as = frombig32(as);
                         if (unlikely(as > 0xffff))
                             goto error;
@@ -477,12 +478,12 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
                         uint16_t as16 = tobig16(as);
                         memcpy(dst, &as16, sizeof(as16));
 
-                        src += sizeof(as);
+                        ptr += sizeof(as);
                         dst += sizeof(as16);
 #else
                         // the bad AND ugly
-                        memcpy(dst, src + 2, sizeof(uint16_t));
-                        src += sizeof(uint32_t);
+                        memcpy(dst, ptr + 2, sizeof(uint16_t));
+                        ptr += sizeof(uint32_t);
                         dst += sizeof(uint16_t);
 #endif
                     }
@@ -507,7 +508,7 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
             break;
         }
 
-        src += len;
+        src += len;  // NOTE: this must be the *ONLY* place where src gets modified
         attr = (const bgpattr_t *) src;
 
         n -= size;
