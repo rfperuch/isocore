@@ -448,7 +448,7 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
                 // truncate ASes to 16-bits
                 unsigned char *start = dst;
 
-                memcpy(dst, src, hdrsize);
+                memcpy(dst, attr, hdrsize);
                 dst += hdrsize;
 
                 const unsigned char *end = src + len;
