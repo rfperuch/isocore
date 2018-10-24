@@ -190,7 +190,6 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
             exarg  |= arg;
 
             PREDICT(LOADK);
-            PREDICT(BLK);
             PREDICT(LOAD);
             PREDICT(CALL);
 
