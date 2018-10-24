@@ -40,61 +40,59 @@
 
 #include "test.h"
 
-void testzio(void)
+typedef io_rw_t *(*open_func_t)(int fd, size_t bufsiz, const char *mode, ...);
+
+static void write_and_read(const char* where, open_func_t open_func, const char *what)
 {
-    const char *str = "the quick brown fox jumps over the lazy dog\n";
-
-    int fd = open("miao.Z", O_CREAT | O_TRUNC | O_WRONLY, 0666);
+    int fd = open(where, O_CREAT | O_TRUNC | O_WRONLY, 0666);
     if (fd == -1)
-        CU_FAIL_FATAL("cannot open miao.Z");
+        CU_FAIL_FATAL("cannot open compressed file");
 
-    io_rw_t *io = io_zopen(fd, 0, "w");
-    io->write(io, str, strlen(str));
-    io->close(io);
+    size_t len = strlen(what);
 
-    fd = open("miao.Z", O_RDONLY);
+    io_rw_t *io = open_func(fd, 0, "w");
+    if (io->write(io, what, len) != len)
+        CU_FAIL_FATAL("compressed file write failed");
+
+    if (io->close(io) != 0)
+        CU_FAIL_FATAL("compressed file close failed");
+
+    fd = open(where, O_RDONLY);
     if (fd == -1)
-        CU_FAIL_FATAL("cannot open miao.Z");
+        CU_FAIL_FATAL("cannot open compressed file");
 
-    char buf[1024];
-    io = io_zopen(fd, 0, "r");
-    size_t len = io->read(io, buf, sizeof(buf) - 1);
+    char buf[len + 1];
+    io = open_func(fd, 0, "r");
+    if (io->read(io, buf, len) != len)
+        CU_FAIL_FATAL("compressed file read failed");
 
     buf[len] = '\0';
-    printf("%s\n", buf);
-    io->close(io);
+    CU_ASSERT_STRING_EQUAL(buf, what);
 
-    unlink("miao.Z");
+    if (io->close(io) != 0)
+        CU_FAIL_FATAL("compressed file close failed");
+
+    unlink(where);
+}
+
+#define DEFAULT_STRING "the quick brown fox jumps over the lazy dog\n"
+
+void testzio(void)
+{
+    write_and_read("miao.Z", io_zopen, DEFAULT_STRING);
 }
 
 void testbz2(void)
 {
-    const char *str = "the quick brown fox jumps over the lazy dog\n";
-
-    int fd = open("miao.bz2", O_CREAT | O_TRUNC | O_WRONLY, 0666);
-    if (fd == -1)
-        CU_FAIL_FATAL("cannot open miao.bz2");
-
-    io_rw_t *io = io_bz2open(fd, 0, "w");
-    io->write(io, str, strlen(str));
-    io->close(io);
-
-    fd = open("miao.bz2", O_RDONLY);
-    if (fd == -1)
-        CU_FAIL_FATAL("cannot open miao.bz2");
-
-    char buf[1024];
-    io = io_bz2open(fd, 0, "r");
-    size_t len = io->read(io, buf, sizeof(buf) - 1);
-
-    buf[len] = '\0';
-    printf("%s\n", buf);
-    
-
-    
-    io->close(io);
-
-    unlink("miao.bz2");
+    write_and_read("miao.bz2", io_bz2open, DEFAULT_STRING);
 }
 
+void testxz(void)
+{
+    write_and_read("miao.xz", io_xzopen, DEFAULT_STRING);
+}
 
+void testlz4(void)
+{
+    write_and_read("miao.lz4", io_lz4open, DEFAULT_STRING);
+}

@@ -65,6 +65,10 @@ void testzio(void);
 
 void testbz2(void);
 
+void testxz(void);
+
+void testlz4(void);
+
 void testbgpdumppacketrow(void);
 
 void testjsonsimple(void);

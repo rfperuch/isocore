@@ -92,6 +92,12 @@ int main(void)
     if (!CU_add_test(suite, "test abstract I/O with bz2", testbz2))
         goto error;
 
+    if (!CU_add_test(suite, "test abstract I/O with LZMA", testxz))
+        goto error;
+
+    if (!CU_add_test(suite, "test abstract I/O with LZ4", testlz4))
+        goto error;
+
     if (!CU_add_test(suite, "test bgp dump packet row", testbgpdumppacketrow))
         goto error;
 
