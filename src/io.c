@@ -1006,13 +1006,14 @@ static size_t io_lz4write(io_rw_t *io, const void *src, size_t n)
     const unsigned char *ptr = src;
     size_t avail = n;
     while (avail > 0) {
+        if (lz->bufavail == 0 && io_lz4docompress(lz) < 0)
+            break;
+
         size_t size = min(avail, (size_t)lz->bufavail);
         memcpy(lz->bufptr, ptr, size);
 
         lz->bufptr += size;
         lz->bufavail -= size;
-        if (io_lz4docompress(lz) < 0)
-            break;
 
         ptr += size;
         avail -= size;
@@ -1115,8 +1116,6 @@ io_rw_t *io_lz4open(int fd, size_t bufsiz, const char *mode, ...)
     lz->cctx = NULL;
     lz->dctx = NULL;
     if (rw == 'r') {
-        lz->bufavail = 0;   // FIXME
-        lz->cbufavail = 0;  // FIXME
         lz->err = LZ4F_createDecompressionContext(&lz->dctx, LZ4F_VERSION);
     } else {
         lz->err = io_lz4begincompress(lz, &prefs);
