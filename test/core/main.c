@@ -98,6 +98,9 @@ int main(void)
     if (!CU_add_test(suite, "test abstract I/O with LZ4", testlz4))
         goto error;
 
+    if (!CU_add_test(suite, "test abstract I/O with LZ4 by performing small writes and reads", testlz4smallwrites))
+        goto error;
+
     if (!CU_add_test(suite, "test bgp dump packet row", testbgpdumppacketrow))
         goto error;
 

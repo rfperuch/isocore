@@ -45,32 +45,36 @@ typedef io_rw_t *(*open_func_t)(int fd, size_t bufsiz, const char *mode, ...);
 static void write_and_read(const char* where, open_func_t open_func, const char *what)
 {
     int fd = open(where, O_CREAT | O_TRUNC | O_WRONLY, 0666);
-    if (fd == -1)
-        CU_FAIL_FATAL("cannot open compressed file");
+    CU_ASSERT_TRUE_FATAL(fd >= 0);
 
     size_t len = strlen(what);
 
     io_rw_t *io = open_func(fd, 0, "w");
-    if (io->write(io, what, len) != len)
-        CU_FAIL_FATAL("compressed file write failed");
+    CU_ASSERT_PTR_NOT_NULL_FATAL(io);
 
-    if (io->close(io) != 0)
-        CU_FAIL_FATAL("compressed file close failed");
+    size_t n = io->write(io, what, len);
+    CU_ASSERT_TRUE_FATAL(n == len);
+    CU_ASSERT_TRUE_FATAL(io->error(io) == 0);
+
+    int err = io->close(io);
+    CU_ASSERT_TRUE_FATAL(err == 0);
 
     fd = open(where, O_RDONLY);
-    if (fd == -1)
-        CU_FAIL_FATAL("cannot open compressed file");
+    CU_ASSERT_TRUE_FATAL(fd >= 0);
 
     char buf[len + 1];
     io = open_func(fd, 0, "r");
-    if (io->read(io, buf, len) != len)
-        CU_FAIL_FATAL("compressed file read failed");
+    CU_ASSERT_PTR_NOT_NULL_FATAL(io);
+
+    n = io->read(io, buf, len);
+    CU_ASSERT_TRUE_FATAL(n == len);
+    CU_ASSERT_TRUE_FATAL(io->error(io) == 0);
 
     buf[len] = '\0';
     CU_ASSERT_STRING_EQUAL(buf, what);
 
-    if (io->close(io) != 0)
-        CU_FAIL_FATAL("compressed file close failed");
+    err = io->close(io);
+    CU_ASSERT_TRUE_FATAL(err == 0);
 
     unlink(where);
 }
@@ -95,4 +99,65 @@ void testxz(void)
 void testlz4(void)
 {
     write_and_read("miao.lz4", io_lz4open, DEFAULT_STRING);
+}
+
+void testlz4smallwrites(void)
+{
+    const char *filename    = "hello.txt";
+    const char *test_string = "hello to everyone";
+
+    int fd = open(filename, O_WRONLY | O_TRUNC | O_CREAT, 0666);
+    CU_ASSERT_TRUE_FATAL(fd >= 0);
+
+    io_rw_t *io = io_lz4open(fd, 0, "w*", 0);
+    CU_ASSERT_PTR_NOT_NULL_FATAL(io);
+    CU_ASSERT_TRUE_FATAL(io->error(io) == 0);
+    char c = 'd';
+
+    size_t n = io->write(io, &c, sizeof(c));
+    CU_ASSERT_TRUE_FATAL(n == sizeof(c));
+    CU_ASSERT_TRUE_FATAL(io->error(io) == 0);
+
+    n = io->write(io, " ", 1);
+    CU_ASSERT_TRUE_FATAL(n == 1);
+    CU_ASSERT_TRUE_FATAL(io->error(io) == 0);
+
+    n = io->write(io, test_string, strlen(test_string));
+    CU_ASSERT_TRUE_FATAL(n == strlen(test_string));
+    CU_ASSERT_TRUE_FATAL(io->error(io) == 0);
+
+    int err = io->close(io);
+    CU_ASSERT_TRUE_FATAL(err == 0);
+
+    fd = open(filename, O_RDONLY);
+    CU_ASSERT_TRUE_FATAL(fd >= 0);
+
+    io = io_lz4open(fd, 0, "r");
+    CU_ASSERT_PTR_NOT_NULL_FATAL(io);
+    CU_ASSERT_TRUE_FATAL(io->error(io) == 0);
+
+    char ci;
+    char buf[strlen(test_string) + 1];
+
+    n = io->read(io, &ci, sizeof(ci));
+    CU_ASSERT_TRUE_FATAL(n == sizeof(ci));
+    CU_ASSERT_TRUE_FATAL(io->error(io) == 0);
+    CU_ASSERT_TRUE(ci == c);
+
+    n = io->read(io, &ci, sizeof(ci));
+    CU_ASSERT_TRUE_FATAL(n == sizeof(ci));
+    CU_ASSERT_TRUE_FATAL(io->error(io) == 0);
+    CU_ASSERT_TRUE(ci == ' ');
+
+    n = io->read(io, buf, strlen(test_string));
+    CU_ASSERT_TRUE_FATAL(n == strlen(test_string));
+    CU_ASSERT_TRUE_FATAL(io->error(io) == 0);
+
+    buf[strlen(test_string)] = '\0';
+    CU_ASSERT_STRING_EQUAL(buf, test_string);
+
+    err = io->close(io);
+    CU_ASSERT_TRUE_FATAL(err == 0);
+
+    unlink(filename);
 }

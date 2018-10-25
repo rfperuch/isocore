@@ -69,6 +69,8 @@ void testxz(void);
 
 void testlz4(void);
 
+void testlz4smallwrites(void);
+
 void testbgpdumppacketrow(void);
 
 void testjsonsimple(void);
