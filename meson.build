@@ -66,7 +66,6 @@ pkg.generate(
     name : meson.project_name(),
     version : meson.project_version(),
     libraries : isocore,
-    subdirs : [ 'isolario' ],
     description : 'The Isolario project core library.'
 )
 
