@@ -45,9 +45,7 @@ extern uint32_t getv4addrglobal(ex_community_t ecomm);
 
 extern uint64_t getopaquevalue(ex_community_t ecomm);
 
-extern size_t getattrlenextended(const bgpattr_t *attr);
-
-extern void setattrlenextended(bgpattr_t *attr, size_t len);
+extern void *getattrlen(const bgpattr_t *attr, size_t *psize);
 
 extern int getorigin(const bgpattr_t *attr);
 

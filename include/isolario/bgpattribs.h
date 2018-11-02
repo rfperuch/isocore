@@ -299,22 +299,18 @@ typedef struct {
     };
 } bgpattr_t;
 
-inline size_t getattrlenextended(const bgpattr_t *attr)
+inline void *getattrlen(const bgpattr_t *attr, size_t *psize)
 {
-    assert(attr->flags & ATTR_EXTENDED_LENGTH);
+    unsigned char *ptr = (unsigned char *) &attr->len;
+    size_t len = *ptr++;
+    if (attr->flags & ATTR_EXTENDED_LENGTH) {
+        len <<= 8;
+        len |= *ptr++;
+    }
+    if (likely(psize))
+        *psize = len;
 
-    uint16_t len;
-    memcpy(&len, attr->exlen, sizeof(len));
-    return frombig16(len);
-}
-
-inline void setattrlenextended(bgpattr_t *attr, size_t len)
-{
-    assert(len <= UINT16_MAX);
-    assert(attr->flags & ATTR_EXTENDED_LENGTH);
-
-    uint16_t n = tobig16(len);
-    memcpy(attr->exlen, &n, sizeof(n));
+    return ptr;
 }
 
 inline int getorigin(const bgpattr_t *attr)
