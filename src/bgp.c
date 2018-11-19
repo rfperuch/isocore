@@ -1946,7 +1946,7 @@ int startcommunities_r(bgp_msg_t *msg, int code)
     }
 
     size_t size;
-    msg->ustart (unsigned char *) attr;
+    msg->ustart = (unsigned char *) attr;
     msg->uptr = getattrlen(attr, &size);
     msg->uend = msg->uptr + size;
 
@@ -1967,7 +1967,7 @@ void *nextcommunity_r(bgp_msg_t *msg)
 
     switch (msg->ccode) {
     case COMMUNITY_CODE:
-        if (unlikely(msg->uend - msg->uptr < sizeof(msg->cbuf.comm))) {
+        if (unlikely((size_t) (msg->uend - msg->uptr) < sizeof(msg->cbuf.comm))) {
             msg->err = BGP_EBADATTR;
             return NULL;
         }
@@ -1977,7 +1977,7 @@ void *nextcommunity_r(bgp_msg_t *msg)
         msg->uptr += sizeof(msg->cbuf.comm);
         break;
     case EXTENDED_COMMUNITY_CODE:
-        if (unlikely(msg->uend - msg->uptr < sizeof(msg->cbuf.excomm))) {
+        if (unlikely((size_t) (msg->uend - msg->uptr) < sizeof(msg->cbuf.excomm))) {
             msg->err = BGP_EBADATTR;
             return NULL;
         }
@@ -1986,7 +1986,7 @@ void *nextcommunity_r(bgp_msg_t *msg)
         msg->uptr += sizeof(msg->cbuf.excomm);
         break;
     case LARGE_COMMUNITY_CODE:
-        if (unlikely(msg->uend - msg->uptr) < sizeof(msg->cbuf.lcomm)) {
+        if (unlikely((size_t) (msg->uend - msg->uptr) < sizeof(msg->cbuf.lcomm))) {
             msg->err = BGP_EBADATTR;
             return NULL;
         }
