@@ -1010,7 +1010,7 @@ int startmpunreachnlri_r(bgp_msg_t *msg)
 {
     if (checktype(msg, BGP_UPDATE, F_RD))
         return msg->err;
-    
+
     msg->uptr = msg->ustart = msg->uend = NULL; // causes nextwithdrawn_r to immediately switch to mp_reach attribute
     msg->flags |= F_WITHDRN | F_ALLWITHDRN;
     return msg->err;
@@ -2018,9 +2018,6 @@ int endcommunities_r(bgp_msg_t* msg)
     msg->flags &= ~F_COMMUNITY;
     return msg->err;
 }
-
-
-
 
 static bgpattr_t *seekbgpattr(bgp_msg_t *msg, int code)
 {
