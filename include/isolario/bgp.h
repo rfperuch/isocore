@@ -313,6 +313,12 @@ netaddr_t *nextnhop(void);
 
 int endnhop(void);
 
+int startcommunities(int code);
+
+void *nextcommunity(void);
+
+int endcommunities(void);
+
 /** @} */
 
 /**
@@ -386,6 +392,15 @@ typedef struct {
                             unsigned char *mpnhptr, *mpnhend;
                             short mpfamily, mpbitlen;
                             struct in_addr nhbuf;
+                        };
+                        struct {
+                            int ccode;
+                            union {
+                                community_t comm;
+                                ex_community_t excomm;
+                                ex_community_v6_t excomm6;
+                                large_community_t lcomm;
+                            } cbuf;
                         };
                     };
 
@@ -529,6 +544,12 @@ nonnull(1) int startnhop_r(bgp_msg_t *msg);
 nonnull(1) netaddr_t *nextnhop_r(bgp_msg_t *msg);
 
 nonnull(1) int endnhop_r(bgp_msg_t *msg);
+
+nonnull(1) int startcommunities_r(bgp_msg_t *msg, int code);
+
+nonnull(1) void *nextcommunity_r(bgp_msg_t *msg);
+
+nonnull(1) int endcommunities_r(bgp_msg_t *msg);
 
 // utility functions for update packages, direct access to notable attributes
 

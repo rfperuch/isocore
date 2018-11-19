@@ -65,9 +65,10 @@ enum {
     F_ASPATH     = 1 << 9,
     F_REALASPATH = 1 << 10,
     F_NHOP       = 1 << 11,
-    F_ADDPATH    = 1 << 12,
-    F_ASN32BIT   = 1 << 13,
-    F_PRESOFFTAB = 1 << 14  ///< See rebuildbgpfrommrt()
+    F_COMMUNITY  = 1 << 12,
+    F_ADDPATH    = 1 << 13,
+    F_ASN32BIT   = 1 << 14,
+    F_PRESOFFTAB = 1 << 15  ///< See rebuildbgpfrommrt()
 };
 
 /// @brief Offsets for various BGP packet fields
@@ -159,7 +160,7 @@ static const uint8_t bgp_minlengths[] = {
 /// @brief Close any pending field from packet.
 static int endpending(bgp_msg_t *msg)
 {
-    const int mask = F_PM | F_WITHDRN | F_PATTR | F_NLRI | F_ASPATH | F_NHOP;
+    const int mask = F_PM | F_WITHDRN | F_PATTR | F_NLRI | F_ASPATH | F_NHOP | F_COMMUNITY;
 
     // small optimization for common case
     if (likely((msg->flags & mask) == 0))
@@ -176,6 +177,8 @@ static int endpending(bgp_msg_t *msg)
         return endnlri_r(msg);
     if (msg->flags & F_ASPATH)
         return endaspath_r(msg);
+    if (msg->flags & F_COMMUNITY)
+        return endcommunities_r(msg);
 
     assert(msg->flags & F_NHOP);
     return endnhop_r(msg);
@@ -1906,6 +1909,118 @@ int endnhop_r(bgp_msg_t *msg)
     msg->flags &= ~F_NHOP;
     return BGP_ENOERR;
 }
+
+int startcommunities(int code)
+{
+    return startcommunities_r(&curmsg, code);
+}
+
+int startcommunities_r(bgp_msg_t *msg, int code)
+{
+    if (checktype(msg, BGP_UPDATE, F_RD))
+        return msg->err;
+
+    endpending(msg);
+
+    bgpattr_t *attr;
+    switch (code) {
+    case COMMUNITY_CODE:
+        attr = getbgpcommunities_r(msg);
+        break;
+    case EXTENDED_COMMUNITY_CODE:
+        attr = getbgpexcommunities_r(msg);
+        break;
+    case LARGE_COMMUNITY_CODE:
+        attr = getbgplargecommunities_r(msg);
+        break;
+    default:
+        msg->err = BGP_EINVOP;
+        return msg->err;
+    }
+
+    msg->ccode = code;
+    msg->flags |= F_COMMUNITY;
+    if (!attr) {
+        msg->ustart = msg->uptr = msg->uend = NULL;
+        return msg->err;
+    }
+
+    size_t size;
+    msg->ustart (unsigned char *) attr;
+    msg->uptr = getattrlen(attr, &size);
+    msg->uend = msg->uptr + size;
+
+    return BGP_ENOERR;
+}
+
+void *nextcommunity(void)
+{
+    return nextcommunity_r(&curmsg);
+}
+
+void *nextcommunity_r(bgp_msg_t *msg)
+{
+    if (checktype(msg, BGP_UPDATE, F_COMMUNITY))
+        return NULL;
+    if (msg->uptr == msg->uend)
+        return NULL; // end of communities
+
+    switch (msg->ccode) {
+    case COMMUNITY_CODE:
+        if (unlikely(msg->uend - msg->uptr < sizeof(msg->cbuf.comm))) {
+            msg->err = BGP_EBADATTR;
+            return NULL;
+        }
+
+        memcpy(&msg->cbuf.comm, msg->uptr, sizeof(msg->cbuf.comm));
+        msg->cbuf.comm = frombig32(msg->cbuf.comm);
+        msg->uptr += sizeof(msg->cbuf.comm);
+        break;
+    case EXTENDED_COMMUNITY_CODE:
+        if (unlikely(msg->uend - msg->uptr < sizeof(msg->cbuf.excomm))) {
+            msg->err = BGP_EBADATTR;
+            return NULL;
+        }
+
+        memcpy(&msg->cbuf.excomm, msg->uptr, sizeof(msg->cbuf.excomm));
+        msg->uptr += sizeof(msg->cbuf.excomm);
+        break;
+    case LARGE_COMMUNITY_CODE:
+        if (unlikely(msg->uend - msg->uptr) < sizeof(msg->cbuf.lcomm)) {
+            msg->err = BGP_EBADATTR;
+            return NULL;
+        }
+
+        memcpy(&msg->cbuf.lcomm, msg->uptr, sizeof(msg->cbuf.lcomm));
+        msg->cbuf.lcomm.global  = frombig32(msg->cbuf.lcomm.global);
+        msg->cbuf.lcomm.hilocal = frombig32(msg->cbuf.lcomm.hilocal);
+        msg->cbuf.lcomm.lolocal = frombig32(msg->cbuf.lcomm.lolocal);
+        msg->uptr += sizeof(msg->cbuf.lcomm);
+        break;
+    default:
+        assert(false);
+        unreachable();
+        return NULL;
+    }
+    return &msg->cbuf;
+}
+
+int endcommunities(void)
+{
+    return endcommunities_r(&curmsg);
+}
+
+int endcommunities_r(bgp_msg_t* msg)
+{
+    if (checktype(msg, BGP_UPDATE, F_COMMUNITY))
+        return msg->err;
+
+    msg->flags &= ~F_COMMUNITY;
+    return msg->err;
+}
+
+
+
 
 static bgpattr_t *seekbgpattr(bgp_msg_t *msg, int code)
 {
