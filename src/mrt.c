@@ -202,8 +202,13 @@ static int setuppitable(mrt_msg_t *msg, mrt_msg_t *pi)
     }
 
     err = endpeerents_r(pi);
-    if (unlikely(err != MRT_ENOERR))
+    if (unlikely(err != MRT_ENOERR)) {
+        if (pi->pitab != pi->fastpitab)
+            free(pi->pitab);
+
+        pi->pitab = NULL;
         return MRT_EBADPEERIDX;
+    }
 
     pi->picount = count;
     return MRT_ENOERR;
@@ -282,6 +287,16 @@ int ismrtrib_r(mrt_msg_t *msg)
     return (msg->flags & (F_RD | F_NEEDS_PI)) == (F_RD | F_NEEDS_PI);
 }
 
+int ismrtasn32bit(void)
+{
+    return ismrtasn32bit_r(&curmsg);
+}
+
+int ismrtasn32bit_r(mrt_msg_t *msg)
+{
+    return (msg->flags & F_AS32) != 0;
+}
+
 int ismrtaddpath(void)
 {
     return ismrtaddpath_r(&curmsg);
@@ -303,7 +318,7 @@ int setmrtpi_r(mrt_msg_t *msg, mrt_msg_t *pi)
 int setmrtread(const void *data, size_t n)
 {
     int res = setmrtread_r(&curmsg, data, n);
-    if (likely(res == MRT_ENOERR && curpimsg.flags != 0))
+    if (likely(res == MRT_ENOERR) && curpimsg.flags != 0)
         setuppitable(&curmsg, &curpimsg);
 
     return res;
@@ -640,6 +655,16 @@ int setribpi(void)
         curpimsg.pitab = curpimsg.fastpitab;
 
     return endpending(&curpimsg);
+}
+
+int setribpi_r(mrt_msg_t *msg, mrt_msg_t *pi)
+{
+    if (unlikely(msg->err != MRT_ENOERR))
+        return MRT_EINVOP;
+    if (unlikely((msg->flags & F_IS_PI) == 0))
+        return MRT_NOTPEERIDX;
+
+    return setuppitable(msg, pi);
 }
 
 void *getribents(size_t *pcount, size_t *pn)

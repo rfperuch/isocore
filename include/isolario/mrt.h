@@ -289,6 +289,10 @@ int isbgpwrapper(void);
 
 int isbgpwrapper_r(mrt_msg_t *msg);
 
+int ismrtasn32bit(void);
+
+int ismrtasn32bit_r(mrt_msg_t *msg);
+
 int ismrtaddpath(void);
 
 int ismrtaddpath_r(mrt_msg_t *msg);
@@ -362,7 +366,7 @@ int endpeerents_r(mrt_msg_t *msg);
 
 int setribpi(void);
 
-int setribpi_r(mrt_msg_t *msg);
+int setribpi_r(mrt_msg_t *msg, mrt_msg_t *pi);
 
 int setribents(const void *buf, size_t n);
 
