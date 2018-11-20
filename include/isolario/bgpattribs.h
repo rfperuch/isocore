@@ -593,28 +593,11 @@ void *getmpnlri(const bgpattr_t *attr, size_t *pn);
 
 void *getmpnexthop(const bgpattr_t *attr, size_t *pn);
 
-bgpattr_t *putcommunities(bgpattr_t *attr, const community_t *comms, size_t count);
+bgpattr_t *putcommunities(bgpattr_t *attr, community_t c);
 
-bgpattr_t *putexcommunities(bgpattr_t *attr, const ex_community_t *comms, size_t count);
+bgpattr_t *putexcommunities(bgpattr_t *attr, ex_community_t c);
 
-bgpattr_t *putlargecommunities(bgpattr_t *attr, const large_community_t *comms, size_t count);
-
-inline void *getcommunities(const bgpattr_t *attr, size_t size, size_t *pn)
-{
-    assert(attr->code == COMMUNITY_CODE || attr->code == EXTENDED_COMMUNITY_CODE || attr->code == LARGE_COMMUNITY_CODE);
-
-    unsigned char *ptr = (unsigned char *) &attr->len;
-    size_t len = *ptr++;
-    if (attr->flags & ATTR_EXTENDED_LENGTH) {
-        len <<= 8;
-        len |= *ptr++;
-    }
-
-    if (likely(pn))
-        *pn = len / size;
-
-    return ptr;
-}
+bgpattr_t *putlargecommunities(bgpattr_t *attr, large_community_t c);
 
 enum {
     COMMSTR_EX,

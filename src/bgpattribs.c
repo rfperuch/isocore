@@ -319,7 +319,7 @@ bgpattr_t *putmpnlriap(bgpattr_t *dst, const netaddrap_t *addr)
     assert(dst->code == MP_REACH_NLRI_CODE || dst->code == MP_UNREACH_NLRI_CODE);
 
     unsigned char *ptr = &dst->len;
-    
+
     int extended = dst->flags & ATTR_EXTENDED_LENGTH;
     size_t len   = *ptr++;
     size_t limit = ATTR_LENGTH_MAX;
@@ -334,7 +334,7 @@ bgpattr_t *putmpnlriap(bgpattr_t *dst, const netaddrap_t *addr)
     uint32_t netpathid = tobig32(addr->pathid);
     if (unlikely(len + n + 1 + sizeof(netpathid) > limit))
         return NULL;  // would overflow attribute length
-    
+
     ptr   += len;
     memcpy(ptr, &netpathid, sizeof(netpathid));
     ptr   += sizeof(netpathid);
@@ -603,23 +603,23 @@ size_t stoas4path(bgpattr_t *attr, size_t n, int flags, const char *s, char **ep
 }
 */
 
-static bgpattr_t *appendcommunities(bgpattr_t *attr, const void *comms, size_t n)
+static bgpattr_t *appendcommunities(bgpattr_t *attr, const void *commptr, size_t bytes)
 {
     unsigned char *ptr = &attr->len;
     int extended       = attr->flags & ATTR_EXTENDED_LENGTH;
 
-    size_t limit = ATTR_LENGTH_MAX;
+    size_t limit = (attr->flags & ATTR_EXTENDED_LENGTH) ? ATTR_EXTENDED_LENGTH_MAX : ATTR_LENGTH_MAX;
     size_t len   = *ptr++;
     if (extended) {
         limit = ATTR_EXTENDED_LENGTH_MAX;
         len <<= 8;
         len |= *ptr++;
     }
-    if (unlikely(len + n > limit))
+    if (unlikely(len + bytes > limit))
         return NULL;
 
-    memcpy(ptr + len, comms, n);
-    len += n;
+    memcpy(ptr + len, commptr, bytes);
+    len += bytes;
 
     ptr = &attr->len;
     if (extended) {
@@ -631,27 +631,25 @@ static bgpattr_t *appendcommunities(bgpattr_t *attr, const void *comms, size_t n
     return attr;
 }
 
-extern void *getcommunities(const bgpattr_t *attr, size_t size, size_t *pn);
-
-bgpattr_t *putcommunities(bgpattr_t *attr, const community_t *comms, size_t count)
+bgpattr_t *putcommunities(bgpattr_t *attr, community_t c)
 {
     assert(attr->code == COMMUNITY_CODE);
 
-    return appendcommunities(attr, comms, count * sizeof(*comms));
+    return appendcommunities(attr, &c, sizeof(c));
 }
 
-bgpattr_t *putexcommunities(bgpattr_t *attr, const ex_community_t *comms, size_t count)
+bgpattr_t *putexcommunities(bgpattr_t *attr, ex_community_t c)
 {
     assert(attr->code == EXTENDED_COMMUNITY_CODE);
 
-    return appendcommunities(attr, comms, count * sizeof(*comms));
+    return appendcommunities(attr, &c, sizeof(c));
 }
 
-bgpattr_t *putlargecommunities(bgpattr_t *attr, const large_community_t *comms, size_t count)
+bgpattr_t *putlargecommunities(bgpattr_t *attr, large_community_t c)
 {
     assert(attr->code == LARGE_COMMUNITY_CODE);
 
-    return appendcommunities(attr, comms, count * sizeof(*comms));
+    return appendcommunities(attr, &c, sizeof(c));
 }
 
 static const struct {
@@ -659,7 +657,7 @@ static const struct {
     community_t community;
 } str2wellknown[] = {
     {"PLANNED_SHUT", COMMUNITY_PLANNED_SHUT},
-    {"ACCEPT_OWN_NEXTHOP", COMMUNITY_ACCEPT_OWN_NEXTHOP},  // NOTE: must come BEFORE "ACCEPT_OWN", see communitytos()
+    {"ACCEPT_OWN_NEXTHOP", COMMUNITY_ACCEPT_OWN_NEXTHOP},  // NOTE: must come BEFORE "ACCEPT_OWN", see stocommunity()
     {"ACCEPT_OWN", COMMUNITY_ACCEPT_OWN},
     {"ROUTE_FILTER_TRANSLATED_V4", COMMUNITY_ROUTE_FILTER_TRANSLATED_V4},
     {"ROUTE_FILTER_V4", COMMUNITY_ROUTE_FILTER_V4},
@@ -668,7 +666,7 @@ static const struct {
     {"LLGR_STALE", COMMUNITY_LLGR_STALE},
     {"NO_LLGR", COMMUNITY_NO_LLGR},
     {"BLACKHOLE", COMMUNITY_BLACKHOLE},
-    {"NO_EXPORT_SUBCONFED", COMMUNITY_NO_EXPORT_SUBCONFED},  // NOTE: must come BEFORE "NO_EXPORT", see communitytos()
+    {"NO_EXPORT_SUBCONFED", COMMUNITY_NO_EXPORT_SUBCONFED},  // NOTE: must come BEFORE "NO_EXPORT", see stocommunity()
     {"NO_EXPORT", COMMUNITY_NO_EXPORT} ,
     {"NO_ADVERTISE", COMMUNITY_NO_ADVERTISE},
     {"NO_PEER", COMMUNITY_NO_PEER}
@@ -678,7 +676,6 @@ char *communitytos(community_t c, int mode)
 {
     static _Thread_local char buf[digsof(uint16_t) + 1 + digsof(uint16_t) + 1];
 
-    c = frombig32(c); // FIXME
     if (mode == COMMSTR_EX) {
         for (size_t i = 0; i < nelems(str2wellknown); i++) {
             if (str2wellknown[i].community == c)
@@ -700,10 +697,6 @@ char *largecommunitytos(large_community_t c)
 
     char *ptr;
 
-    // FIXME
-    c.global = frombig32(c.global);
-    c.hilocal = frombig32(c.hilocal);
-    c.lolocal = frombig32(c.lolocal);
     ultoa(buf, &ptr, c.global);
     *ptr++ = ':';
     ultoa(ptr, &ptr, c.hilocal);
