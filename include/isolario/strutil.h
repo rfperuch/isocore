@@ -64,7 +64,7 @@ inline purefunc nonnull(1) unsigned long memdjb2(const void *p, size_t n)
 {
     unsigned long h = 5381;
 
-    const unsigned char *ptr = p;
+    const unsigned char *ptr = (const unsigned char *) p;
     for (size_t i = 0; i < n; i++)
         h = ((h << 5) + h) + *ptr++; // hash * 33 + c
 
@@ -87,7 +87,7 @@ inline purefunc nonnull(1) unsigned long memsdbm(const void *p, size_t n)
 {
     unsigned long h = 0;
 
-    const unsigned char *ptr = p;
+    const unsigned char *ptr = (const unsigned char *) p;
     for (size_t i = 0; i < n; i++)
         h = *ptr++ + (h << 6) + (h << 16) - h;
 
@@ -112,7 +112,7 @@ inline nonullreturn nonnull(1) char *xtoa(char *dst, char **endp, unsigned int v
     if (endp)
         *endp = &dst[n];
 
-    return memcpy(dst, ptr, n + 1);
+    return (char *) memcpy(dst, ptr, n + 1);
 }
 
 inline nonullreturn nonnull(1) char *itoa(char *dst, char **endp, int i)
@@ -138,7 +138,7 @@ inline nonullreturn nonnull(1) char *itoa(char *dst, char **endp, int i)
     if (endp)
         *endp = &dst[n];
 
-    return memcpy(dst, ptr, n + 1);
+    return (char *) memcpy(dst, ptr, n + 1);
 }
 
 inline nonullreturn nonnull(1) char *utoa(char *dst, char **endp, unsigned int u)
@@ -159,7 +159,7 @@ inline nonullreturn nonnull(1) char *utoa(char *dst, char **endp, unsigned int u
     if (endp)
         *endp = &dst[n];
 
-    return memcpy(dst, ptr, n + 1);
+    return (char *) memcpy(dst, ptr, n + 1);
 }
 
 
@@ -186,7 +186,7 @@ inline nonullreturn nonnull(1) char *ltoa(char *dst, char **endp, long l)
     if (endp)
         *endp = &dst[n];
 
-    return memcpy(dst, ptr, n + 1);
+    return (char *) memcpy(dst, ptr, n + 1);
 }
 
 inline nonullreturn nonnull(1) char *ultoa(char *dst, char **endp, unsigned long u)
@@ -207,7 +207,7 @@ inline nonullreturn nonnull(1) char *ultoa(char *dst, char **endp, unsigned long
     if (endp)
         *endp = &dst[n];
 
-    return memcpy(dst, ptr, n + 1);
+    return (char *) memcpy(dst, ptr, n + 1);
 }
 
 inline nonullreturn nonnull(1) char *lltoa(char *dst, char **endp, long long ll)
@@ -233,7 +233,7 @@ inline nonullreturn nonnull(1) char *lltoa(char *dst, char **endp, long long ll)
     if (endp)
         *endp = &dst[n];
 
-    return memcpy(dst, ptr, n + 1);
+    return (char *) memcpy(dst, ptr, n + 1);
 }
 
 inline nonullreturn nonnull(1) char *ulltoa(char *dst, char **endp, unsigned long long u)
@@ -254,7 +254,7 @@ inline nonullreturn nonnull(1) char *ulltoa(char *dst, char **endp, unsigned lon
     if (endp)
         *endp = &dst[n];
 
-    return memcpy(dst, ptr, n + 1);
+    return (char *) memcpy(dst, ptr, n + 1);
 }
 
 /**
