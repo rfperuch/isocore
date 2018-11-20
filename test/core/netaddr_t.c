@@ -33,10 +33,7 @@ void testnetaddr(void)
         CU_ASSERT_STRING_EQUAL(naddrtos(&prefix, NADDR_PLAIN), table[i].ip);
 
         netaddr_t cloned;
-        if (table[i].family == AF_INET)
-            makenaddr(&cloned, &prefix.sin, prefix.bitlen);
-        else
-            makenaddr6(&cloned, &prefix.sin, prefix.bitlen);
+        makenaddr(&cloned, table[i].family, &prefix.sin, prefix.bitlen);
 
         if ((table[i].bitlen == 32 && table[i].family == AF_INET) || (table[i].bitlen == 128 && table[i].family == AF_INET6)) {
             res = stonaddr(&prefix, table[i].ip); // NB
