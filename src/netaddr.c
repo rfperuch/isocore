@@ -7,20 +7,7 @@
 
 extern int naddrsize(int bitlen);
 extern sa_family_t saddrfamily(const char *s);
-
-void makenaddr(netaddr_t *ip, const void *sin, int bitlen)
-{
-    ip->bitlen = bitlen;
-    ip->family = AF_INET;
-    memcpy(&ip->sin, sin, sizeof(struct in_addr));
-}
-
-void makenaddr6(netaddr_t *ip, const void *sin6, int bitlen)
-{
-    ip->bitlen = bitlen;
-    ip->family = AF_INET6;
-    memcpy(&ip->sin6, sin6, sizeof(struct in6_addr));
-}
+extern void makenaddr(netaddr_t *ip, sa_family_t family, const void *sin, int bitlen);
 
 int stonaddr(netaddr_t *ip, const char *s)
 {

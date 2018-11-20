@@ -103,11 +103,13 @@ typedef struct {
     uint32_t pathid;
 } netaddrap_t;
 
-/// @brief Make a network address from an IPv4 address.
-nonnull(1) void makenaddr(netaddr_t *ip, const void *sin, int bitlen);
-
-/// @brief Make a network address from an IPv6 address.
-nonnull(1) void makenaddr6(netaddr_t *ip, const void *sin6, int bitlen);
+/// @brief Make a network address from an IP address.
+inline nonnull(1) void makenaddr(netaddr_t *ip, sa_family_t family, const void *sin, int bitlen)
+{
+    ip->bitlen = bitlen;
+    ip->family = family;
+    memcpy(ip->bytes, sin, naddrsize(bitlen));
+}
 
 /// @brief String to network address.
 nonnull(1, 2) int stonaddr(netaddr_t *ip, const char *s);
