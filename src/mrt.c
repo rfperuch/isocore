@@ -932,17 +932,17 @@ bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg)
     case AFI_IPV4:
         CHECKBOUNDSR(ptr, end, 2 * sizeof(struct in_addr), MRT_EBADBGP4MPHDR, NULL);
 
-        makenaddr(&hdr->peer_addr, ptr, 32);
+        makenaddr(&hdr->peer_addr, AF_INET, ptr, 32);
         ptr += sizeof(struct in_addr);
-        makenaddr(&hdr->local_addr, ptr, 32);
+        makenaddr(&hdr->local_addr, AF_INET, ptr, 32);
         ptr += sizeof(struct in_addr);
         break;
     case AFI_IPV6:
         CHECKBOUNDSR(ptr, end, 2 * sizeof(struct in6_addr), MRT_EBADBGP4MPHDR, NULL);
 
-        makenaddr6(&hdr->peer_addr, ptr, 128);
+        makenaddr(&hdr->peer_addr, AF_INET6, ptr, 128);
         ptr += sizeof(struct in6_addr);
-        makenaddr6(&hdr->local_addr, ptr, 128);
+        makenaddr(&hdr->local_addr, AF_INET6, ptr, 128);
         ptr += sizeof(struct in6_addr);
         break;
     default:
