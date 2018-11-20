@@ -659,9 +659,9 @@ int setribpi(void)
 
 int setribpi_r(mrt_msg_t *msg, mrt_msg_t *pi)
 {
-    if (unlikely(msg->err != MRT_ENOERR))
+    if (unlikely(msg->err != MRT_ENOERR || pi->err != MRT_ENOERR))
         return MRT_EINVOP;
-    if (unlikely((msg->flags & F_IS_PI) == 0))
+    if (unlikely((pi->flags & F_IS_PI) == 0))
         return MRT_NOTPEERIDX;
 
     return setuppitable(msg, pi);
