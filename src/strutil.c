@@ -261,12 +261,12 @@ size_t strunescape(char *s)
         ['"']  = '"',
         ['\\'] = '\\',
         ['/']  = '/',  // allows embedding JSON in a <script>
-        ['\b'] = 'b',
-        ['\f'] = 'f',
-        ['\n'] = 'n',
-        ['\r'] = 'r',
-        ['\t'] = 't',
-        ['\v'] = 'n'   // paranoid, remap \v to \n, incorrect but still better than nothing
+        ['b']  = '\b',
+        ['f']  = '\f',
+        ['n']  = '\n',
+        ['r']  = '\r',
+        ['t']  = '\t',
+        ['v']  = '\v'  // not really JSON, but still...
     };
 
     int c;
