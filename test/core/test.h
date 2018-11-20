@@ -45,6 +45,8 @@ void testsplitjoinstr(void);
 
 void testtrimwhites(void);
 
+void teststrunescape(void);
+
 void testnetaddr(void);
 
 void testprefixeqwithmask(void);

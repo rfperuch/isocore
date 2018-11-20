@@ -47,7 +47,7 @@ void testbgpdumppacketrow(void)
     struct in_addr nlri_s;
     inet_pton(AF_INET, "10.0.0.0", &nlri_s);
     netaddr_t nlri;
-    makenaddr(&nlri, &nlri_s, 8);
+    makenaddr(&nlri, AF_INET, &nlri_s, 8);
     startnlri();
     putnlri(&nlri);
     endnlri();

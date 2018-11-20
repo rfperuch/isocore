@@ -62,9 +62,12 @@ int main(void)
     if (!CU_add_test(suite, "test for trimwhites()", testtrimwhites))
         goto error;
 
+    if (!CU_add_test(suite, "test for strunescape()", teststrunescape))
+        goto error;
+
     if (!CU_add_test(suite, "test netaddr", testnetaddr))
         goto error;
-    
+
     if (!CU_add_test(suite, "test testprefixeqwithmask", testprefixeqwithmask))
         goto error;
 

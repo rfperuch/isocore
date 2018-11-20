@@ -109,3 +109,13 @@ void testsplitjoinstr(void)
     }
 }
 
+void teststrunescape(void)
+{
+    char buf[256];
+
+    strcpy(buf, "\\\"\\\\\\/\\b\\f\\n\\r\\t\\v");
+    size_t len = strunescape(buf);
+    CU_ASSERT_EQUAL(len, strlen(buf));
+    CU_ASSERT_STRING_EQUAL(buf, "\"\\/\b\f\n\r\t\v");
+}
+
