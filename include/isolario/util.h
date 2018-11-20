@@ -88,7 +88,7 @@
  * @warning This macro is unsafe and may evaluate its arguments more than once.
  *          *Only provide arguments with no side-effects*.
  */
-#ifndef min
+#if !defined(min) && !defined(__cplusplus)
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #endif
 
@@ -101,7 +101,7 @@
  * @warning This macro is unsafe and may evaluate its arguments more than once.
  *          *Only provide arguments with no side-effects*.
  */
-#ifndef max
+#if !defined(max) && !defined(__cplusplus)
 #define max(a, b) (((a) < (b)) ? (b) : (a))
 #endif
 
@@ -125,7 +125,7 @@
  * @warning This macro is unsafe and may evaluate its arguments more than once.
  *          *Only provide arguments with no side-effects*.
  */
-#ifndef clamp
+#if !defined(clamp) && !defined(__cplusplus)
 #define clamp(x, a, b) max(a, min(x, b))
 #endif
 
