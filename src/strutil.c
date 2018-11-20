@@ -255,6 +255,35 @@ char *strpathext(const char *name)
     return (char *) ext;
 }
 
+size_t strunescape(char *s)
+{
+    static const char escapechar[CHAR_MAX + 1] = {
+        ['"']  = '"',
+        ['\\'] = '\\',
+        ['/']  = '/',  // allows embedding JSON in a <script>
+        ['\b'] = 'b',
+        ['\f'] = 'f',
+        ['\n'] = 'n',
+        ['\r'] = 'r',
+        ['\t'] = 't',
+        ['\v'] = 'n'   // paranoid, remap \v to \n, incorrect but still better than nothing
+    };
+
+    int c;
+
+    char *dst = s;
+    char *cur = s;
+    while ((c = *cur++) != '\0') {
+        if (c == '\\' && escapechar[(int) *cur] != '\0')
+            c = escapechar[(int) *cur++];
+
+        *dst++ = c;
+    }
+
+    *dst = '\0';
+    return dst - s;
+}
+
 extern int startswith(const char *s, const char *prefix);
 
 extern int endswith(const char *s, const char *suffix);

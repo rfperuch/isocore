@@ -317,6 +317,9 @@ nonullreturn nonnull(1) char *trimwhites(char *s);
 /// @brief Return file extension, including leading '.', \a NULL if no extension is found.
 nonnull(1) char *strpathext(const char *name);
 
+/// @brief Remove escape characters from string \a s, works in place.
+nonnull(1) size_t strunescape(char *s);
+
 /// @brief Check whether a string starts with a specific prefix.
 inline purefunc nonnull(1, 2) int startswith(const char *s, const char *prefix)
 {
