@@ -66,7 +66,7 @@ extern int prefixeq(const netaddr_t *a, const netaddr_t *b);
 
 extern int naddreq(const netaddr_t *a, const netaddr_t *b);
 
-char* naddrtos(const netaddr_t* ip, int mode)
+char* naddrtos(const netaddr_t *ip, int mode)
 {
     static _Thread_local char buf[INET6_ADDRSTRLEN + 1 + digsof(ip->bitlen) + 1];
 

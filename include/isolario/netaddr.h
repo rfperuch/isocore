@@ -150,6 +150,7 @@ inline nonnull(1) void makenaddr(netaddr_t *ip, sa_family_t family, const void *
 {
     ip->bitlen = bitlen;
     ip->family = family;
+    ip->u32[0] = ip->u32[1] = ip->u32[2] = ip->u32[3] = 0;
     memcpy(ip->bytes, sin, naddrsize(bitlen));
 }
 
