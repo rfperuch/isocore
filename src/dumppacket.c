@@ -154,29 +154,33 @@ static void printbgp_row_attribs(FILE *out, bgp_msg_t *pkt, const bgp_formatter_
     putc_unlocked('|', out);
 
     // Communities
-    size_t comm_count = 0, lcomm_count = 0;
-    attr = getbgpcommunities_r(pkt);
-    if (attr) {
-        community_t *comms = getcommunities(attr, sizeof(*comms), &comm_count);
-        for (size_t i = 0; i < comm_count; i++) {
-            if (i > 0)
-                putc_unlocked(' ', out);
+    community_t *comm;
 
-            writestr_unlocked(communitytos(comms[i], fmt->comm_mode), out);
-        }
+    bool first = true;
+
+    startcommunities_r(pkt, COMMUNITY_CODE);
+    while ((comm = nextcommunity_r(pkt)) != NULL) {
+        if (!first)
+            putc_unlocked(' ', out);
+
+        writestr_unlocked(communitytos(*comm, fmt->comm_mode), out);
+        first = false;
     }
+    endcommunities_r(pkt);
 
-    attr = getbgplargecommunities_r(pkt);
-    if (attr) {
-        large_community_t *comms = getcommunities(attr, sizeof(*comms), &lcomm_count);
-        for (size_t i = 0; i < lcomm_count; i++) {
-            // we want to emit a space even when packet had any community
-            if (i + comm_count > 0)
-                putc_unlocked(' ', out);
+    large_community_t *lcomm;
 
-            writestr_unlocked(largecommunitytos(comms[i]), out);
-        }
+    first = true;
+
+    startcommunities_r(pkt, LARGE_COMMUNITY_CODE);
+    while ((lcomm = nextcommunity_r(pkt)) != NULL) {
+        if (!first)
+            putc_unlocked(' ', out);
+
+        writestr_unlocked(largecommunitytos(*lcomm), out);
+        first = false;
     }
+    endcommunities_r(pkt);
 }
 
 static void printbgp_row_trailer(FILE *out, uint32_t pathid, const bgp_formatter_t *fmt)
