@@ -103,14 +103,6 @@ typedef struct {
     uint32_t pathid;
 } netaddrap_t;
 
-/// @brief Make a network address from an IP address.
-inline nonnull(1) void makenaddr(netaddr_t *ip, sa_family_t family, const void *sin, int bitlen)
-{
-    ip->bitlen = bitlen;
-    ip->family = family;
-    memcpy(ip->bytes, sin, naddrsize(bitlen));
-}
-
 /// @brief String to network address.
 nonnull(1, 2) int stonaddr(netaddr_t *ip, const char *s);
 
@@ -151,6 +143,14 @@ inline purefunc sa_family_t saddrfamily(const char *s)
             return AF_UNSPEC;
     }
     return likely(*s == ':') ? AF_INET6 : AF_UNSPEC;
+}
+
+/// @brief Make a network address from an IP address.
+inline nonnull(1) void makenaddr(netaddr_t *ip, sa_family_t family, const void *sin, int bitlen)
+{
+    ip->bitlen = bitlen;
+    ip->family = family;
+    memcpy(ip->bytes, sin, naddrsize(bitlen));
 }
 
 inline purefunc nonnull(1, 2) int prefixeqwithmask(const netaddr_t *addr, const netaddr_t *dest, unsigned int mask)
