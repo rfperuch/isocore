@@ -320,6 +320,9 @@ nonnull(1) char *strpathext(const char *name);
 /// @brief Remove escape characters from string \a s, works in place.
 nonnull(1) size_t strunescape(char *s);
 
+/// @brief Add escape sequences to a string, writes to destination buffer at most 2 * strlen() + 1 chars.
+nonnull(1, 2) size_t strescape(char *restrict dst, const char *restrict src);
+
 /// @brief Check whether a string starts with a specific prefix.
 inline purefunc nonnull(1, 2) int startswith(const char *s, const char *prefix)
 {

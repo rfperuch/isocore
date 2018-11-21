@@ -257,7 +257,7 @@ char *strpathext(const char *name)
 
 size_t strunescape(char *s)
 {
-    static const char escapechar[CHAR_MAX + 1] = {
+    static const char unescapechar[CHAR_MAX + 1] = {
         ['"']  = '"',
         ['\\'] = '\\',
         ['/']  = '/',  // allows embedding JSON in a <script>
@@ -274,14 +274,49 @@ size_t strunescape(char *s)
     char *dst = s;
     char *cur = s;
     while ((c = *cur++) != '\0') {
-        if (c == '\\' && escapechar[(int) *cur] != '\0')
-            c = escapechar[(int) *cur++];
-
+        if (c == '\\') {
+            int e = unescapechar[max(*cur, 0)];  // deal with chars < 0
+            if (e != '\0')
+                c = e;
+        }
         *dst++ = c;
     }
 
     *dst = '\0';
     return dst - s;
+}
+
+size_t strescape(char *restrict dst, const char *restrict src)
+{
+    static const char escapechar[CHAR_MAX + 1] = {
+        ['"']  = '"',
+        ['\\'] = '\\',
+        ['/']  = '/',  // allows embedding JSON in a <script>
+        ['\b'] = 'b',
+        ['\f'] = 'f',
+        ['\n'] = 'n',
+        ['\r'] = 'r',
+        ['\t'] = 't',
+        ['\v'] = 'n'   // paranoid, remap \v to \n, incorrect but still better than nothing
+    };
+
+    // TODO escape chars < ' ' as '\u000'hex(c)
+
+    int c;
+
+    char *ptr = dst;
+    while ((c = *src++) != '\0') {
+        char e = escapechar[max(c, 0)];  // deal with chars < 0
+        if (e != '\0') {
+            *ptr++ = '\\';
+            c = e;
+        }
+
+        *ptr++ = c;
+    }
+
+    *ptr = '\0';
+    return ptr - dst;
 }
 
 extern int startswith(const char *s, const char *prefix);

@@ -46,39 +46,6 @@ enum {
     JSON_INDENT_SPACES = 3
 };
 
-static size_t escapestring(char *restrict dst, const char *restrict src)
-{
-    static const char escapechar[CHAR_MAX + 1] = {
-        ['"']  = '"',
-        ['\\'] = '\\',
-        ['/']  = '/',  // allows embedding JSON in a <script>
-        ['\b'] = 'b',
-        ['\f'] = 'f',
-        ['\n'] = 'n',
-        ['\r'] = 'r',
-        ['\t'] = 't',
-        ['\v'] = 'n'   // paranoid, remap \v to \n, incorrect but still better than nothing
-    };
-
-    // TODO escape chars < ' ' as '\u000'hex(c)
-
-    int c;
-
-    char *ptr = dst;
-    while ((c = *src++) != '\0') {
-        char e = escapechar[c];
-        if (e != '\0') {
-            *ptr++ = '\\';
-            c = e;
-        }
-
-        *ptr++ = c;
-    }
-
-    *ptr = '\0';
-    return ptr - dst;
-}
-
 static int valueneedscomma(json_t *json)
 {
     ssize_t i;
@@ -201,7 +168,7 @@ void newjsonvals(json_t **pjson, const char *val)
     int comma = valueneedscomma(*pjson);
 
     char buf[n * 2 + 1];
-    n = escapestring(buf, val);
+    n = strescape(buf, val);
 
     json_t *json = jsonensure(pjson, comma + n + 2);
     if (unlikely(!json))
