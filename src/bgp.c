@@ -329,6 +329,13 @@ static int ismrttruncated(const void *mp_reach, size_t n)
 
 int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size_t n, int flags)
 {
+    if (flags & BGPF_LEGACYMRT) {
+        // disable meaningless flags implicitly when using legacy TABLE DUMP
+        flags &= ~(BGPF_ASN32BIT | BGPF_ADDPATH | BGPF_STDMRT);
+        // ... and implicitly enable FULL MP REACH
+        flags |= BGPF_FULLMPREACH;
+    }
+
     setbgpwrite_r(msg, BGP_UPDATE, flags);
 
     const bgpattr_t *attr     = data;
@@ -447,7 +454,21 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
             }
             break;
         case AS_PATH_CODE:
-            if ((msg->flags & F_ASN32BIT) == 0) {
+            // care should be taken with AS PATH attribute:
+            // * TABLE DUMP V2 imposes every AS to be 32 bits wide,
+            //   regardless of the ASN32BIT flag:
+            //   so in presence of a BGP message with 16 bits ASes we should
+            //   reconstruct it by truncating every AS to 16 bits,
+            //   moreover we should check that the padding bytes are
+            //   actually 0 as a sanity check.
+            // * LEGACY TABLE DUMP imposes 16 bits only ASes, an ASN32BIT
+            //   enabled BGP message cannot be serialized into legacy TABLE
+            //   DUMP format, in this case we should copy the attribute
+            //   verbatim (using the same code that copies the attribute
+            //   when dealing with ASN32BIT message && TABLE DUMP V2),
+            //   achieving that is simple since we explicitly force BGPF_ASN32BIT
+            //   to be toggled off in presence of BGPF_LEGACYMRT.
+            if (((msg->flags & F_ASN32BIT) | (flags & BGPF_LEGACYMRT)) == 0) {
                 // truncate ASes to 16-bits
                 unsigned char *start     = dst;
                 const unsigned char *ptr = src; // don't alter src during AS_PATH rebuild

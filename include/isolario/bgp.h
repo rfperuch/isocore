@@ -74,10 +74,27 @@ enum {
     BGPF_NOCOPY       = 1 << 0,  /// @brief A flag for \a setbgpread(), does not copy the read-buffer.
     BGPF_ADDPATH      = 1 << 1,
     BGPF_ASN32BIT     = 1 << 2,
-    BGPF_GUESSMRT     = 0,
-    BGPF_STDMRT       = 1 << 3,
-    BGPF_FULLMPREACH  = 1 << 4,
-    BGPF_STRIPUNREACH = 1 << 5
+
+    // flags for rebuilding original BGP from MRT attribute list
+    BGPF_GUESSMRT     = 0,       // Guess TABLE DUMP V2 format between
+                                 // BGPF_STDMRT and BGPF_FULLMPREACH using
+                                 // a heuristic
+    BGPF_STDMRT       = 1 << 3,  // Strictly standard TABLE DUMP V2
+                                 // truncated MP REACH attributes with 32-bits
+                                 // only AS PATH, this flag prevails over
+                                 // BGPF_GUESSMRT
+    BGPF_FULLMPREACH  = 1 << 4,  // Variation over standard TABLE DUMP V2
+                                 // full MP REACH attributes with 32-bits only
+                                 // AS PATH
+    BGPF_STRIPUNREACH = 1 << 5,  // Strip MP UNREACH attributes from
+                                 // attribute list
+                                 // (they shouldn't be there anyway...)
+    BGPF_LEGACYMRT    = 1 << 6   // Legacy TABLE DUMP format
+                                 // Full BGP attribute list with 16-bits AS PATH
+                                 // this flag implies BGPF_FULLMPREACH and
+                                 // disables both BGPF_ASN32BIT and BGPF_ADDPATH,
+                                 // this flag prevails
+                                 // over both BGPF_STDMRT and BGPF_GUESSMRT
 };
 
 /**

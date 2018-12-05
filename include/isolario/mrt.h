@@ -117,11 +117,17 @@ typedef struct {
 } rib_header_t;
 
 typedef struct {
-    uint16_t peer_idx;
-    uint16_t attr_length;  // in bytes
+    uint16_t peer_idx;     // peer index number, always 0 for TABLE_DUMP
+    uint16_t attr_length;  // attrs field length in bytes
+    uint32_t seqno;        // entry sequence number, same as rib_header_t seqno
+                           // when TABLE_DUMPV2, sequence entry information
+                           // for TABLE_DUMP (TABLE_DUMP sequence numbers are
+                           // 16-bits wide, wrapping is very likely)
     time_t originated;
-    uint32_t pathid;       // only meaningful for ADDPATH subtypes, 0 otherwise
-    peer_entry_t *peer;
+    netaddr_t nlri;        // same as rib_header_t nlri when TABLE_DUMPV2
+    uint32_t pathid;       // only meaningful for ADDPATH TABLE_DUMPV2 subtypes, 0 otherwise
+    peer_entry_t *peer;    // PEER_INDEX information when TABLE_DUMPV2, available
+                           // peer information when TABLE_DUMP
     bgpattr_t *attrs;
 } rib_entry_t;
 
@@ -313,7 +319,7 @@ int setmrtreadfd_r(mrt_msg_t *msg, int fd);
 
 int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io);
 
-//header
+// header
 
 mrt_header_t *getmrtheader_r(mrt_msg_t *msg);
 

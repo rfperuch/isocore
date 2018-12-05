@@ -84,6 +84,9 @@ enum {
 #define SHIFT(idx) ((idx) - MRT_TABLE_DUMP)
 
 static const uint16_t masktab[][MAX_MRT_SUBTYPE + 1] = {
+    [SHIFT(MRT_TABLE_DUMP)][AFI_IPV4] = F_VALID | F_WRAPS_BGP,
+    [SHIFT(MRT_TABLE_DUMP)][AFI_IPV6] = F_VALID | F_WRAPS_BGP,
+
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_PEER_INDEX_TABLE]           = F_VALID | F_IS_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC]                = F_VALID | F_NEEDS_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_GENERIC_ADDPATH]        = F_VALID | F_NEEDS_PI | F_ADDPATH,
@@ -126,20 +129,29 @@ static const uint16_t masktab[][MAX_MRT_SUBTYPE + 1] = {
 
 #define CHECKBOUNDS(ptr, end, size, errcode) CHECKBOUNDSR(ptr, end, size, errcode, errcode)
 
-#define CHECKFLAGSR(which, retval) do {                \
-    if (unlikely(((msg)->flags & (which)) != (which))) \
-        (msg)->err = MRT_EINVOP;                       \
-    if (unlikely((msg)->err))                          \
-        return (retval);                               \
+#define CHECKTYPER(which, retval) do {                                   \
+    if (unlikely((msg)->hdr.type != which))                              \
+        (msg)->err = (msg->err != MRT_ENOERR) ? (msg)->err : MRT_EINVOP; \
+    if (unlikely((msg)->err))                                            \
+        return (retval);                                                 \
+} while (false)
+
+#define CHECKTYPE(which) CHECKFLAGSR(which, (msg)->err)
+
+#define CHECKFLAGSR(which, retval) do {                                     \
+    if (unlikely(((msg)->flags & (which)) != (which)))                      \
+        (msg)->err = ((msg->err) != MRT_ENOERR) ? (msg)->err : MRT_EINVOP;  \
+    if (unlikely((msg)->err))                                               \
+        return (retval);                                                    \
 } while(false)
 
 #define CHECKFLAGS(which) CHECKFLAGSR(which, (msg)->err)
 
-#define CHECKPEERIDXR(retval) do {       \
-    if (unlikely(!(msg)->peer_index))    \
-        (msg)->err = MRT_ENEEDSPEERIDX;  \
-    if (unlikely((msg)->err))            \
-        return (retval);                 \
+#define CHECKPEERIDXR(retval) do {                                                 \
+    if (unlikely(!(msg)->peer_index))                                              \
+        (msg)->err = ((msg)->err != MRT_ENOERR) ? (msg)->err : MRT_ENEEDSPEERIDX;  \
+    if (unlikely((msg)->err))                                                      \
+        return (retval);                                                           \
 } while (false)
 
 #define CHECKPEERIDX() CHECKPEERIDXR((msg)->err)
@@ -583,6 +595,7 @@ static unsigned char *decodepeerent(peer_entry_t *dst, const unsigned char *ptr)
 {
     int flags = *ptr++;
 
+    // TODO check bounds
     memcpy(&dst->id, ptr, sizeof(dst->id));
     ptr += sizeof(dst->id);
     if (flags & PT_IPV6) {
@@ -672,7 +685,7 @@ void *getribents(size_t *pcount, size_t *pn)
     return getribents_r(&curmsg, pcount, pn);
 }
 
-void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
+static void *getribents_v2(mrt_msg_t *msg, size_t *pcount, size_t*pn)
 {
     CHECKFLAGSR(F_NEEDS_PI, NULL);
     CHECKPEERIDXR(NULL);
@@ -772,6 +785,58 @@ unsup:
     return NULL;
 }
 
+static void *getribents_legacy(mrt_msg_t *msg, size_t *pcount, size_t *pn)
+{
+    CHECKTYPER(MRT_TABLE_DUMP, NULL);
+
+    unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
+    unsigned char *end = ptr + msg->hdr.len;
+
+    if (pcount) {
+        // TABLE_DUMP doesn't provide the rib count, so we must
+        // quickly scan the packet to find it out
+        size_t hdrlen = 2 * sizeof(uint16_t) + 2 + sizeof(uint32_t) + 2 * sizeof(uint16_t);
+        if (msg->hdr.subtype == AFI_IPV6)
+            hdrlen += 2 * 4;
+        else
+            hdrlen += 2 * 16;
+
+        size_t n = 0;
+
+        unsigned char *cur = ptr;
+        while (cur != end) {
+            uint16_t attr_len;
+
+            CHECKBOUNDSR(cur, end, hdrlen, MRT_EBADRIBENT, NULL);
+
+            cur += hdrlen - sizeof(attr_len);
+            memcpy(&attr_len, cur, sizeof(attr_len));
+            attr_len = frombig16(attr_len);
+            cur += sizeof(attr_len);
+
+            CHECKBOUNDSR(cur, end, attr_len, MRT_EBADRIBENT, NULL);
+
+            cur += attr_len;
+            n++;
+        }
+
+        *pcount = n;
+    }
+
+    if (pn)
+        *pn = end - ptr;
+
+    return ptr;
+}
+
+void *getribents_r(mrt_msg_t *msg, size_t *pcount, size_t *pn)
+{
+    if (msg->hdr.type == MRT_TABLE_DUMPV2)
+        return getribents_v2(msg, pcount, pn);
+    else
+        return getribents_legacy(msg, pcount, pn);
+}
+
 int setribents(const void *buf, size_t n)
 {
     return setribents_r(&curmsg, buf, n);
@@ -794,9 +859,6 @@ rib_header_t *startribents(size_t *pcount)
 
 rib_header_t *startribents_r(mrt_msg_t *msg, size_t *pcount)
 {
-    CHECKFLAGSR(F_NEEDS_PI, NULL);
-    CHECKPEERIDXR(NULL);
-
     endpending(msg);
 
     msg->reptr = getribents_r(msg, pcount, NULL);
@@ -809,10 +871,98 @@ rib_entry_t *nextribent(void)
     return nextribent_r(&curmsg);
 }
 
-rib_entry_t *nextribent_r(mrt_msg_t *msg)
+static rib_entry_t *nextribent_legacy(mrt_msg_t *msg)
 {
-    CHECKFLAGSR(F_RE, NULL);
+    unsigned char *end = msg->buf + MESSAGE_OFFSET + msg->hdr.len;
+    if (msg->reptr == end)
+        return NULL;
 
+    size_t hdrsize = 2 * sizeof(uint16_t) + 2 * sizeof(uint8_t) + sizeof(uint32_t) + 2 * sizeof(uint16_t);
+    if (msg->hdr.subtype == AFI_IPV6)
+        hdrsize += 2 * 16;
+    else
+        hdrsize += 2 * 4;
+
+    CHECKBOUNDSR(msg->reptr, end, hdrsize, MRT_EBADRIBENT, NULL);
+
+    uint16_t view, seqno;
+
+    memcpy(&view, msg->reptr, sizeof(view));
+    view = frombig16(view);
+    msg->reptr += sizeof(view);
+    memcpy(&seqno, msg->reptr, sizeof(seqno));
+    seqno = frombig16(seqno);
+    msg->reptr += sizeof(seqno);
+
+    if (msg->hdr.subtype == AFI_IPV6) {
+        msg->ribent.nlri.family = AF_INET6;
+        memcpy(&msg->ribent.nlri.bytes, msg->reptr, 16);
+        msg->reptr += 16;
+    } else {
+        msg->ribent.nlri.family = AF_INET;
+        memcpy(&msg->ribent.nlri.bytes, msg->reptr, 4);
+        msg->reptr += 4;
+    }
+
+    msg->ribent.nlri.bitlen = *msg->reptr++;
+
+    msg->reptr++; // status, SHOULD be 1
+
+    uint32_t originated;
+
+    memcpy(&originated, msg->reptr, sizeof(originated));
+    originated = frombig32(originated);
+    msg->reptr += sizeof(originated);
+
+    if (msg->hdr.subtype == AFI_IPV6) {
+        msg->ribpe.addr.family = AF_INET6;
+        memcpy(&msg->ribpe.addr.bytes, msg->reptr, 16);
+        msg->reptr += 16;
+
+        msg->ribpe.addr.bitlen = 128;
+    } else {
+        msg->ribpe.addr.family = AF_INET;
+        memcpy(&msg->ribpe.addr.bytes, msg->reptr, 4);
+        msg->reptr += 4;
+
+        msg->ribpe.addr.bitlen = 32;
+    }
+
+
+    uint16_t as, attr_len;
+
+    memcpy(&as, msg->reptr, sizeof(as));
+    as = frombig16(as);
+    msg->reptr += sizeof(as);
+
+    memcpy(&attr_len, msg->reptr, sizeof(attr_len));
+    attr_len = frombig16(attr_len);
+    msg->reptr += sizeof(attr_len);
+
+    CHECKBOUNDSR(msg->reptr, end, attr_len, MRT_EBADRIBENT, NULL);
+
+    // populate ribent
+    msg->ribent.peer_idx    = 0;
+    msg->ribent.attr_length = attr_len;
+    msg->ribent.seqno       = seqno;
+    msg->ribent.originated  = (time_t) originated;
+    msg->ribent.pathid      = 0;
+    msg->ribent.attrs       = (bgpattr_t *) msg->reptr;
+
+    msg->reptr += attr_len;
+
+    // populate any other peer entry field
+    msg->ribpe.as_size   = sizeof(uint16_t);
+    msg->ribpe.as        = as;
+    msg->ribpe.id.s_addr = 0;
+
+    msg->ribent.peer = &msg->ribpe;
+
+    return &msg->ribent;
+}
+
+static rib_entry_t *nextribent_v2(mrt_msg_t *msg)
+{
     mrt_msg_t *pi = msg->peer_index;
 
     unsigned char *end = msg->buf + MESSAGE_OFFSET + msg->hdr.len;
@@ -869,6 +1019,16 @@ rib_entry_t *nextribent_r(mrt_msg_t *msg)
     decodepeerent(&msg->ribpe, peer_ent);
     msg->ribent.peer = &msg->ribpe;
     return &msg->ribent;
+}
+
+rib_entry_t *nextribent_r(mrt_msg_t *msg)
+{
+    CHECKFLAGSR(F_RE, NULL);
+
+    if (msg->hdr.type == MRT_TABLE_DUMPV2)
+        return nextribent_v2(msg);
+    else
+        return nextribent_legacy(msg);
 }
 
 int endribents(void)
