@@ -608,7 +608,7 @@ static bgpattr_t *appendcommunities(bgpattr_t *attr, const void *commptr, size_t
     unsigned char *ptr = &attr->len;
     int extended       = attr->flags & ATTR_EXTENDED_LENGTH;
 
-    size_t limit = (attr->flags & ATTR_EXTENDED_LENGTH) ? ATTR_EXTENDED_LENGTH_MAX : ATTR_LENGTH_MAX;
+    size_t limit = ATTR_LENGTH_MAX;
     size_t len   = *ptr++;
     if (extended) {
         limit = ATTR_EXTENDED_LENGTH_MAX;
