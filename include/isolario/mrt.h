@@ -50,7 +50,7 @@ enum {
     MRT_DIE = 2,           // Deprecated
     MRT_I_AM_DEAD = 3,     // Deprecated
     MRT_PEER_DOWN = 4,     // Deprecated
-    MRT_BGP = 5,           // Deprecated
+    MRT_BGP = 5,           // Deprecated also known as ZEBRA_BGP
     MRT_RIP = 6,           // Deprecated
     MRT_IDRP = 7,          // Deprecated
     MRT_RIPNG = 8,         // Deprecated
@@ -67,6 +67,11 @@ enum {
     MRT_OSPFV3_ET = 49
 };
 
+/**
+ * @brief BGP/ZEBRA BGP subtypes
+ *
+ * Deprecated by BGP4MP
+ */
 enum {
     MRT_BGP_NULL         = 0,
     MRT_BGP_UPDATE       = 1,
@@ -163,6 +168,7 @@ enum {
     MRT_EBADHDR,         ///< Bad MRT packet header.
     MRT_EBADTYPE,        ///< Bad MRT packet type.
     MRT_EBADBGP4MPHDR,   ///< Bad BGP4MP header.
+    MRT_EBADZEBRAHDR,    ///< Bad Zebra BGP header.
     MRT_EBADPEERIDXHDR,  ///< Bad Peer index header.
     MRT_EBADPEERIDX,     ///< Error encountered parsing associated Peer Index.
     MRT_ENEEDSPEERIDX,   ///< Packet needs a peer index, but none was provided.
@@ -192,6 +198,8 @@ inline const char *mrtstrerror(int err)
         return "Bad MRT packet type";
     case MRT_EBADBGP4MPHDR:
         return "Bad BGP4MP header";
+    case MRT_EBADZEBRAHDR:
+        return "Bad Zebra BGP header";
     case MRT_EBADPEERIDXHDR:
         return "Bad Peer Index header";
     case MRT_EBADPEERIDX:
@@ -247,6 +255,20 @@ typedef struct {
     uint16_t old_state, new_state;  ///< Only meaningful for BGP4MP_STATE_CHANGE*
 } bgp4mp_header_t;
 
+typedef struct {
+    uint16_t peer_as;
+    netaddr_t peer_addr;
+    union {
+        struct {
+            uint16_t old_state, new_state;  ///< Only meaningful for MRT_BGP_STATE_CHANGE
+        };
+        struct {
+            uint16_t local_as;
+            netaddr_t local_addr;
+        };
+    };
+} zebra_header_t;
+
 /// @brief Packet reader/writer global status structure.
 typedef struct mrt_msg_s {
     uint16_t flags;      ///< General status flags.
@@ -269,6 +291,8 @@ typedef struct mrt_msg_s {
         };
 
         bgp4mp_header_t bgp4mphdr;
+
+        zebra_header_t zebrahdr;
     };
 
     unsigned char *buf;  ///< Packet buffer base.
@@ -414,6 +438,16 @@ bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg);
 void *unwrapbgp4mp(size_t *pn);
 
 void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn);
+
+// ZEBRA BGP
+
+zebra_header_t *getzebraheader(void);
+
+zebra_header_t *getzebraheader_r(mrt_msg_t *msg);
+
+void *unwrapzebra(size_t *pn);
+
+void *unwrapzebra_r(mrt_msg_t *msg, size_t *pn);
 
 #endif
 

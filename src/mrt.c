@@ -33,11 +33,9 @@
 #include <isolario/endian.h>
 #include <isolario/mrt.h>
 #include <isolario/util.h>
-//#include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-//#include <unistd.h>
 
 enum {
     MRTGROWSTEP = 256
@@ -81,7 +79,7 @@ enum {
     F_RE = 1 << (10 + 3)
 };
 
-#define SHIFT(idx) ((idx) - MRT_TABLE_DUMP)
+#define SHIFT(idx) ((idx) - MRT_BGP)
 
 static const uint16_t masktab[][MAX_MRT_SUBTYPE + 1] = {
     [SHIFT(MRT_TABLE_DUMP)][AFI_IPV4] = F_VALID | F_WRAPS_BGP,
@@ -98,6 +96,15 @@ static const uint16_t masktab[][MAX_MRT_SUBTYPE + 1] = {
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_UNICAST_ADDPATH]   = F_VALID | F_NEEDS_PI | F_ADDPATH,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST]         = F_VALID | F_NEEDS_PI,
     [SHIFT(MRT_TABLE_DUMPV2)][MRT_TABLE_DUMPV2_RIB_IPV6_MULTICAST_ADDPATH] = F_VALID | F_NEEDS_PI | F_ADDPATH,
+
+    [SHIFT(MRT_BGP)][MRT_BGP_NULL]         = F_VALID,
+    [SHIFT(MRT_BGP)][MRT_BGP_PREF_UPDATE]  = F_VALID,
+    [SHIFT(MRT_BGP)][MRT_BGP_UPDATE]       = F_VALID | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP)][MRT_BGP_STATE_CHANGE] = F_VALID | F_HAS_STATE,
+    [SHIFT(MRT_BGP)][MRT_BGP_SYNC]         = F_VALID,
+    [SHIFT(MRT_BGP)][MRT_BGP_OPEN]         = F_VALID | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP)][MRT_BGP_NOTIFY]       = F_VALID | F_WRAPS_BGP,
+    [SHIFT(MRT_BGP)][MRT_BGP_KEEPALIVE]    = F_VALID | F_WRAPS_BGP,
 
     [SHIFT(MRT_BGP4MP)][BGP4MP_STATE_CHANGE]              = F_VALID | F_IS_BGP | F_HAS_STATE,
     [SHIFT(MRT_BGP4MP)][BGP4MP_MESSAGE]                   = F_VALID | F_IS_BGP | F_WRAPS_BGP,
@@ -129,21 +136,21 @@ static const uint16_t masktab[][MAX_MRT_SUBTYPE + 1] = {
 
 #define CHECKBOUNDS(ptr, end, size, errcode) CHECKBOUNDSR(ptr, end, size, errcode, errcode)
 
-#define CHECKTYPER(which, retval) do {                                   \
-    if (unlikely((msg)->hdr.type != which))                              \
-        (msg)->err = (msg->err != MRT_ENOERR) ? (msg)->err : MRT_EINVOP; \
-    if (unlikely((msg)->err))                                            \
-        return (retval);                                                 \
+#define CHECKTYPER(which, retval) do {                                     \
+    if (unlikely((msg)->hdr.type != which))                                \
+        (msg)->err = ((msg)->err != MRT_ENOERR) ? (msg)->err : MRT_EINVOP; \
+    if (unlikely((msg)->err))                                              \
+        return (retval);                                                   \
 } while (false)
 
 #define CHECKTYPE(which) CHECKFLAGSR(which, (msg)->err)
 
 #define CHECKFLAGSR(which, retval) do {                                     \
     if (unlikely(((msg)->flags & (which)) != (which)))                      \
-        (msg)->err = ((msg->err) != MRT_ENOERR) ? (msg)->err : MRT_EINVOP;  \
+        (msg)->err = ((msg)->err != MRT_ENOERR) ? (msg)->err : MRT_EINVOP;  \
     if (unlikely((msg)->err))                                               \
         return (retval);                                                    \
-} while(false)
+} while (false)
 
 #define CHECKFLAGS(which) CHECKFLAGSR(which, (msg)->err)
 
@@ -1111,7 +1118,7 @@ bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg)
     }
 
     if (msg->flags & F_HAS_STATE) {
-        CHECKBOUNDSR(ptr, end, 2 * sizeof(uint16_t), MRT_EBADBGP4MPHDR, NULL);
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(uint16_t), MRT_EBADBGP4MPHDR, NULL);  // FIXME BADSTATECHANGE
 
         memcpy(&hdr->old_state, ptr, sizeof(hdr->old_state));
         hdr->old_state = frombig16(hdr->old_state);
@@ -1147,7 +1154,7 @@ void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn)
 
     uint16_t afi;
     size_t total_as_size = msg->flags & F_AS32 ? 2 * sizeof(uint32_t) : 2 * sizeof(uint16_t);
-    CHECKBOUNDSR(ptr, end, total_as_size + sizeof(uint16_t) + sizeof(afi), MRT_EBADRIBENT, NULL);
+    CHECKBOUNDSR(ptr, end, total_as_size + sizeof(uint16_t) + sizeof(afi), MRT_EBADBGP4MPHDR, NULL);
 
     ptr += total_as_size;
     ptr += sizeof(uint16_t);
@@ -1157,11 +1164,11 @@ void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn)
     ptr += sizeof(afi);
     switch (afi) {
     case AFI_IPV4:
-        CHECKBOUNDSR(ptr, end, 2 * sizeof(struct in_addr), MRT_EBADRIBENT, NULL);
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(struct in_addr), MRT_EBADBGP4MPHDR, NULL);
         ptr += 2 * sizeof(struct in_addr);
         break;
     case AFI_IPV6:
-        CHECKBOUNDSR(ptr, end, 2 * sizeof(struct in6_addr), MRT_EBADRIBENT, NULL);
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(struct in6_addr), MRT_EBADBGP4MPHDR, NULL);
         ptr += 2 * sizeof(struct in6_addr);
         break;
     default:
@@ -1170,6 +1177,81 @@ void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn)
     }
 
     if (likely(pn))
+        *pn = end - ptr;
+
+    return ptr;
+}
+
+zebra_header_t *getzebraheader(void)
+{
+    return getzebraheader_r(&curmsg);
+}
+
+zebra_header_t *getzebraheader_r(mrt_msg_t *msg)
+{
+    CHECKTYPER(MRT_BGP, NULL);
+
+    unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
+    unsigned char *end = ptr + msg->hdr.len;
+
+    CHECKBOUNDSR(ptr, end, sizeof(uint16_t) + IPV4_SIZE, MRT_EBADZEBRAHDR, NULL);
+
+    memcpy(&msg->zebrahdr.peer_as, ptr, sizeof(msg->zebrahdr.peer_as));
+    msg->zebrahdr.peer_as = frombig16(msg->zebrahdr.peer_as);
+    ptr += sizeof(msg->zebrahdr.peer_as);
+
+    msg->zebrahdr.peer_addr.family = AF_INET;
+    msg->zebrahdr.peer_addr.bitlen = IPV4_BIT;
+    memcpy(&msg->zebrahdr.peer_addr.bytes, ptr, IPV4_SIZE);
+    ptr += IPV4_SIZE;
+
+    if (msg->flags & F_WRAPS_BGP) {
+        CHECKBOUNDSR(ptr, end, sizeof(uint16_t) + IPV4_SIZE, MRT_EBADZEBRAHDR, NULL);
+
+        memcpy(&msg->zebrahdr.local_as, ptr, sizeof(msg->zebrahdr.local_as));
+        msg->zebrahdr.local_as = frombig16(msg->zebrahdr.local_as);
+        ptr += sizeof(msg->zebrahdr.local_as);
+
+        msg->zebrahdr.local_addr.family = AF_INET;
+        msg->zebrahdr.local_addr.bitlen = IPV4_BIT;
+        memcpy(&msg->zebrahdr.local_addr.bytes, ptr, IPV4_SIZE);
+        ptr += IPV4_SIZE;
+    } else if (msg->flags & F_HAS_STATE) {
+        CHECKBOUNDSR(ptr, end, 2 * sizeof(uint16_t), MRT_EBADZEBRAHDR, NULL);
+
+        memcpy(&msg->zebrahdr.old_state, ptr, sizeof(msg->zebrahdr.old_state));
+        msg->zebrahdr.old_state = frombig16(msg->zebrahdr.old_state);
+        ptr += sizeof(msg->zebrahdr.old_state);
+
+        memcpy(&msg->zebrahdr.new_state, ptr, sizeof(msg->zebrahdr.new_state));
+        msg->zebrahdr.new_state = frombig16(msg->zebrahdr.new_state);
+        ptr += sizeof(msg->zebrahdr.new_state);
+    } else {
+        msg->err = MRT_EINVOP;
+        return NULL;
+    }
+
+    return &msg->zebrahdr;
+}
+
+void *unwrapzebra(size_t *pn)
+{
+    return unwrapzebra_r(&curmsg, pn);
+}
+
+void *unwrapzebra_r(mrt_msg_t *msg, size_t *pn)
+{
+    CHECKTYPER(MRT_BGP, NULL);
+    CHECKFLAGSR(F_WRAPS_BGP | F_RD, NULL);
+
+    unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
+    unsigned char *end = ptr + msg->hdr.len;
+
+    size_t hdrsize = 2 * sizeof(uint16_t) + 2 * IPV4_SIZE;
+    CHECKBOUNDSR(ptr, end, hdrsize, MRT_EBADZEBRAHDR, NULL);
+
+    ptr += hdrsize;
+    if (pn)
         *pn = end - ptr;
 
     return ptr;
