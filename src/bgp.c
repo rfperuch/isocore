@@ -184,32 +184,68 @@ static int endpending(bgp_msg_t *msg)
     return endnhop_r(msg);
 }
 
-// General functions ===========================================================
+// General functions and macros ================================================
+
+#define CHECKTYPEANDFLAGSR(exp_type, exp_flags, retval) do {                \
+    if (unlikely((msg)->buf[TYPE_OFFSET] != (exp_type)))                    \
+        (msg)->err = ((msg)->err != BGP_ENOERR) ? (msg)->err : BGP_EINVOP;  \
+    if (unlikely(((msg)->flags & (exp_flags)) != (exp_flags)))              \
+        (msg)->err = ((msg)->err != BGP_ENOERR) ? (msg)->err : BGP_EINVOP;  \
+    if (unlikely((msg)->err))                                               \
+        return (retval);                                                    \
+} while (false)
+
+#define CHECKTYPEANDFLAGS(type, flags) CHECKTYPEANDFLAGSR(type, flags, (msg)->err)
+
+#define CHECKFLAGSR(exp_flags, retval) do {                                 \
+    if (unlikely(((msg)->flags & (exp_flags)) != (exp_flags)))              \
+        (msg)->err = ((msg)->err != BGP_ENOERR) ? (msg)->err : BGP_EINVOP;  \
+    if (unlikely((msg)->err))                                               \
+        return (retval);                                                    \
+} while (false)
+
+#define CHECKFLAGS(flags) CHECKFLAGSR(flags, (msg)->err)
+
+#define CHECKTYPER(exp_type, retval) do {                                   \
+    if (unlikely((msg)->buf[TYPE_OFFSET] != (exp_type)))                    \
+        (msg)->err = ((msg)->err != BGP_ENOERR) ? (msg)->err : BGP_EINVOP;  \
+    if (unlikely((msg)->err))                                               \
+        return (retval);                                                    \
+} while (false)
+
+#define CHECKTYPE(exp_type) CHECKTYPER(exp_type, (msg)->err)
+
+static int bgpensure(bgp_msg_t *msg, size_t len)
+{
+    len += msg->pktlen;
+    if (unlikely(len > msg->bufsiz)) {
+        // FIXME if len > 0xffff then oversized BGP packet (4K for regular BGP)!
+        len += BGPGROWSTEP;
+        if (unlikely(len > UINT16_MAX))
+            len = UINT16_MAX;
+
+        unsigned char *buf = msg->buf;
+        if (buf == msg->fastbuf)
+            buf = NULL;
+
+        unsigned char *larger = realloc(buf, len);
+        if (unlikely(!larger)) {
+            msg->err = BGP_ENOMEM;
+            return false;
+        }
+
+        if (!buf)
+            memcpy(larger, msg->buf, msg->pktlen);
+
+        msg->buf    = larger;
+        msg->bufsiz = len;
+    }
+
+    return true;
+}
 
 // extern version of inline function
 extern const char *bgpstrerror(int err);
-
-/// @brief Check for a \a flags operation on a BGP packet of type \a type.
-static int checktype(bgp_msg_t *msg, int type, int flags)
-{
-    if (unlikely(msg->buf[TYPE_OFFSET] != type))
-        msg->err = BGP_EINVOP;
-    if (unlikely((msg->flags & flags) != flags))
-        msg->err = BGP_EINVOP;
-
-    return msg->err;
-}
-
-/// @brief Check for any \a flags operation on a BGP packet of type \a type.
-static int checkanytype(bgp_msg_t *msg, int type, int flags)
-{
-    if (unlikely(getbgptype_r(msg) != type))
-        msg->err = BGP_EINVOP;
-    if (unlikely((msg->flags & flags) == 0))
-        msg->err = BGP_EINVOP;
-
-    return msg->err;
-}
 
 bgp_msg_t *getbgp(void)
 {
@@ -592,10 +628,7 @@ size_t getbgplength(void)
 
 size_t getbgplength_r(bgp_msg_t *msg)
 {
-    if (unlikely((msg->flags & F_RD) == 0))
-        msg->err = BGP_EINVOP;
-    if (unlikely(msg->err))
-        return 0;
+    CHECKFLAGSR(F_RD, 0);
 
     uint16_t len;
     memcpy(&len, &msg->buf[LENGTH_OFFSET], sizeof(len));
@@ -609,11 +642,12 @@ void *getbgpdata(size_t *pn)
 
 void *getbgpdata_r(bgp_msg_t *msg, size_t *pn)
 {
-    if (unlikely(msg->flags & F_RD) == 0)
-        return NULL;  // only return NULL when not reading the packet
-
     // NOTE this function *DOES NOT* return NULL on error,
     // it always return packet raw contents!
+    // so don't use the error checking macros
+
+    if (unlikely(msg->flags & F_RD) == 0)
+        return NULL;  // only return NULL when not reading the packet
 
     if (pn) {
         uint16_t len;
@@ -622,6 +656,24 @@ void *getbgpdata_r(bgp_msg_t *msg, size_t *pn)
     }
 
     return msg->buf;
+}
+
+int setbgpdata(const void *data, size_t size)
+{
+    return setbgpdata_r(&curmsg, data, size);
+}
+
+int setbgpdata_r(bgp_msg_t *msg, const void *data, size_t size)
+{
+    CHECKFLAGS(F_WR);
+
+    endpending(msg);
+
+    bgpensure(msg, size + BASE_PACKET_LENGTH);
+    memcpy(&msg->buf[BASE_PACKET_LENGTH], data, size);
+    msg->pktlen = BASE_PACKET_LENGTH + size;
+
+    return msg->err;
 }
 
 int isbgpasn32bit(void)
@@ -661,10 +713,7 @@ void *bgpfinish(size_t *pn)
 
 void *bgpfinish_r(bgp_msg_t *msg, size_t *pn)
 {
-    if ((msg->flags & F_WR) == 0)  // XXX: make it a function
-        msg->err = BGP_EINVOP;
-    if (unlikely(msg->err))
-        return NULL;
+    CHECKFLAGSR(F_WR, NULL);
 
     endpending(msg);
 
@@ -690,12 +739,12 @@ int bgpclose(void)
 
 int bgpclose_r(bgp_msg_t *msg)
 {
-    int err = bgperror_r(msg);
+    int err = msg->err;
     if (msg->buf != msg->fastbuf && (msg->flags & F_SH) == 0)
         free(msg->buf);
 
     // memset(msg, 0, sizeof(*msg) - BGPBUFSIZ); XXX: optimize
-    msg->err = 0;
+    msg->err   = BGP_ENOERR;
     msg->flags = 0;
     return err;
 }
@@ -709,8 +758,7 @@ bgp_open_t *getbgpopen(void)
 
 bgp_open_t *getbgpopen_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_OPEN, F_RD))
-        return NULL;
+    CHECKTYPEANDFLAGSR(BGP_OPEN, F_RD, NULL);
 
     bgp_open_t *op = &msg->opbuf;
 
@@ -731,8 +779,7 @@ int setbgpopen(const bgp_open_t *op)
 
 int setbgpopen_r(bgp_msg_t *msg, const bgp_open_t *op)
 {
-    if (checktype(msg, BGP_OPEN, F_WR))
-        return msg->err;
+    CHECKTYPEANDFLAGS(BGP_OPEN, F_WR);
 
     msg->buf[VERSION_OFFSET] = op->version;
 
@@ -752,8 +799,7 @@ void *getbgpparams(size_t *pn)
 
 void *getbgpparams_r(bgp_msg_t *msg, size_t *pn)
 {
-    if (checkanytype(msg, BGP_OPEN, F_RDWR))
-        return NULL;
+    CHECKTYPER(BGP_OPEN, NULL);
 
     if (likely(pn))
         *pn = msg->buf[PARAMS_LENGTH_OFFSET];
@@ -768,11 +814,12 @@ int setbgpparams(const void *data, size_t n)
 
 int setbgpparams_r(bgp_msg_t *msg, const void *data, size_t n)
 {
-    if (checktype(msg, BGP_OPEN, F_WR))
-        return msg->err;
+    CHECKTYPEANDFLAGS(BGP_OPEN, F_WR);
 
-    // TODO no assert but actual check
-    assert(n <= PARAMS_SIZE_MAX);
+    if (unlikely(n > PARAMS_SIZE_MAX)) {
+        msg->err = BGP_EINVOP;
+        return msg->err;
+    }
 
     msg->buf[PARAM_LENGTH_OFFSET] = n;
     memcpy(&msg->buf[PARAMS_OFFSET], data, n);
@@ -788,8 +835,7 @@ int startbgpcaps(void)
 
 int startbgpcaps_r(bgp_msg_t *msg)
 {
-    if (checkanytype(msg, BGP_OPEN, F_RDWR))
-        return msg->err;
+    CHECKTYPE(BGP_OPEN);
 
     endpending(msg);
 
@@ -806,8 +852,7 @@ bgpcap_t *nextbgpcap(void)
 
 bgpcap_t *nextbgpcap_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_OPEN, F_RD | F_PM))
-        return NULL;
+    CHECKFLAGSR(F_RD | F_PM, NULL);
 
     size_t n;
     unsigned char *base  = getbgpparams_r(msg, &n);
@@ -856,8 +901,7 @@ int putbgpcap(const bgpcap_t *cap)
 
 int putbgpcap_r(bgp_msg_t *msg, const bgpcap_t *cap)
 {
-    if (checktype(msg, BGP_OPEN, F_WR | F_PM))
-        return msg->err;
+    CHECKFLAGS(F_WR | F_PM);
 
     unsigned char *ptr = msg->pptr;
     if (ptr == msg->params) {
@@ -872,8 +916,11 @@ int putbgpcap_r(bgp_msg_t *msg, const bgpcap_t *cap)
     static_assert(BGPBUFSIZ >= MIN_OPEN_LENGTH + 0xff, "code assumes putbgpcap() can't overflow BGPBUFSIZ");
 
     size_t n = CAPABILITY_HEADER_SIZE + cap->len;
-    // TODO actual check rather than assert()
-    assert(n <= CAPABILITY_SIZE_MAX);
+    if (unlikely(n > CAPABILITY_SIZE_MAX)) {
+        msg->err = BGP_EINVOP;
+        return msg->err;
+    }
+
     memcpy(ptr, cap, n);
     ptr += n;
 
@@ -889,9 +936,7 @@ int endbgpcaps(void)
 
 int endbgpcaps_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_OPEN, F_PM))
-        return msg->err;
-
+    CHECKFLAGS(F_PM);
     if (msg->flags & F_WR) {
         // write length for the last parameter
         unsigned char *ptr = msg->pptr;
@@ -900,9 +945,11 @@ int endbgpcaps_r(bgp_msg_t *msg)
         // write length for the entire parameter list
         const unsigned char *base = getbgpparams_r(msg, NULL);
         size_t n = ptr - base;
+        if (unlikely(n > PARAM_LENGTH_MAX)) {
+            msg->err = BGP_EINVOP;
+            return msg->err;
+        }
 
-        // TODO actual check rather than assert()
-        assert(n <= PARAM_LENGTH_MAX);
         msg->buf[PARAMS_LENGTH_OFFSET] = n;
     }
 
@@ -923,35 +970,6 @@ int endbgpcaps_r(bgp_msg_t *msg)
     pkt->ustart = prev_ustart_;  \
     pkt->uptr   = prev_uptr_;    \
     pkt->uend   = prev_uend_;
-
-static int bgpensure(bgp_msg_t *msg, size_t len)
-{
-    len += msg->pktlen;
-    if (unlikely(len > msg->bufsiz)) {
-        // FIXME if len > 0xffff then oversized BGP packet (4K for regular BGP)!
-        len += BGPGROWSTEP;
-        if (unlikely(len > UINT16_MAX))
-            len = UINT16_MAX;
-
-        unsigned char *buf = msg->buf;
-        if (buf == msg->fastbuf)
-            buf = NULL;
-
-        unsigned char *larger = realloc(buf, len);
-        if (unlikely(!larger)) {
-            msg->err = BGP_ENOMEM;
-            return false;
-        }
-
-        if (!buf)
-            memcpy(larger, msg->buf, msg->pktlen);
-
-        msg->buf    = larger;
-        msg->bufsiz = len;
-    }
-
-    return true;
-}
 
 static int bgppreserve(bgp_msg_t *msg, const unsigned char *from)
 {
@@ -1003,7 +1021,6 @@ static int dostartwithdrawn(bgp_msg_t *msg, int flags)
     size_t n;
     unsigned char *ptr = getwithdrawn_r(msg, &n);
     if (msg->flags & F_WR) {
-
         if (bgppreserve(msg, ptr + n) != BGP_ENOERR)
             return msg->err;
 
@@ -1021,17 +1038,13 @@ static int dostartwithdrawn(bgp_msg_t *msg, int flags)
 
 int startwithdrawn_r(bgp_msg_t *msg)
 {
-    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
-        return msg->err;
-
+    CHECKTYPE(BGP_UPDATE);
     return dostartwithdrawn(msg, F_WITHDRN);
 }
 
 int startmpunreachnlri_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return msg->err;
-
+    CHECKTYPEANDFLAGS(BGP_UPDATE, F_RD);
     msg->uptr = msg->ustart = msg->uend = NULL; // causes nextwithdrawn_r to immediately switch to mp_reach attribute
     msg->flags |= F_WITHDRN | F_ALLWITHDRN;
     return msg->err;
@@ -1039,9 +1052,7 @@ int startmpunreachnlri_r(bgp_msg_t *msg)
 
 int startallwithdrawn_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return msg->err;
-
+    CHECKTYPEANDFLAGS(BGP_UPDATE, F_RD);
     return dostartwithdrawn(msg, F_WITHDRN | F_ALLWITHDRN);
 }
 
@@ -1052,8 +1063,7 @@ int setwithdrawn(const void *data, size_t n)
 
 int setwithdrawn_r(bgp_msg_t *msg, const void *data, size_t n)
 {
-    if (checktype(msg, BGP_UPDATE, F_WR))
-        return msg->err;
+    CHECKTYPEANDFLAGS(BGP_UPDATE, F_WR);
 
     uint16_t old_size;
 
@@ -1092,8 +1102,7 @@ void *getwithdrawn(size_t *pn)
 
 void *getwithdrawn_r(bgp_msg_t *msg, size_t *pn)
 {
-    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
-        return NULL;
+    CHECKTYPER(BGP_UPDATE, NULL);
 
     uint16_t len;
     unsigned char *ptr = &msg->buf[BASE_PACKET_LENGTH];
@@ -1113,8 +1122,7 @@ void *nextwithdrawn(void)
 
 void *nextwithdrawn_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD | F_WITHDRN))
-        return NULL;
+    CHECKFLAGSR(F_RD | F_WITHDRN, NULL);
 
     netaddr_t *addr = &msg->pfxbuf.pfx;
     while (unlikely(msg->uptr == msg->uend)) {  // this loop handles empty MP_UNREACH
@@ -1191,9 +1199,7 @@ int putwithdrawn(const void *p)
 
 int putwithdrawn_r(bgp_msg_t *msg, const void *p)
 {
-    if (checktype(msg, BGP_UPDATE, F_WR | F_WITHDRN))
-        return msg->err;
-
+    CHECKFLAGS(F_WR | F_WITHDRN);
     if (msg->flags & F_ADDPATH) {
         uint32_t ap = ((const netaddrap_t *) p)->pathid;
         if (unlikely(!bgpensure(msg, sizeof(ap))))
@@ -1224,9 +1230,7 @@ int endwithdrawn(void)
 
 int endwithdrawn_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_WITHDRN))
-        return msg->err;
-
+    CHECKFLAGS(F_WITHDRN);
     if (msg->flags & F_WR) {
         bgprestore(msg);
 
@@ -1245,8 +1249,7 @@ void *getbgpattribs(size_t *pn)
 
 void *getbgpattribs_r(bgp_msg_t *msg, size_t *pn)
 {
-    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
-        return NULL;
+    CHECKTYPER(BGP_UPDATE, NULL);
 
     size_t withdrawn_size;
     unsigned char *ptr = getwithdrawn_r(msg, &withdrawn_size);
@@ -1269,15 +1272,12 @@ int startbgpattribs(void)
 
 int startbgpattribs_r(bgp_msg_t *msg)
 {
-    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
-        return msg->err;
-
+    CHECKTYPE(BGP_UPDATE);
     endpending(msg);
 
     size_t n;
     unsigned char *ptr = getbgpattribs_r(msg, &n);
     if (msg->flags & F_WR) {
-
         if (bgppreserve(msg, ptr + n) != BGP_ENOERR)
             return msg->err;
 
@@ -1298,8 +1298,7 @@ int putbgpattrib(const bgpattr_t *attr)
 
 int putbgpattrib_r(bgp_msg_t *msg, const bgpattr_t *attr)
 {
-    if (checktype(msg, BGP_UPDATE, F_WR | F_PATTR))
-        return msg->err;
+    CHECKFLAGS(F_WR | F_PATTR);
 
     size_t hdrsize = ATTR_HEADER_SIZE;
     size_t len = attr->len;
@@ -1323,9 +1322,7 @@ bgpattr_t *nextbgpattrib(void)
 
 bgpattr_t *nextbgpattrib_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD | F_PATTR))
-        return NULL;
-
+    CHECKFLAGSR(F_RD | F_PATTR, NULL);
     if (msg->uptr == msg->uend)
         return NULL;
 
@@ -1371,9 +1368,7 @@ int endbgpattribs(void)
 
 int endbgpattribs_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_PATTR))
-        return msg->err;
-
+    CHECKFLAGS(F_PATTR);
     if (msg->flags & F_WR) {
         bgprestore(msg);
         uint16_t len = tobig16(msg->uptr - msg->ustart);
@@ -1391,8 +1386,7 @@ void *getnlri(size_t *pn)
 
 void *getnlri_r(bgp_msg_t *msg, size_t *pn)
 {
-    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
-        return NULL;
+    CHECKTYPER(BGP_UPDATE, NULL);
 
     size_t pattrs_length;
     unsigned char *ptr = getbgpattribs_r(msg, &pattrs_length);
@@ -1406,8 +1400,7 @@ void *getnlri_r(bgp_msg_t *msg, size_t *pn)
 
 int setnlri_r(bgp_msg_t *msg, const void *data, size_t n)
 {
-    if (checktype(msg, BGP_UPDATE, F_WR))
-        return msg->err;
+    CHECKTYPER(BGP_UPDATE, F_WR);
 
     size_t old_size;
     unsigned char *ptr = getnlri_r(msg, &old_size);
@@ -1461,17 +1454,13 @@ static int dostartnlri(bgp_msg_t *msg, int internal_flags)
 
 int startnlri_r(bgp_msg_t *msg)
 {
-    if (checkanytype(msg, BGP_UPDATE, F_RDWR))
-        return msg->err;
-
+    CHECKTYPE(BGP_UPDATE);
     return dostartnlri(msg, F_NLRI);
 }
 
 int startmpreachnlri_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return msg->err;
-    
+    CHECKTYPEANDFLAGS(BGP_UPDATE, F_RD);
     msg->uptr = msg->ustart = msg->uend = NULL; // causes nextnlri_r to immediately switch to mp_reach attribute
     msg->flags |= F_NLRI | F_ALLNLRI;
     return msg->err;
@@ -1479,9 +1468,7 @@ int startmpreachnlri_r(bgp_msg_t *msg)
 
 int startallnlri_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return msg->err;
-
+    CHECKTYPEANDFLAGS(BGP_UPDATE, F_RD);
     return dostartnlri(msg, F_NLRI | F_ALLNLRI);
 }
 
@@ -1492,8 +1479,7 @@ void *nextnlri(void)
 
 void *nextnlri_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD | F_NLRI))
-        return NULL;
+    CHECKFLAGSR(F_RD | F_NLRI, NULL);
 
     netaddr_t *addr = &msg->pfxbuf.pfx;
     while (unlikely(msg->uptr == msg->uend)) {  // this handles empty MP_REACH attributes
@@ -1565,9 +1551,7 @@ int putnlri(const void *p)
 
 int putnlri_r(bgp_msg_t *msg, const void *p)
 {
-    if (checktype(msg, BGP_UPDATE, F_WR | F_NLRI))
-        return msg->err;
-
+    CHECKFLAGS(F_WR | F_NLRI);
     if (msg->flags & F_ADDPATH) {
         uint32_t pathid = ((const netaddrap_t *) p)->pathid;
         if (!bgpensure(msg, sizeof(pathid)))
@@ -1598,9 +1582,7 @@ int endnlri(void)
 
 int endnlri_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_NLRI))
-        return msg->err;
-
+    CHECKFLAGS(F_NLRI);
     msg->flags &= ~(F_NLRI | F_ALLNLRI);
     return msg->err;
 }
@@ -1636,8 +1618,8 @@ int startaspath(void)
 
 int startaspath_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return msg->err;
+
+    CHECKTYPEANDFLAGS(BGP_UPDATE, F_RD);
 
     size_t as_size = (msg->flags & F_ASN32BIT) ? sizeof(uint32_t) : sizeof(uint16_t);
     return dostartaspath(msg, getbgpaspath_r(msg), as_size);
@@ -1650,9 +1632,7 @@ int startas4path(void)
 
 int startas4path_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return msg->err;
-
+    CHECKTYPEANDFLAGS(BGP_UPDATE, F_RD);
     return dostartaspath(msg, getbgpas4path_r(msg), sizeof(uint32_t));
 }
 
@@ -1663,9 +1643,7 @@ int startrealaspath(void)
 
 int startrealaspath_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return msg->err;
-
+    CHECKTYPEANDFLAGS(BGP_UPDATE, F_RD);
     endpending(msg);
 
     msg->flags       |= F_ASPATH;
@@ -1754,8 +1732,7 @@ as_pathent_t *nextaspath(void)
 
 as_pathent_t *nextaspath_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_ASPATH))
-        return NULL;
+    CHECKFLAGSR(F_ASPATH, NULL);
 
     while (msg->segi == msg->seglen) {
         if (msg->asptr == msg->asend)
@@ -1815,8 +1792,7 @@ int endaspath(void)
 
 int endaspath_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_ASPATH))
-        return msg->err;
+    CHECKFLAGS(F_ASPATH);
 
     msg->flags &= ~(F_ASPATH | F_REALASPATH);
     return BGP_ENOERR;
@@ -1829,8 +1805,7 @@ int startnhop(void)
 
 int startnhop_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return msg->err;
+    CHECKTYPEANDFLAGS(BGP_UPDATE, F_RD);
 
     endpending(msg);
 
@@ -1888,8 +1863,7 @@ netaddr_t *nextnhop(void)
 
 netaddr_t *nextnhop_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_NHOP))
-        return NULL;
+    CHECKFLAGSR(F_NHOP, NULL);
 
     netaddr_t *addr = &msg->pfxbuf.pfx;
     if (msg->nhptr == msg->nhend) {
@@ -1924,9 +1898,7 @@ int endnhop(void)
 
 int endnhop_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_NHOP))
-        return msg->err;
-
+    CHECKFLAGS(F_NHOP);
     msg->flags &= ~F_NHOP;
     return BGP_ENOERR;
 }
@@ -1938,8 +1910,7 @@ int startcommunities(int code)
 
 int startcommunities_r(bgp_msg_t *msg, int code)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return msg->err;
+    CHECKTYPEANDFLAGS(BGP_UPDATE, F_RD);
 
     endpending(msg);
 
@@ -1981,8 +1952,7 @@ void *nextcommunity(void)
 
 void *nextcommunity_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_COMMUNITY))
-        return NULL;
+    CHECKFLAGSR(F_COMMUNITY, NULL);
     if (msg->uptr == msg->uend)
         return NULL; // end of communities
 
@@ -2033,17 +2003,14 @@ int endcommunities(void)
 
 int endcommunities_r(bgp_msg_t* msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_COMMUNITY))
-        return msg->err;
-
+    CHECKFLAGS(F_COMMUNITY);
     msg->flags &= ~F_COMMUNITY;
     return msg->err;
 }
 
 static bgpattr_t *seekbgpattr(bgp_msg_t *msg, int code)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return NULL;
+    CHECKTYPEANDFLAGSR(BGP_UPDATE, F_RD, NULL);
 
     int idx = EXTRACT_CODE_INDEX(attr_code_index[code]);
 
@@ -2136,8 +2103,7 @@ bgpattr_t *getrealbgpaggregator(void)
 
 bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg)
 {
-    if (checktype(msg, BGP_UPDATE, F_RD))
-        return NULL;
+    CHECKTYPEANDFLAGSR(BGP_UPDATE, F_RD, NULL);
 
     /* RFC 6793
      * A NEW BGP speaker MUST also be prepared to receive the AS4_AGGREGATOR
@@ -2165,7 +2131,7 @@ bgpattr_t *getrealbgpaggregator_r(bgp_msg_t *msg)
     if (getaggregatoras(aggr) == AS_TRANS) {
         bgpattr_t *aggr4 = getbgpas4aggregator_r(msg);
         if (aggr4)
-                aggr = aggr4;
+            aggr = aggr4;
     }
     return aggr;
 }

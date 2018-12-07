@@ -191,6 +191,8 @@ wur size_t getbgplength(void);
  */
 wur void *getbgpdata(size_t *pn);
 
+int setbgpdata(const void *data, size_t size);
+
 int isbgpasn32bit(void);
 
 int isbgpaddpath(void);
@@ -462,6 +464,8 @@ nonnull(1, 2) int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const vo
 nonnull(1) wur size_t getbgplength_r(bgp_msg_t *msg);
 
 nonnull(1) wur void *getbgpdata_r(bgp_msg_t *msg, size_t *pn);
+
+nonnull(1) int setbgpdata_r(bgp_msg_t *msg, const void *data, size_t size);
 
 nonnull(1) wur int bgperror_r(bgp_msg_t *msg);
 
