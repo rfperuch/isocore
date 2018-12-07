@@ -45,6 +45,7 @@
 #include <arpa/inet.h>
 #include <isolario/branch.h>
 #include <isolario/funcattribs.h>
+#include <limits.h>
 #include <string.h>
 #include <stdint.h>
 
@@ -61,9 +62,9 @@ enum {
     AFI_APPLETALK = 12
 };
 
-/** 
- * 
- * @brief netaddres printing modes
+/**
+ *
+ * @brief netaddress printing modes
  *
  * @see naddrtos()
  */
@@ -81,13 +82,13 @@ typedef uint8_t safi_t;
 
 /// @brief Notable values for \a safi_t.
 enum {
-    SAFI_BAD = -1,
-    SAFI_UNICAST = 1,  ///< RFC4760 http://www.iana.org/go/rfc4760
-    SAFI_MULTICAST = 2 ///< RFC4760 http://www.iana.org/go/rfc4760
+    SAFI_BAD       = -1,
+    SAFI_UNICAST   = 1,  ///< RFC4760 http://www.iana.org/go/rfc4760
+    SAFI_MULTICAST = 2   ///< RFC4760 http://www.iana.org/go/rfc4760
 };
 
 typedef struct {
-    short family;    ///< Unix address family: \a AF_UNSPEC, \a AF_INET or \a AF_INET6.
+    short family;  ///< Unix address family: \a AF_UNSPEC, \a AF_INET or \a AF_INET6.
     short bitlen;  ///< Address length in bits.
     union {
         struct in_addr sin;
@@ -97,6 +98,11 @@ typedef struct {
         unsigned char bytes[sizeof(struct in6_addr)];
     };
 } netaddr_t;
+
+#define IPV4_SIZE sizeof(struct in_addr)
+#define IPV4_BIT  IPV4_SIZE * CHAR_BIT
+#define IPV6_SIZE sizeof(struct in6_addr)
+#define IPV6_BIT  IPV6_BIT * CHAR_BIT
 
 typedef struct {
     netaddr_t pfx;
