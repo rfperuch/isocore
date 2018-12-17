@@ -414,6 +414,8 @@ int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
     msg->flags |= F_RD;
     msg->err = MRT_ENOERR;
     msg->bufsiz = n;
+    msg->peer_index = NULL;
+    msg->pitab      = NULL;
 
     return MRT_ENOERR;
 }
