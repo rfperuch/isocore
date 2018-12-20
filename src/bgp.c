@@ -378,7 +378,6 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
     const netaddr_t *addr     = nlri;
     const netaddrap_t *addrap = nlri;  // only read if flags & BGPF_ADDPATH
     unsigned char *dst        = &msg->buf[BASE_PACKET_LENGTH];
-    int seen_mp_reach         = false;
 
     // innocent little HACK, see while-loop below...
     msg->flags |= F_PRESOFFTAB;  // don't let bgpfinish() zero-out the offset table
@@ -428,59 +427,70 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
 
         int truncated = true;  // assume BGPF_STDMRT
         switch (attr->code) {
-        case MP_REACH_NLRI_CODE:
-            // in v6 case, MP_REACH lacks NLRI and removes reserved field
-            seen_mp_reach = true;
+           case MP_REACH_NLRI_CODE:
+           {
+                // FIXME bound check
 
-            if (addr->family == AF_INET6) {
+                // MP_REACH lacks NLRI and removes reserved field
+                uint16_t afi;
+                memcpy(&afi, src, sizeof(afi));
+                // NOTE: keep AFI in Big Endian to ease copy
+
+                // if we are going to rebuild a rib entry for an IPv4 prefix and the MP_REACH_NLRI carries IPv6, skip it
+                if (addr->family == AF_INET && frombig16(afi) == AFI_IPV6)
+                    break;
+
                 if ((flags & (BGPF_FULLMPREACH | BGPF_STDMRT)) == 0 && !ismrttruncated(src, len))
                     truncated = false;
                 if (flags & BGPF_FULLMPREACH)
                     truncated = false;
 
-                if (truncated) {
-                    // rebuild MP_REACH_NLRI
-                    size_t addrlen = naddrsize(addr->bitlen);
-                    size_t expanded_size = sizeof(uint16_t) + sizeof(uint8_t) + len + 1 + 1 + addrlen;
-                    if (msg->flags & F_ADDPATH)
-                        expanded_size += sizeof(uint32_t);
+                // rebuild MP_REACH_NLRI
+                size_t addrlen = naddrsize(addr->bitlen);
+                // base expanded size
+                size_t expanded_size = sizeof(uint16_t) + sizeof(uint8_t) /* + next hop length */ + 1 + 1 + addrlen;
+                if (msg->flags & F_ADDPATH)
+                    expanded_size += sizeof(uint32_t);
 
-                    *dst++ = (expanded_size > 0xff) ? EXTENDED_MP_REACH_NLRI_FLAGS : DEFAULT_MP_REACH_NLRI_FLAGS;
-                    *dst++ = MP_REACH_NLRI_CODE;
-                    if (expanded_size > 0xff)
-                        *dst++ = expanded_size >> 8;
-
-                    *dst++ = expanded_size & 0xff;
-
-                    uint16_t afi = BIG16_C(AFI_IPV6);
-                    memcpy(dst, &afi, sizeof(afi));
-                    dst += sizeof(afi);
-                    // FIXME bound check
-                    *dst++ = SAFI_UNICAST;
-
-                    memcpy(dst, src, len);
-                    dst += len;
-
-                    *dst++ = 0; // reserved field
-
-                    if (msg->flags & F_ADDPATH) {
-                        uint32_t pathid = tobig32(addrap->pathid);
-                        memcpy(dst, &pathid, sizeof(pathid));
-                        dst += sizeof(pathid);
-                    }
-
-                    *dst++ = addr->bitlen;
-                    memcpy(dst, addr->bytes, addrlen);
-                    dst += addrlen;
-                    break;
+                const unsigned char *src_p = src; // pointer to data to copy from MRT data, see if ()
+                size_t src_size = len; // size of data to copy from src_p
+                if (!truncated) {
+                    // discard anything but NEXT HOP from source data
+                    src_p += sizeof(uint16_t) + sizeof(uint8_t);
+                    src_size = *src_p + 1; // also include NEXT HOP length in copy
                 }
 
-                // fallthrough to common case
-            }
+                // include source size in expanded attribute length
+                expanded_size += src_size;
 
-            memcpy(dst, attr, size);
-            dst += size;
-            break;
+                // write reconstructed attribute
+                *dst++ = (expanded_size > 0xff) ? EXTENDED_MP_REACH_NLRI_FLAGS : DEFAULT_MP_REACH_NLRI_FLAGS;
+                *dst++ = MP_REACH_NLRI_CODE;
+                if (expanded_size > 0xff)
+                    *dst++ = expanded_size >> 8;
+
+                *dst++ = expanded_size & 0xff;
+
+                memcpy(dst, &afi, sizeof(afi));  // AFI is already in Big Endian
+                dst += sizeof(afi);
+                *dst++ = SAFI_UNICAST;
+
+                memcpy(dst, src_p, src_size);
+                dst += src_size;
+
+                *dst++ = 0; // reserved field
+
+                if (msg->flags & F_ADDPATH) {
+                    uint32_t pathid = tobig32(addrap->pathid);
+                    memcpy(dst, &pathid, sizeof(pathid));
+                    dst += sizeof(pathid);
+                }
+
+                *dst++ = addr->bitlen;
+                memcpy(dst, addr->bytes, addrlen);
+                dst += addrlen;
+                break;
+        }
         case MP_UNREACH_NLRI_CODE:
             if ((flags & BGPF_STRIPUNREACH) == 0) {
                 memcpy(dst, attr, size);
@@ -565,10 +575,6 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
     uint16_t attrlen = dst - attrptr;
     attrlen = tobig16(attrlen);
     memcpy(attrptr - sizeof(attrlen), &attrlen, sizeof(attrlen));
-
-    // MP_REACH must exist in case of a v6 address
-    if (unlikely(addr->family == AF_INET6 && !seen_mp_reach))
-        goto error;
 
     // add NLRI if it wasn't v6
     if (addr->family == AF_INET) {
