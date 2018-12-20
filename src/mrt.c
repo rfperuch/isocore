@@ -1017,6 +1017,7 @@ static rib_entry_t *nextribent_v2(mrt_msg_t *msg)
 
     msg->ribent.peer_idx = idx;
     msg->ribent.originated = (time_t) originated;
+    memcpy(&msg->ribent.nlri, &msg->ribhdr.nlri, sizeof(msg->ribent.nlri));
     msg->ribent.pathid = pathid;
     msg->ribent.attr_length = attr_len;
     msg->ribent.attrs = (bgpattr_t *) msg->reptr;
