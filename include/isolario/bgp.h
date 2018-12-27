@@ -153,7 +153,7 @@ inline purefunc nonullreturn const char *bgpstrerror(int err)
     case BGP_EBADNLRI:
         return "Oversized or inconsistent BGP update NLRI field";
     default:
-        return "Unknown error";
+        return "Unknown BGP error";
     }
 }
 
