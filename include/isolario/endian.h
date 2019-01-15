@@ -53,10 +53,6 @@
  * @{
  */
 
-#ifndef __STDC_IEC_559__
-#error endian.h requires IEEE 754 floating point
-#endif
-
 /**
  * @brief Raw bytes to \a double union.
  *

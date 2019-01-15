@@ -46,8 +46,11 @@
 #include <isolario/branch.h>
 #include <isolario/funcattribs.h>
 #include <limits.h>
+#include <netinet/in.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 /// @brief Address Family Identifier values.
 typedef uint16_t afi_t;

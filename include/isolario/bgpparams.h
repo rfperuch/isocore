@@ -141,7 +141,7 @@ typedef struct {
     uint8_t flags;
 } afi_safi_t;
 
-static_assert(sizeof(afi_safi_t) ==  4, "Unsupported platform");
+_Static_assert(sizeof(afi_safi_t) ==  4, "Unsupported platform");
 
 inline uint32_t getasn32bit(const bgpcap_t *cap)
 {
