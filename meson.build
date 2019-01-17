@@ -22,7 +22,7 @@ threads_dep = dependency('threads')
 zlib_dep = dependency('zlib')
 bz2_dep = cc.find_library('bz2', required : true)
 lzma_dep = dependency('liblzma', version: '>=5.1.1')
-lz4_dep = cc.find_library('lz4', required : true)
+lz4_dep = dependency('liblz4')
 
 incdir = include_directories('include')
 
