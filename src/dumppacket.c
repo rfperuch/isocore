@@ -42,7 +42,7 @@ struct bgp_formatter_s {
 /// @brief Optimized unlocked write string to FILE.
 static void writestr_unlocked(const char *s, FILE *out)
 {
-#ifdef __GNUC__
+#ifdef __linux__
     extern int fputs_unlocked(const char *s, FILE *out);
 
     fputs_unlocked(s, out);

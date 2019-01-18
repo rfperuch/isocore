@@ -50,7 +50,7 @@
 
 size_t io_fread(io_rw_t *io, void *dst, size_t n)
 {
-#ifdef __GNUC__
+#ifdef __linux__
     return fread_unlocked(dst, 1, n, io->file);
 #else
     return fread(dst, 1, n, io->file);
@@ -59,7 +59,7 @@ size_t io_fread(io_rw_t *io, void *dst, size_t n)
 
 size_t io_fwrite(io_rw_t *io, const void *src, size_t n)
 {
-#ifdef __GNUC__
+#ifdef __linux__
     return fwrite_unlocked(src, 1, n, io->file);
 #else
     return fwrite(src, 1, n, io->file);
@@ -68,7 +68,7 @@ size_t io_fwrite(io_rw_t *io, const void *src, size_t n)
 
 int io_ferror(io_rw_t *io)
 {
-#ifdef __GNUC__
+#ifdef __linux__
     return ferror_unlocked(io->file);
 #else
     return ferror(io->file);
