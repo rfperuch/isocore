@@ -31,8 +31,8 @@
 #include <isolario/cache.h>
 
 #if defined(__APPLE__) || defined(__FreeBSD__)
-#include <sys/sysctl.h>
 #include <sys/types.h>
+#include <sys/sysctl.h>
 #else
 #include <stdio.h>
 #include <unistd.h>
@@ -41,7 +41,7 @@
 size_t cacheline(void)
 {
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__FreeBSD__)
     int64_t size;
     size_t len = sizeof(size);
 
