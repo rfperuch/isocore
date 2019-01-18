@@ -1,4 +1,6 @@
+#ifdef __linux__
 #include <alloca.h>
+#endif
 #include <ctype.h>
 #include <inttypes.h>
 #include <isolario/bgp.h>

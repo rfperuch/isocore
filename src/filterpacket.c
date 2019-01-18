@@ -28,7 +28,6 @@
 // THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#include <alloca.h>
 #include <isolario/filterintrin.h>
 #include <isolario/filterpacket.h>
 #include <isolario/parse.h>
