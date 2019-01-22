@@ -46,6 +46,10 @@
 #include <unistd.h>
 #include <zlib.h>
 
+#ifndef LZMA_IGNORE_CHECK
+#define LZMA_IGNORE_CHECK UINT32_C(0x10)
+#endif
+
 // stdio.h =====================================================================
 
 size_t io_fread(io_rw_t *io, void *dst, size_t n)
