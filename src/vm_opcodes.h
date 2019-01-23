@@ -68,6 +68,8 @@ static const void *const vm_opcode_table[256] = {
     [FOPC_ASPENDS]      = &&EX_ASPENDS,
     [FOPC_ASPEXACT]     = &&EX_ASPEXACT,
 
+    [FOPC_COMMEXACT]    = &&EX_COMMEXACT,
+
     [FOPC_CALL]         = &&EX_CALL,
     [FOPC_SETTRIE]      = &&EX_SETTRIE,
     [FOPC_SETTRIE6]     = &&EX_SETTRIE6,
@@ -134,6 +136,6 @@ static const void *const vm_opcode_table[256] = {
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
     &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL, &&EX_SIGILL,
-    &&EX_SIGILL, &&EX_SIGILL
+    &&EX_SIGILL
 };
 

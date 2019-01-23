@@ -99,6 +99,8 @@ enum {
     FOPC_ASPSTARTS,
     FOPC_ASPENDS,
     FOPC_ASPEXACT,
+    
+    FOPC_COMMEXACT,
 
     FOPC_CALL,     ///< ???: call a function
     FOPC_SETTRIE,
@@ -124,7 +126,10 @@ enum {
     // AS access
     FOPC_ACCESS_AS_PATH       = 1 << 0,
     FOPC_ACCESS_AS4_PATH      = 1 << 1,
-    FOPC_ACCESS_REAL_AS_PATH  = 1 << 2
+    FOPC_ACCESS_REAL_AS_PATH  = 1 << 2,
+    
+    // community access
+    FOPC_ACCESS_COMM          = 1 << 0
 };
 
 void vm_growstack(filter_vm_t *vm);
@@ -672,6 +677,8 @@ void vm_exec_aspmatch(filter_vm_t *vm, int access);
 void vm_exec_aspstarts(filter_vm_t *vm, int access);
 void vm_exec_aspends(filter_vm_t *vm, int access);
 void vm_exec_aspexact(filter_vm_t *vm, int access);
+
+void vm_exec_commexact(filter_vm_t *vm);
 
 #endif
 

@@ -251,6 +251,10 @@ int bgp_filter_r(bgp_msg_t *msg, filter_vm_t *vm)
             vm_exec_aspexact(vm, vm_getarg(ip));
             DISPATCH();
 
+        EXECUTE(COMMEXACT):
+            vm_exec_commexact(vm);
+            DISPATCH();
+            
         EXECUTE(CALL):
             arg = vm_extendarg(vm_getarg(ip), exarg);
             if (unlikely(arg >= VM_FUNCS_COUNT))

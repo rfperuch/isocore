@@ -599,6 +599,40 @@ void vm_exec_aspexact(filter_vm_t *vm, int access)
     vm->sp[vm->si++].value = value;
 }
 
+void vm_exec_commexact(filter_vm_t *vm)
+{
+    if (getbgptype_r(vm->bgp) != BGP_UPDATE)
+        vm_abort(vm, VM_PACKET_MISMATCH);
+
+    startcommunities_r(vm->bgp, COMMUNITY_CODE);
+
+    bool seen[vm->si];
+    int seen_count = 0;
+
+    memset(seen, 0, vm->si * sizeof(*seen));
+
+    community_t *comm;
+    while ((comm = nextcommunity_r(vm->bgp)) != NULL && seen_count != vm->si) {
+        for (int i = 0; i < vm->si; i++) {
+            if (*comm == vm->sp[i].comm) {
+                if (!seen[i]) {
+                    seen[i] = true;
+                    seen_count++;
+                }
+
+                break;
+            }
+        }
+    }
+
+    endcommunities_r(vm->bgp);
+
+    int value = (seen_count == vm->si);
+
+    vm_clearstack(vm);
+    vm->sp[vm->si++].value = value;
+}
+
 void vm_emit_ex(filter_vm_t *vm, int opcode, int idx)
 {
     // NOTE: paranoid, assumes 8 bit bytes... as the whole Isolario project does

@@ -43,7 +43,8 @@ enum {
     ARG_FN,
     ARG_TRIE,
     ARG_ACC_NETS,  // NLRI/WITHDRAWN
-    ARG_ACC_PATH   // AS/AS4/REAL AS path
+    ARG_ACC_PATH,   // AS/AS4/REAL AS path
+    ARG_ACC_COMM
 };
 
 static const char *const vm_opstr_table[256] = {
@@ -73,6 +74,7 @@ static const char *const vm_opstr_table[256] = {
     [FOPC_ASPSTARTS]    = "ASPSTARTS",
     [FOPC_ASPENDS]      = "ASPENDS",
     [FOPC_ASPEXACT]     = "ASPEXACT",
+    [FOPC_COMMEXACT]    = "COMMEXACT",
     [FOPC_SETTRIE]      = "SETTRIE",
     [FOPC_SETTRIE6]     = "SETTRIE6",
     [FOPC_CLRTRIE]      = "CLRTRIE",
@@ -108,6 +110,7 @@ static const int8_t vm_oparg_table[OPCODES_COUNT] = {
     [FOPC_ASPSTARTS]    = ARG_ACC_PATH,
     [FOPC_ASPENDS]      = ARG_ACC_PATH,
     [FOPC_ASPEXACT]     = ARG_ACC_PATH,
+    [FOPC_COMMEXACT]    = ARG_NONE,
     [FOPC_CALL]         = ARG_FN,
     [FOPC_SETTRIE]      = ARG_TRIE,
     [FOPC_SETTRIE6]     = ARG_TRIE,
@@ -216,6 +219,12 @@ static void explain_access(FILE *f, int colors, int access_type, int mask)
         if (mask & FOPC_ACCESS_REAL_AS_PATH) {
             strcat(buf, "REAL_AS_PATH");
             mask &= ~FOPC_ACCESS_REAL_AS_PATH;
+        }
+        break;
+    case ARG_ACC_COMM:
+        if (mask & FOPC_ACCESS_COMM) {
+            strcat(buf, "COMMUNITY");
+            mask &= ~FOPC_ACCESS_COMM;
         }
         break;
     default:
