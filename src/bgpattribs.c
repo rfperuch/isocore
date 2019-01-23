@@ -705,11 +705,11 @@ char *largecommunitytos(large_community_t c)
     return buf;
 }
 
-static uint32_t parsecommfield(const char *s, char **eptr)
+static uint32_t parsecommfield(const char *s, char **eptr, unsigned long long max)
 {
     // don't accept sign before field
     const char *ptr = s;
-    while (isspace(*ptr)) ptr++;
+    while (isspace((unsigned char) *ptr)) ptr++;
 
     if (!isdigit((unsigned char) *ptr)) {
         // no conversion, invalid community
@@ -723,7 +723,7 @@ static uint32_t parsecommfield(const char *s, char **eptr)
     }
 
     unsigned long long val = strtoull(ptr, eptr, 10);
-    if (val > UINT32_MAX) {
+    if (val > max) {
         errno = ERANGE;
         return UINT32_MAX;
     }
@@ -746,10 +746,22 @@ community_t stocommunity(const char *s, char **eptr)
     }
 
     char *epos;
-    community_t c = parsecommfield(s, &epos);
+    community_t upper = parsecommfield(s, &epos, UINT16_MAX);
+    
+    if (s == epos || *epos != ':') {
+        if (eptr)
+            *eptr = epos;
+        return 0;
+    }
 
+    s = epos + 1; // skip ":"
+
+    community_t lower = parsecommfield(s, &epos, UINT16_MAX);
+    
     if (eptr)
         *eptr = epos;
+
+    community_t c = (upper << 16) | lower;
 
     return c;
 }
@@ -765,7 +777,7 @@ large_community_t stolargecommunity(const char *s, char **eptr)
 
     char *epos;
     for (int i = 0; i < 3; i++) {
-        *dst++ = parsecommfield(ptr, &epos);
+        *dst++ = parsecommfield(ptr, &epos, UINT32_MAX);
         if (ptr == epos) {
             // no conversion happened, restore position and bail out
             epos = (char *) s;
