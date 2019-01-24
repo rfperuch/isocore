@@ -159,7 +159,8 @@ static void printbgp_row_attribs(FILE *out, bgp_msg_t *pkt, const bgp_formatter_
     community_t *comm;
 
     bool first = true;
-
+    bool community_found = false;
+    
     startcommunities_r(pkt, COMMUNITY_CODE);
     while ((comm = nextcommunity_r(pkt)) != NULL) {
         if (!first)
@@ -167,6 +168,7 @@ static void printbgp_row_attribs(FILE *out, bgp_msg_t *pkt, const bgp_formatter_
 
         writestr_unlocked(communitytos(*comm, fmt->comm_mode), out);
         first = false;
+        community_found = true;
     }
     endcommunities_r(pkt);
 
@@ -176,7 +178,7 @@ static void printbgp_row_attribs(FILE *out, bgp_msg_t *pkt, const bgp_formatter_
 
     startcommunities_r(pkt, LARGE_COMMUNITY_CODE);
     while ((lcomm = nextcommunity_r(pkt)) != NULL) {
-        if (!first)
+        if (!first || community_found) // if a community was found put a space even if this is the first large community
             putc_unlocked(' ', out);
 
         writestr_unlocked(largecommunitytos(*lcomm), out);
