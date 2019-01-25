@@ -45,16 +45,16 @@ enum {
 enum {
     // common MRT packet offset
     TIMESTAMP_OFFSET = 0,
-    TYPE_OFFSET = TIMESTAMP_OFFSET + sizeof(uint32_t),
-    SUBTYPE_OFFSET = TYPE_OFFSET + sizeof(uint16_t),
-    LENGTH_OFFSET = SUBTYPE_OFFSET + sizeof(uint16_t),
-    MESSAGE_OFFSET = LENGTH_OFFSET + sizeof(uint32_t),
-    MRT_HDRSIZ = MESSAGE_OFFSET,
+    TYPE_OFFSET      = TIMESTAMP_OFFSET + sizeof(uint32_t),
+    SUBTYPE_OFFSET   = TYPE_OFFSET + sizeof(uint16_t),
+    LENGTH_OFFSET    = SUBTYPE_OFFSET + sizeof(uint16_t),
+    MESSAGE_OFFSET   = LENGTH_OFFSET + sizeof(uint32_t),
+    MRT_HDRSIZ       = MESSAGE_OFFSET,
 
     // extended version
     MICROSECOND_TIMESTAMP_OFFSET = MESSAGE_OFFSET,
-    MESSAGE_EXTENDED_OFFSET = MICROSECOND_TIMESTAMP_OFFSET + sizeof(uint32_t),
-    EXTENDED_MRT_HDRSIZ = MESSAGE_EXTENDED_OFFSET
+    MESSAGE_EXTENDED_OFFSET      = MICROSECOND_TIMESTAMP_OFFSET + sizeof(uint32_t),
+    EXTENDED_MRT_HDRSIZ          = MESSAGE_EXTENDED_OFFSET
 };
 
 /// @brief Packet reader/writer status flags
@@ -233,35 +233,6 @@ static int setuppitable(mrt_msg_t *msg, mrt_msg_t *pi)
     return MRT_ENOERR;
 }
 
-static int readmrtheader(mrt_msg_t *msg, const unsigned char *hdr)
-{
-    uint32_t time;
-    memcpy(&time, &hdr[TIMESTAMP_OFFSET], sizeof(time));
-    msg->hdr.stamp.tv_sec = frombig32(time);
-    msg->hdr.stamp.tv_nsec = 0;
-
-    uint16_t type, subtype;
-    memcpy(&type, &hdr[TYPE_OFFSET], sizeof(type));
-    memcpy(&subtype, &hdr[SUBTYPE_OFFSET], sizeof(subtype));
-    msg->hdr.type = frombig16(type);
-    msg->hdr.subtype = frombig16(subtype);
-
-    uint32_t len;
-    memcpy(&len, &hdr[LENGTH_OFFSET], sizeof(len));
-    msg->hdr.len = frombig32(len);
-    int flags = mrtflags(&msg->hdr);
-    if (unlikely((flags & F_VALID) == 0))
-        return MRT_EBADHDR;
-
-    if (flags & F_IS_EXT) {
-        memcpy(&time, &hdr[MICROSECOND_TIMESTAMP_OFFSET], sizeof(time));
-        msg->hdr.stamp.tv_nsec = frombig32(time) * 1000ull;
-    }
-
-    msg->flags = flags;
-    return MRT_ENOERR;
-}
-
 static int endpending(mrt_msg_t *msg)
 {
     // small optimization for common case
@@ -345,27 +316,8 @@ int setmrtread(const void *data, size_t n)
 
 int setmrtread_r(mrt_msg_t *msg, const void *data, size_t n)
 {
-    assert(n <= UINT32_MAX);
-    if (unlikely(n < MRT_HDRSIZ))
-        return MRT_EBADHDR;
-
-    int res = readmrtheader(msg, data);
-    if (unlikely(res != MRT_ENOERR))
-        return res;
-
-    msg->buf = msg->fastbuf;
-    if (unlikely(n > sizeof(msg->fastbuf)))
-        msg->buf = malloc(n);
-    if (unlikely(!msg->buf))
-        return MRT_ENOMEM;
-
-    msg->flags |= F_RD;
-    msg->err = MRT_ENOERR;
-    msg->bufsiz = n;
-    msg->peer_index = NULL;
-    msg->pitab      = NULL;
-    memcpy(msg->buf, data, n);
-    return MRT_ENOERR;
+    io_rw_t io = IO_MEM_RDINIT(data, n);
+    return setmrtreadfrom_r(msg, &io);
 }
 
 int setmrtreadfd(int fd)
@@ -395,25 +347,65 @@ int setmrtreadfrom(io_rw_t *io)
 int setmrtreadfrom_r(mrt_msg_t *msg, io_rw_t *io)
 {
     unsigned char hdr[MRT_HDRSIZ];
-    if (io->read(io, hdr, sizeof(hdr)) != sizeof(hdr))
-        return MRT_EIO;
+    size_t n = io->read(io, hdr, sizeof(hdr));
+    if (unlikely(n != sizeof(hdr)))
+        return (n > 0) ? MRT_EBADHDR : MRT_EIO;  // either we couldn't fetch a complete header or there are no bytes left
 
-    readmrtheader(msg, hdr);
+    // decode header into msg->hdr for easy access
+    memset(&msg->hdr, 0, sizeof(msg->hdr));
 
+    uint32_t time;
+    memcpy(&time, &hdr[TIMESTAMP_OFFSET], sizeof(time));
+    msg->hdr.stamp.tv_sec = frombig32(time);
+
+    // read type and subtype
+    uint16_t type, subtype;
+    memcpy(&type, &hdr[TYPE_OFFSET], sizeof(type));
+    memcpy(&subtype, &hdr[SUBTYPE_OFFSET], sizeof(subtype));
+    type    = frombig16(type);
+    subtype = frombig16(subtype);
+
+    // don't accept absurd values
+    if (unlikely(type < MRT_BGP || type > MRT_BGP4MP_ET))
+        return MRT_ETYPENOTSUP;
+    if (unlikely(subtype >= nelems(masktab[0])))
+        return MRT_EBADHDR;
+
+    msg->hdr.type    = type;
+    msg->hdr.subtype = subtype;
+
+    uint32_t len;
+    memcpy(&len, &hdr[LENGTH_OFFSET], sizeof(len));
+    msg->hdr.len = frombig32(len);
+    int flags = mrtflags(&msg->hdr);
+    if (unlikely((flags & F_VALID) == 0))
+        return MRT_EBADHDR;
+
+    // populate message buffer
     msg->buf = msg->fastbuf;
-    size_t n = msg->hdr.len + sizeof(hdr);
+    n        = msg->hdr.len + sizeof(hdr);
     if (unlikely(n > sizeof(msg->fastbuf)))
         msg->buf = malloc(n);
     if (unlikely(!msg->buf))
         return MRT_ENOMEM;
 
+    // copy header over
     memcpy(msg->buf, hdr, sizeof(hdr));
-    if (io->read(io, &msg->buf[sizeof(hdr)], msg->hdr.len) != msg->hdr.len)
-        return MRT_EIO;
+    // copy leftover packet
+    if (unlikely(io->read(io, &msg->buf[MRT_HDRSIZ], msg->hdr.len) != msg->hdr.len))
+        return io->error(io) ? MRT_EIO : MRT_EBADHDR;
 
-    msg->flags |= F_RD;
-    msg->err = MRT_ENOERR;
-    msg->bufsiz = n;
+    // read extended timestamp if necessary
+    if (flags & F_IS_EXT) {
+        uint32_t usec;
+
+        memcpy(&usec, &msg->buf[MICROSECOND_TIMESTAMP_OFFSET], sizeof(usec));
+        msg->hdr.stamp.tv_nsec = frombig32(usec) * 1000ull;
+    }
+
+    msg->flags      = flags | F_RD;
+    msg->err        = MRT_ENOERR;
+    msg->bufsiz     = n;
     msg->peer_index = NULL;
     msg->pitab      = NULL;
 
@@ -1059,10 +1051,9 @@ bgp4mp_header_t *getbgp4mpheader_r(mrt_msg_t *msg)
     CHECKFLAGSR(F_RD | F_IS_BGP, NULL);
 
     unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
+    unsigned char *end = ptr + msg->hdr.len;
     if (msg->flags & F_IS_EXT)
         ptr = &msg->buf[MESSAGE_EXTENDED_OFFSET];
-
-    unsigned char *end = ptr + msg->hdr.len;
 
     bgp4mp_header_t *hdr = &msg->bgp4mphdr;
     memset(hdr, 0, sizeof(*hdr));
@@ -1150,10 +1141,9 @@ void *unwrapbgp4mp_r(mrt_msg_t *msg, size_t *pn)
     CHECKFLAGSR(F_RD | F_WRAPS_BGP, NULL);
 
     unsigned char *ptr = &msg->buf[MESSAGE_OFFSET];
+    unsigned char *end = ptr + msg->hdr.len;
     if (msg->flags & F_IS_EXT)
         ptr = &msg->buf[MESSAGE_EXTENDED_OFFSET];
-
-    unsigned char *end = ptr + msg->hdr.len;
 
     uint16_t afi;
     size_t total_as_size = msg->flags & F_AS32 ? 2 * sizeof(uint32_t) : 2 * sizeof(uint16_t);

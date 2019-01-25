@@ -176,7 +176,8 @@ enum {
                          ///  "An implementation that does not recognize particular AFI and SAFI
                          ///  values SHOULD discard the remainder of the MRT record."
     MRT_EBADRIBENT,      ///< Corrupted or truncated RIB entry
-    MRT_EAFINOTSUP
+    MRT_EAFINOTSUP,
+    MRT_ETYPENOTSUP      ///< MRT type is not supported
 };
 
 inline const char *mrtstrerror(int err)
@@ -212,6 +213,8 @@ inline const char *mrtstrerror(int err)
         return "Unsupported AFI";
     case MRT_EBADRIBENT:
         return "Corrupted or truncated RIB entry";
+    case MRT_ETYPENOTSUP:
+        return "Unsupported MRT packet type";
     default:
         return "Unknown error";
     }
