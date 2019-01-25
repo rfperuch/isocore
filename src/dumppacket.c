@@ -206,10 +206,10 @@ static void printbgp_row_trailer(FILE *out, uint32_t pathid, const bgp_formatter
     if (fmt->flags & BGPF_HASTIME) {
         writestr_unlocked(ulltoa(buf, NULL, fmt->stamp.tv_sec), out);
 
-        unsigned long long msec = fmt->stamp.tv_nsec;
-        if (msec > 0) {
+        unsigned long long usec = fmt->stamp.tv_nsec / 1000ull;
+        if (usec > 0) {
             putc_unlocked('.', out);
-            writestr_unlocked(ulltoa(buf, NULL, msec), out);
+            writestr_unlocked(ulltoa(buf, NULL, usec), out);
         }
     }
 
