@@ -50,6 +50,49 @@
 #define LZMA_IGNORE_CHECK UINT32_C(0x10)
 #endif
 
+// memory I/O ==================================================================
+
+size_t io_mread(io_rw_t *io, void *dst, size_t n)
+{
+    if (unlikely(io->mem.flags != 0)) {
+        // memory I/O was either write only or had error
+        io->mem.flags |= IO_MEM_ERRBIT;
+        return 0;
+    }
+
+    if ((size_t) (io->mem.end - io->mem.ptr) < n)
+        n = io->mem.end - io->mem.ptr;
+
+    memcpy(dst, io->mem.ptr, n);
+    io->mem.ptr += n;
+    return n;
+}
+
+size_t io_mwrite(io_rw_t *io, const void *src, size_t n)
+{
+    if (unlikely(io->mem.flags != IO_MEM_WRBIT)) {
+        io->mem.flags |= IO_MEM_ERRBIT;
+        return 0;
+    }
+
+    if ((size_t) (io->mem.end - io->mem.ptr) < n)
+        n = io->mem.end - io->mem.ptr;
+
+    memcpy(io->mem.ptr, src, n);
+    io->mem.ptr += n;
+    return n;
+}
+
+int io_merror(io_rw_t *io)
+{
+    return (io->mem.flags & IO_MEM_ERRBIT) != 0;
+}
+
+int io_mclose(io_rw_t *io)
+{
+    return (io->mem.flags & IO_MEM_ERRBIT) != 0;
+}
+
 // stdio.h =====================================================================
 
 size_t io_fread(io_rw_t *io, void *dst, size_t n)

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2018, Enrico Gregori, Alessandro Improta, Luca Sani, Institute
+// Copyright (c) 2019, Enrico Gregori, Alessandro Improta, Luca Sani, Institute
 // of Informatics and Telematics of the Italian National Research Council
 // (IIT-CNR). All rights reserved.
 // Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,7 @@
 
 #include <isolario/funcattribs.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
 typedef struct io_rw_s io_rw_t;
@@ -50,6 +51,12 @@ struct io_rw_s {
             int err;
         } un;
 
+        // Direct memory I/O
+        struct {
+            unsigned int flags;
+            unsigned char *ptr, *end;
+        } mem;
+
         // stdio.h standard FILE
         FILE *file;
 
@@ -59,6 +66,60 @@ struct io_rw_s {
         max_align_t padding; /// @private
     };
 };
+
+// memory I/O abstraction
+
+#define IO_MEM_WRBIT  (1 << 0)
+#define IO_MEM_ERRBIT (1 << 1)
+
+size_t io_mread(io_rw_t *io, void *dst, size_t n);
+size_t io_mwrite(io_rw_t *io, const void *src, size_t n);
+int    io_merror(io_rw_t *io);
+int    io_mclose(io_rw_t *io);
+
+#define IO_MEM_WRINIT(dst, size) {                                    \
+    .mem = {                                                          \
+        .flags = IO_MEM_WRBIT,                                        \
+        .ptr = ((unsigned char *) (dst)),          /* writable bit */ \
+        .end = ((unsigned char *) (dst)) + (size)                     \
+    },                                                                \
+    .read  = io_mread,                                                \
+    .write = io_mwrite,                                               \
+    .error = io_merror,                                               \
+    .close = io_mclose                                                \
+}
+
+#define IO_MEM_RDINIT(src, size) {                \
+    .mem = {                                      \
+        .flags = 0,                               \
+        .ptr = (unsigned char *) (src),           \
+        .end = ((unsigned char *) (src)) + (size) \
+    },                                            \
+    .read  = io_mread,                            \
+    .write = io_mwrite,                           \
+    .error = io_merror,                           \
+    .close = io_mclose                            \
+}
+
+static inline nonnull(1, 2) void io_mem_wrinit(io_rw_t *io, void *dst, size_t size)
+{
+    io->mem.ptr = dst;
+    io->mem.end = (unsigned char *) dst + size;
+    io->read  = io_mread;
+    io->write = io_mwrite;
+    io->error = io_merror;
+    io->close = io_mclose;
+}
+
+static inline nonnull(1, 2) void io_mem_rdinit(io_rw_t *io, const void *src, size_t size)
+{
+    io->mem.ptr = (unsigned char *) src;
+    io->mem.end = (unsigned char *) src + size;
+    io->read  = io_mread;
+    io->write = io_mwrite;
+    io->error = io_merror;
+    io->close = io_mclose;
+}
 
 // stdio FILE abstaction
 
@@ -78,7 +139,7 @@ inline nonnull(1, 2) void io_file_init(io_rw_t *io, FILE *file)
 }
 
 #define IO_FILE_INIT(file) { \
-    .file  = file,           \
+    .file  = (file),         \
     .read  = io_fread,       \
     .write = io_fwrite,      \
     .error = io_ferror,      \
@@ -103,12 +164,12 @@ inline nonnull(1) void io_fd_init(io_rw_t *io, int fd)
     io->close  = io_fdclose;
 }
 
-#define IO_FD_INIT(fd) {   \
-    .un    = { .fd = fd }, \
-    .read  = io_fdread,    \
-    .write = io_fdwrite,   \
-    .error = io_fderror,   \
-    .close = io_fdclose    \
+#define IO_FD_INIT(fd) {     \
+    .un    = { .fd = (fd) }, \
+    .read  = io_fdread,      \
+    .write = io_fdwrite,     \
+    .error = io_fderror,     \
+    .close = io_fdclose      \
 }
 
 // compressed I/O (io_rw_t * structures are malloc()ed, but free()ed by their close() function)
