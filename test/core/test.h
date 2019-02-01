@@ -77,4 +77,6 @@ void testbgpdumppacketrow(void);
 
 void testjsonsimple(void);
 
+void testpatproblem(void);
+
 #endif

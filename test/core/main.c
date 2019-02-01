@@ -88,6 +88,9 @@ int main(void)
 
     if (!CU_add_test(suite, "test patricia get first subnets", testpatgetfirstsubnets))
         goto error;
+    
+    if (!CU_add_test(suite, "test patricia problem", testpatproblem))
+        goto error;
 
     if (!CU_add_test(suite, "test abstract I/O with Zlib", testzio))
         goto error;
