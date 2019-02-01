@@ -209,7 +209,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
     int maxbits = pt->maxbitlen;
 
     while (n->prefix.bitlen < prefix->bitlen || ispnodeglue(n)) {
-        int bit = (n->prefix.bitlen < maxbits) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> n->prefix.bitlen & 0x07));
+        int bit = (n->prefix.bitlen < maxbits) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
         if (n->children[bit != 0] == NULL)
             break;
 
@@ -284,7 +284,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
     if (n->prefix.bitlen == differ_bit) {
         setpnodeparent(newnode, n);
 
-        int bit = (n->prefix.bitlen < maxbits) && (prefix->bytes[n->prefix.bitlen >> 3] & 0x80 >> (n->prefix.bitlen & 0x07));
+        int bit = (n->prefix.bitlen < maxbits) && (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
         n->children[bit != 0] = newnode;
 
         *inserted = PREFIX_INSERTED;
@@ -293,7 +293,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
     }
 
     if (n->prefix.bitlen == differ_bit) {
-        int bit = (prefix->bitlen < maxbits) && (n->prefix.bytes[n->prefix.bitlen >> 3] & 0x80 >> (prefix->bitlen & 0x07));
+        int bit = (prefix->bitlen < maxbits) && (n->prefix.bytes[n->prefix.bitlen >> 3] & (0x80 >> (prefix->bitlen & 0x07)));
         newnode->children[bit] = n;
         setpnodeparent(newnode, n);
 
@@ -391,7 +391,7 @@ trienode_t* patsearchbestn(const patricia_trie_t *pt, const netaddr_t *prefix)
                 break;
         }
 
-        int bit = ((prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07))) != 0);
+        int bit = (prefix->bytes[n->prefix.bitlen >> 3] & (0x80 >> (n->prefix.bitlen & 0x07)));
         n = n->children[bit != 0];
 
         if (!n)
@@ -702,7 +702,7 @@ trienode_t** patgetrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix
                 return res;
         }
 
-        int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen) & 0x07);
+        int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen & 0x07));
         start = start->children[bit != 0];
     }
 
@@ -753,7 +753,7 @@ int patisrelatedofn(const patricia_trie_t *pt, const netaddr_t *prefix)
         if (!ispnodeglue(start) && patcompwithmask(&start->prefix, prefix, start->prefix.bitlen))
             return true;
 
-        int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen) & 0x07);
+        int bit = prefix->bytes[start->prefix.bitlen >> 3] & (0x80 >> (start->prefix.bitlen & 0x07));
         start = start->children[bit != 0];
     }
 
