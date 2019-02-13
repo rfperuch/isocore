@@ -103,7 +103,7 @@ int    io_mclose(io_rw_t *io);
 
 static inline nonnull(1, 2) void io_mem_wrinit(io_rw_t *io, void *dst, size_t size)
 {
-    io->mem.ptr = dst;
+    io->mem.ptr = (unsigned char *) dst;
     io->mem.end = (unsigned char *) dst + size;
     io->read  = io_mread;
     io->write = io_mwrite;
