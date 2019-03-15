@@ -216,6 +216,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
         n = n->children[bit != 0];
     }
 
+    unsigned char *test_addr = n->prefix.bytes;
     int check_bit = min(n->prefix.bitlen, prefix->bitlen);
     int differ_bit = 0;
 
@@ -293,7 +294,7 @@ trienode_t* patinsertn(patricia_trie_t *pt, const netaddr_t *prefix, int *insert
     }
 
     if (n->prefix.bitlen == differ_bit) {
-        int bit = (prefix->bitlen < maxbits) && (n->prefix.bytes[n->prefix.bitlen >> 3] & (0x80 >> (prefix->bitlen & 0x07)));
+        int bit = (prefix->bitlen < maxbits) && (test_addr[prefix->bitlen >> 3] & (0x80 >> (prefix->bitlen & 0x07)));
         newnode->children[bit] = n;
         setpnodeparent(newnode, n);
 
