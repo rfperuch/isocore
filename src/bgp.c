@@ -531,7 +531,7 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
 
                     *dst++ = segtype;
                     *dst++ = segcount;
-                    if (unlikely((size_t) (end - ptr) != segcount * sizeof(uint32_t)))
+                    if (unlikely((size_t) (end - ptr) < segcount * sizeof(uint32_t)))
                         goto error;
 
                     // FIXME bounds check on dst
@@ -543,18 +543,19 @@ int rebuildbgpfrommrt_r(bgp_msg_t *msg, const void *nlri, const void *data, size
                         ptr += sizeof(uint32_t);
                         dst += sizeof(uint16_t);
                     }
-
-                    // rewrite length
-                    size_t total = (dst - start) - hdrsize;
-
-                    start += 2;  // skip attribute flags and code
-
-                    // write updated length
-                    if (attr->flags & ATTR_EXTENDED_LENGTH)
-                        *start++ = total >> 8;
-
-                    *start++ = total & 0xff;
                 }
+                
+                // rewrite length
+                size_t total = (dst - start) - hdrsize;
+
+                start += 2;  // skip attribute flags and code
+
+                // write updated length
+                if (attr->flags & ATTR_EXTENDED_LENGTH)
+                    *start++ = total >> 8;
+
+                *start++ = total & 0xff;
+                
                 break;
             }
             // fallthrough
