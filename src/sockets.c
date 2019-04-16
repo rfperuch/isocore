@@ -70,10 +70,9 @@ int socketflags(int fd, int flags)
     return 0;
 }
 
+#ifdef __linux__
 int setmd5key(int sd, char *md5key)
 {
-#ifdef __linux__
-
     struct sockaddr_storage addr;
     socklen_t len = sizeof(addr);
     if (getpeername(sd, (struct sockaddr*)&addr, &len) < 0)
@@ -90,11 +89,8 @@ int setmd5key(int sd, char *md5key)
     memcpy(md5sig.tcpm_key, md5key, n);  // TODO test for n == sizeof(md5sig.tcpm_key)
 
     return setsockopt(sd, IPPROTO_TCP, TCP_MD5SIG, &md5sig, sizeof(md5sig));
-
-#else
-#error Please provide an implementation for this OS!
-#endif
 }
+#endif
 
 int fsockopen(const struct sockaddr *addr, socklen_t addrlen, const char *mode, ...)
 {

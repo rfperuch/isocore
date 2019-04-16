@@ -39,6 +39,10 @@
 #include <stdio.h>
 #include <time.h>
 
+#ifndef TIME_UTC
+	#define TIME_UTC 1
+#endif
+      
 static FILE *log_output = NULL;
 static int log_mode = 0;
 static atomic_int minlevel = loginfo;  // NOTE: avoid ATOMIC_VAR_INIT, deprecated in C17
@@ -128,7 +132,11 @@ void logvprintf(logsev_t sev, const char *fmt, va_list va)
     char stamp[64] = "";
     if (log_mode & lmodestamp) {
         struct timespec ts;
+#ifdef __APPLE__
+        clock_gettime(CLOCK_REALTIME, &ts);
+#else
         timespec_get(&ts, TIME_UTC);
+#endif
 
         struct tm *tm = gmtime(&ts.tv_sec);
         sprintf(stamp, "%02d.%02d.%02d-%02d:%02d:%02d.%09ld - ",

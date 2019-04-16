@@ -4,18 +4,34 @@ project('isocore', 'c', version : '2.31',
                         default_options : [ 'c_std=c11', 'b_ndebug=if-release' ])
 
 cc = meson.get_compiler('c')
-add_project_arguments(cc.get_supported_arguments([
-    '-Wall',
-    '-pedantic',
-    '-Wextra',
-    '-Wno-missing-braces',
-    '-Wno-missing-field-initializers',
-    '-D_LARGEFILE_SOURCE',
-    '-D_LARGEFILE64_SOURCE',
-    '-D_FILE_OFFSET_BITS=64',
-    '-D_POSIX_C_SOURCE=200809L',
-    '-D_DEFAULT_SOURCE'
-]), language : 'c')
+if host_machine.system() == 'darwin'
+	add_project_arguments(cc.get_supported_arguments([
+	    '-Wall',
+	    '-pedantic',
+	    '-Wextra',
+	    '-Wno-missing-braces',
+	    '-Wno-missing-field-initializers',
+	    '-D_LARGEFILE_SOURCE',
+	    '-D_LARGEFILE64_SOURCE',
+	    '-D_FILE_OFFSET_BITS=64',
+	    '-D_POSIX_C_SOURCE=200809L',
+	    '-D_DEFAULT_SOURCE',
+	    '-D_DARWIN_C_SOURCE'
+	]), language : 'c')
+else
+	add_project_arguments(cc.get_supported_arguments([
+	    '-Wall',
+	    '-pedantic',
+	    '-Wextra',
+	    '-Wno-missing-braces',
+	    '-Wno-missing-field-initializers',
+	    '-D_LARGEFILE_SOURCE',
+	    '-D_LARGEFILE64_SOURCE',
+	    '-D_FILE_OFFSET_BITS=64',
+	    '-D_POSIX_C_SOURCE=200809L',
+	    '-D_DEFAULT_SOURCE'
+	]), language : 'c')
+endif
 
 m_dep = cc.find_library('m', required : false)
 threads_dep = dependency('threads')
